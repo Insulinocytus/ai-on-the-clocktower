@@ -11,3 +11,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
+### Research notes
+
+Research findings live on `main` at `docs/research/<slug>.md` (one file per topic, sources cited), committed directly — not on throwaway `research/*` branches. The resolving ticket links to the file.
