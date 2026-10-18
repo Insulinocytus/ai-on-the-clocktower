@@ -1,0 +1,110 @@
+{
+  "newGame": {
+    "title": "新建对局",
+    "description": "指派选手模型，设置对局节奏，并决定每一项说书人裁量由谁处理。",
+    "back": "返回对局列表",
+    "loading": "正在加载模型预设与对局配置……",
+    "loadError": "无法加载对局配置，请检查连接后重试。",
+    "retry": "重试",
+    "templateNotice": "已复制原对局的配置。开局时将重新生成随机种子。",
+    "noPresetsTitle": "请先添加模型预设",
+    "noPresetsDescription": "创建提供商和模型预设后，回到这里为各个座位指派模型。",
+    "manageModels": "管理模型",
+    "seatsTitle": "座位与模型",
+    "seatsDescription": "同一预设可以占多个座位。调整人数时，会保留各座位已选的预设。",
+    "seatCount": "座位数",
+    "seat": "{seat} 号座位",
+    "choosePreset": "请选择模型预设",
+    "deletedPreset": "{name}（已删除）",
+    "repickPreset": "「{name}」已被删除，请重新选择预设。",
+    "pacingTitle": "语言与节奏",
+    "language": "对局语言",
+    "chinese": "中文",
+    "english": "英文",
+    "languageDescription": "用于提示词、AI 发言和对局播报，与界面语言分别设置。",
+    "maxSpeeches": "每段对话的发言上限",
+    "maxSpeechesDescription": "每个座位在每段对话中的最多发言条数，至少为 1。",
+    "whisperRooms": "每个私聊阶段的房间上限",
+    "whisperRoomsDescription": "每个座位在一个私聊阶段最多可进入的房间数，设为 0 时跳过私聊。",
+    "discretionsTitle": "说书人裁量",
+    "discretionsDescription": "14 项裁量默认全部手动。这里只选来源，具体结果在对局中决定。",
+    "bulkLabel": "批量设置裁量来源",
+    "bulk": {
+      "random": "全部设为随机",
+      "storyteller": "全部设为说书人模型",
+      "manual": "全部设为手动"
+    },
+    "sources": {
+      "random": "随机",
+      "storyteller": "说书人模型",
+      "manual": "手动"
+    },
+    "storytellerPreset": "说书人模型预设",
+    "storytellerDescription": "至少一项裁量交给了说书人模型，因此必须指派预设。可与选手使用同一预设。",
+    "discretions": {
+      "D1": {
+        "label": "D1 · 选角",
+        "description": "为本局选择一组符合人数配置的角色。"
+      },
+      "seating": {
+        "label": "分座",
+        "description": "将选定的角色分配到各个座位。"
+      },
+      "D2": {
+        "label": "D2 · 酒鬼以为的角色",
+        "description": "选择一个不在场的镇民角色，让酒鬼以为自己是该角色。"
+      },
+      "D3": {
+        "label": "D3 · 占卜师干扰项",
+        "description": "选择一名善良玩家，使其被占卜师当作恶魔。"
+      },
+      "D4": {
+        "label": "D4 · 洗衣妇信息",
+        "description": "决定告知洗衣妇的镇民角色与两名玩家。"
+      },
+      "D5": {
+        "label": "D5 · 图书管理员信息",
+        "description": "决定告知图书管理员的外来者角色与两名玩家，或告知没有外来者。"
+      },
+      "D6": {
+        "label": "D6 · 调查员信息",
+        "description": "决定告知调查员的爪牙角色与两名玩家。"
+      },
+      "D7": {
+        "label": "D7 · 恶魔伪装",
+        "description": "选择三个不在场的善良角色，作为伪装告知恶魔。"
+      },
+      "D8": {
+        "label": "D8 · 醉酒或中毒信息",
+        "description": "决定信息能力在醉酒或中毒、未正常生效时得到的信息。"
+      },
+      "D10": {
+        "label": "D10 · 间谍被当作",
+        "description": "设定间谍被当作的阵营与角色，整局保持不变。"
+      },
+      "D11": {
+        "label": "D11 · 陌客被当作",
+        "description": "设定陌客被当作的阵营与角色，整局保持不变。"
+      },
+      "D12": {
+        "label": "D12 · 镇长是否替死",
+        "description": "恶魔攻击镇长时，决定是否由另一名玩家代为死亡。"
+      },
+      "D13": {
+        "label": "D13 · 镇长替死对象",
+        "description": "决定由哪名玩家代替镇长死亡。"
+      },
+      "D14": {
+        "label": "D14 · 继位爪牙",
+        "description": "小恶魔成功自杀且没有红唇女郎继位时，决定由哪名爪牙变成小恶魔。"
+      }
+    },
+    "missingEnvTitle": "缺少提供商凭据",
+    "missingEnvDescription": "对局尚未创建。请在服务端设置以下环境变量后重试：",
+    "createError": "无法开始对局。请检查连接，并确认所选预设仍然存在后重试。",
+    "incomplete": "请为所有必需的模型指派预设，并填写有效的节奏参数后开局。",
+    "startDescription": "对局将立即开始。配置阶段的手动裁量会在观战页中弹出。",
+    "creating": "正在开局……",
+    "create": "开始对局"
+  }
+}

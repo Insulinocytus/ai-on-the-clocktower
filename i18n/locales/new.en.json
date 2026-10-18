@@ -1,0 +1,110 @@
+{
+  "newGame": {
+    "title": "New game",
+    "description": "Assign the models, set the pace, and choose who makes each Storyteller decision.",
+    "back": "Back to games",
+    "loading": "Loading model presets and game configuration…",
+    "loadError": "Could not load this configuration. Check the connection and try again.",
+    "retry": "Try again",
+    "templateNotice": "Configuration copied from the previous game. A new random seed will be generated when you start.",
+    "noPresetsTitle": "Add a model preset first",
+    "noPresetsDescription": "Create a provider and a model preset, then return here to assign your seats.",
+    "manageModels": "Manage models",
+    "seatsTitle": "Seats and models",
+    "seatsDescription": "The same preset can play more than one seat. Changing the seat count keeps your selections.",
+    "seatCount": "Seat count",
+    "seat": "Seat {seat}",
+    "choosePreset": "Choose a model preset",
+    "deletedPreset": "{name} (deleted)",
+    "repickPreset": "“{name}” has been deleted. Choose another preset.",
+    "pacingTitle": "Language and pace",
+    "language": "Game language",
+    "chinese": "Chinese",
+    "english": "English",
+    "languageDescription": "Used for model prompts, AI speech, and game messages. The interface language is independent.",
+    "maxSpeeches": "Speeches per conversation",
+    "maxSpeechesDescription": "Maximum speeches per seat in each conversation. At least 1.",
+    "whisperRooms": "Whisper rooms per phase",
+    "whisperRoomsDescription": "Maximum rooms each seat can join per whisper phase. Set to 0 to skip whispers.",
+    "discretionsTitle": "Storyteller decisions",
+    "discretionsDescription": "All 14 decisions default to manual. Results are chosen during the game, not in this form.",
+    "bulkLabel": "Set all decision sources",
+    "bulk": {
+      "random": "All random",
+      "storyteller": "All Storyteller model",
+      "manual": "All manual"
+    },
+    "sources": {
+      "random": "Random",
+      "storyteller": "Storyteller model",
+      "manual": "Manual"
+    },
+    "storytellerPreset": "Storyteller model preset",
+    "storytellerDescription": "Required because at least one decision uses the Storyteller model. It may use the same preset as a seat.",
+    "discretions": {
+      "D1": {
+        "label": "D1 · Characters in play",
+        "description": "Choose a legal set of characters for this game."
+      },
+      "seating": {
+        "label": "Seat assignment",
+        "description": "Assign the selected characters to seats."
+      },
+      "D2": {
+        "label": "D2 · The Drunk’s believed character",
+        "description": "Choose the out-of-play Townsfolk character the Drunk believes they are."
+      },
+      "D3": {
+        "label": "D3 · Fortune Teller’s red herring",
+        "description": "Choose the good player who registers as a Demon to the Fortune Teller."
+      },
+      "D4": {
+        "label": "D4 · Washerwoman information",
+        "description": "Choose the Townsfolk character and pair of players shown to the Washerwoman."
+      },
+      "D5": {
+        "label": "D5 · Librarian information",
+        "description": "Choose the Outsider character and pair of players shown to the Librarian, or report no Outsiders."
+      },
+      "D6": {
+        "label": "D6 · Investigator information",
+        "description": "Choose the Minion character and pair of players shown to the Investigator."
+      },
+      "D7": {
+        "label": "D7 · Demon bluffs",
+        "description": "Choose three out-of-play good characters to tell the Demon."
+      },
+      "D8": {
+        "label": "D8 · Drunk or poisoned information",
+        "description": "Choose the information given when an information ability is malfunctioning."
+      },
+      "D10": {
+        "label": "D10 · Spy registration",
+        "description": "Set the Spy’s registered alignment and character for the entire game."
+      },
+      "D11": {
+        "label": "D11 · Recluse registration",
+        "description": "Set the Recluse’s registered alignment and character for the entire game."
+      },
+      "D12": {
+        "label": "D12 · Mayor death substitution",
+        "description": "Decide whether another player dies when the Demon attacks the Mayor."
+      },
+      "D13": {
+        "label": "D13 · Mayor’s substitute",
+        "description": "Choose the player who dies instead of the Mayor."
+      },
+      "D14": {
+        "label": "D14 · Imp succession",
+        "description": "Choose the Minion who becomes the Imp after a successful self-kill, when no Scarlet Woman takes over."
+      }
+    },
+    "missingEnvTitle": "Provider credentials are missing",
+    "missingEnvDescription": "The game was not created. Set these environment variables on the server, then try again:",
+    "createError": "Could not start the game. Check the connection and that your selected presets still exist, then try again.",
+    "incomplete": "Choose a preset for every required model and enter valid pacing limits to start.",
+    "startDescription": "The game starts immediately. Manual setup decisions appear in the spectator view.",
+    "creating": "Starting game…",
+    "create": "Start game"
+  }
+}
