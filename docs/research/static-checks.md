@@ -19,11 +19,11 @@
 
 以下数量来自 **v8.71.2 生成的预设源码**中 `@typescript-eslint/*` 键的计数；只数该命名空间的规则，不把关闭的 ESLint core 规则算进去，也不冒充所有规则都需要类型信息。三个源码是可逐项复查的完整清单：[recommended-type-checked](https://github.com/typescript-eslint/typescript-eslint/blob/v8.71.2/packages/eslint-plugin/src/configs/eslintrc/recommended-type-checked.ts) · [strict-type-checked](https://github.com/typescript-eslint/typescript-eslint/blob/v8.71.2/packages/eslint-plugin/src/configs/eslintrc/strict-type-checked.ts) · [stylistic-type-checked](https://github.com/typescript-eslint/typescript-eslint/blob/v8.71.2/packages/eslint-plugin/src/configs/eslintrc/stylistic-type-checked.ts)。flat 与 legacy 的预设命名不同，ESLint flat 中使用 camelCase API 或插件的 `flat/...` 键，不把 legacy `extends` 字符串原样搬进去。
 
-| 预设（8.71.2） | TS 规则键数 | 覆盖内容与差别 |
-|---|---:|---|
-| `recommendedTypeChecked` | 43 | 常见错误与类型安全：`await-thenable`、`no-floating-promises`、`no-misused-promises`、`no-unsafe-{argument,assignment,call,member-access,return}`、`unbound-method`、`only-throw-error`，同时包含不依赖类型的 `no-explicit-any`、`no-unused-vars` 等。 |
-| `strictTypeChecked` | 70 | 包含上述 43 个键，再增加下列 27 个；更主观，也更容易要求重写已有代码。 |
-| `stylisticTypeChecked` | 21 | 类型/接口/数组的统一表示、简化表达式与现代 API；可与 strict 配合，是否采用由风格偏好决定。 |
+| 预设（8.71.2）           | TS 规则键数 | 覆盖内容与差别                                                                                                                                                                                                                                        |
+| ------------------------ | ----------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `recommendedTypeChecked` |          43 | 常见错误与类型安全：`await-thenable`、`no-floating-promises`、`no-misused-promises`、`no-unsafe-{argument,assignment,call,member-access,return}`、`unbound-method`、`only-throw-error`，同时包含不依赖类型的 `no-explicit-any`、`no-unused-vars` 等。 |
+| `strictTypeChecked`      |          70 | 包含上述 43 个键，再增加下列 27 个；更主观，也更容易要求重写已有代码。                                                                                                                                                                                |
+| `stylisticTypeChecked`   |          21 | 类型/接口/数组的统一表示、简化表达式与现代 API；可与 strict 配合，是否采用由风格偏好决定。                                                                                                                                                            |
 
 **strict 新增的完整 27 项**（均省略 `@typescript-eslint/` 前缀）：
 
@@ -90,7 +90,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin'
 
 const strictRules = Object.assign(
   {},
-  ...tsPlugin.configs['flat/strict-type-checked'].map(config => config.rules),
+  ...tsPlugin.configs['flat/strict-type-checked'].map((config) => config.rules),
 )
 
 export default withNuxt({
@@ -132,13 +132,13 @@ shadcn-vue 的 `app/components/ui/**` 在本项目被视为第三方风格源码
 
 本次 `knip` npm latest 为 **6.42.0**，Node 要求 `^20.19.0 || >=22.12.0`，ESM、ISC；源码固定到官方 tag `knip@6.42.0`，不是沿用早期 5.x 的能力印象。发布依赖使用 `oxc-parser`，未声明 TypeScript peer；这不等于已经验证项目 TS 6 的全部语法/框架配置。[npm 元数据](https://registry.npmjs.org/knip/6.42.0) · [固定源码](https://github.com/webpro-nl/knip/tree/knip%406.42.0)
 
-| 6.42.0 检查项 | 含义与边界 |
-|---|---|
-| unused files | `project files - (entry files + resolved files)`；从入口沿模块图不可达，而非全仓库文本没有出现文件名。 |
-| unused exports | 跨模块无人引用的导出；默认保护 entry 文件的 exports。 |
-| unused dependencies | 检查 package 依赖的使用，还能报告 unlisted dependencies/binaries 与 unresolved imports。 |
-| unused types | 指导出的 `enum`、`interface`、`type` 无人使用，**不是检查类型赋值是否合法**。 |
-| namespace/member | `nsExports`、`nsTypes` 默认不启用；另有 enumMembers/namespaceMembers，不应泛称能检查任意对象属性与所有类成员。 |
+| 6.42.0 检查项       | 含义与边界                                                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| unused files        | `project files - (entry files + resolved files)`；从入口沿模块图不可达，而非全仓库文本没有出现文件名。         |
+| unused exports      | 跨模块无人引用的导出；默认保护 entry 文件的 exports。                                                          |
+| unused dependencies | 检查 package 依赖的使用，还能报告 unlisted dependencies/binaries 与 unresolved imports。                       |
+| unused types        | 指导出的 `enum`、`interface`、`type` 无人使用，**不是检查类型赋值是否合法**。                                  |
+| namespace/member    | `nsExports`、`nsTypes` 默认不启用；另有 enumMembers/namespaceMembers，不应泛称能检查任意对象属性与所有类成员。 |
 
 来源：[issue types](https://knip.dev/reference/issue-types) · [handling issues](https://knip.dev/guides/handling-issues) · [配置 reference](https://knip.dev/reference/configuration)。`includeEntryExports: true` 能扩大导出检查，但插件识别的 entry/config 仍有保护，仅由 package scripts 发现的入口也有例外；不能以为一个开关就把框架所有入口的 exports 全部检查。[includeEntryExports](https://knip.dev/reference/configuration#includeentryexports)
 
@@ -146,13 +146,13 @@ shadcn-vue 的 `app/components/ui/**` 在本项目被视为第三方风格源码
 
 下表描述 **6.42.0 固定源码**中的识别行为，不宣称已在本项目组合实测。
 
-| 集成 | 已核实行为 | 一手来源 |
-|---|---|---|
-| Nuxt 4 目录 | `nuxt`/`nuxt-nightly` 依赖触发；识别 `nuxt.config.*`、app/error/layouts/middleware/pages/plugins/modules 和 server/api/routes/middleware/plugins/tasks；无显式 srcDir 时检测根 `app/`；处理 layers、aliases、`#shared`、modules、CSS 入口。 | [文档](https://knip.dev/reference/plugins/nuxt) · [6.42.0 源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/nuxt/index.ts) |
-| Vue SFC | 使用项目 `vue/compiler-sfc` 解析 script/script setup、模板标识符/组件及样式预处理引用；有 `.vue` compiler，不只是 Vue CLI 配置插件。 | [文档](https://knip.dev/reference/plugins/vue) · [Vue compiler/auto-import](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/_vue/auto-import.ts) |
-| Vitest | `vitest`/`vite-plus` 触发；识别 config、workspace/projects、test/spec/bench/type-test、mocks，读取 setupFiles/globalSetup/environment/reporters/coverage/aliases 等。**识别插件存在不等于已验证 Vitest 5 所有新选项。** | [文档](https://knip.dev/reference/plugins/vitest) · [源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/vitest/index.ts) |
-| Tailwind v4 使用方式 | 识别 `tailwindcss` 与 `@tailwindcss/{vite,webpack,postcss,cli}`；除 config 入口外，CSS compiler 提取 `@import`、`@config`、`@plugin`，所以没有 JS tailwind.config 不意味着无法识别依赖。 | [插件](https://knip.dev/reference/plugins/tailwind) · [CSS compiler](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/tailwind/compiler.ts) |
-| pnpm | lockfile/workspace 文件或 `packageManager: pnpm@...` 触发；读取 workspace packages、`.pnpmfile.{cjs,mjs}` 与 packageExtensions 的 peer 引用。workspace 会按各自 manifest 与可达关系分析，不等同扫描物理 `.pnpm` store。 | [插件](https://knip.dev/reference/plugins/pnpm) · [源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/pnpm/index.ts) · [workspaces](https://knip.dev/features/monorepos-and-workspaces) |
+| 集成                 | 已核实行为                                                                                                                                                                                                                                  | 一手来源                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nuxt 4 目录          | `nuxt`/`nuxt-nightly` 依赖触发；识别 `nuxt.config.*`、app/error/layouts/middleware/pages/plugins/modules 和 server/api/routes/middleware/plugins/tasks；无显式 srcDir 时检测根 `app/`；处理 layers、aliases、`#shared`、modules、CSS 入口。 | [文档](https://knip.dev/reference/plugins/nuxt) · [6.42.0 源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/nuxt/index.ts)                                                             |
+| Vue SFC              | 使用项目 `vue/compiler-sfc` 解析 script/script setup、模板标识符/组件及样式预处理引用；有 `.vue` compiler，不只是 Vue CLI 配置插件。                                                                                                        | [文档](https://knip.dev/reference/plugins/vue) · [Vue compiler/auto-import](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/_vue/auto-import.ts)                                           |
+| Vitest               | `vitest`/`vite-plus` 触发；识别 config、workspace/projects、test/spec/bench/type-test、mocks，读取 setupFiles/globalSetup/environment/reporters/coverage/aliases 等。**识别插件存在不等于已验证 Vitest 5 所有新选项。**                     | [文档](https://knip.dev/reference/plugins/vitest) · [源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/vitest/index.ts)                                                                |
+| Tailwind v4 使用方式 | 识别 `tailwindcss` 与 `@tailwindcss/{vite,webpack,postcss,cli}`；除 config 入口外，CSS compiler 提取 `@import`、`@config`、`@plugin`，所以没有 JS tailwind.config 不意味着无法识别依赖。                                                    | [插件](https://knip.dev/reference/plugins/tailwind) · [CSS compiler](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/tailwind/compiler.ts)                                                 |
+| pnpm                 | lockfile/workspace 文件或 `packageManager: pnpm@...` 触发；读取 workspace packages、`.pnpmfile.{cjs,mjs}` 与 packageExtensions 的 peer 引用。workspace 会按各自 manifest 与可达关系分析，不等同扫描物理 `.pnpm` store。                     | [插件](https://knip.dev/reference/plugins/pnpm) · [源码](https://github.com/webpro-nl/knip/blob/knip%406.42.0/packages/knip/src/plugins/pnpm/index.ts) · [workspaces](https://knip.dev/features/monorepos-and-workspaces) |
 
 ### 3.3 auto-import、shadcn 与误报定位
 
@@ -170,14 +170,14 @@ shadcn-vue 的 `app/components/ui/**` 在本项目被视为第三方风格源码
 
 这些是基于上述图模型的 `[INFERENCE]`，实际组件误报数量**未核实**。6.42.0 支持的处理粒度如下：[配置 reference](https://knip.dev/reference/configuration)
 
-| 手段 | 对检查边界的影响 |
-|---|---|
-| `ignoreFiles` | 只隐藏 unused-files 类问题，其他分析保留。 |
-| `ignoreIssues` | 按文件 glob 与类别忽略，例如只对 UI 桶文件忽略 exports/types。 |
-| `ignoreDependencies` / `ignoreUnresolved` | 分别对依赖名/导入 specifier 做精准例外。 |
-| `ignore` | 对匹配文件隐藏所有问题，比前述范围更大。 |
-| `project` 的排除模式 | 从分析范围移除；不只是隐藏诊断。 |
-| `entry` | 改变可达图根；整目录设 entry 会掩盖未用文件，不是无损修正。 |
+| 手段                                      | 对检查边界的影响                                               |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `ignoreFiles`                             | 只隐藏 unused-files 类问题，其他分析保留。                     |
+| `ignoreIssues`                            | 按文件 glob 与类别忽略，例如只对 UI 桶文件忽略 exports/types。 |
+| `ignoreDependencies` / `ignoreUnresolved` | 分别对依赖名/导入 specifier 做精准例外。                       |
+| `ignore`                                  | 对匹配文件隐藏所有问题，比前述范围更大。                       |
+| `project` 的排除模式                      | 从分析范围移除；不只是隐藏诊断。                               |
+| `entry`                                   | 改变可达图根；整目录设 entry 会掩盖未用文件，不是无损修正。    |
 
 ### 3.4 CI 与退出码
 
@@ -195,12 +195,12 @@ Windows 方面，官方 known issues 记录 Node ≥22、内存压力下 oxc raw
 
 **不能把当前插件简单列成 LGPL。** 本次查到 npm/package.json 仍标 `LGPL-3.0-only`，但 **4.2.2 发布包的 LICENSE、对应源码 LICENSE.txt、规则文件头是 SSALv1（Sonar Source-Available License）**。官方 README 说明 **2024-11-29 之后发布的 analyzers（含旧版 patch）使用 SSALv1，具体看文件头**。这是上游元数据与许可文本的冲突，而不是本报告已经作出法律判断。[4.2.2 发布包](https://registry.npmjs.org/eslint-plugin-sonarjs/-/eslint-plugin-sonarjs-4.2.2.tgz) · [包内 LICENSE 的固定版本镜像](https://unpkg.com/eslint-plugin-sonarjs@4.2.2/LICENSE) · [源码 LICENSE](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/LICENSE.txt) · [官方许可变更声明](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/README.md#license)
 
-| 已抽查 npm 版本 | 对应源码实际许可 | 来源 |
-|---|---|---|
-| 1.0.4 | GNU LGPL v3 | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/1.0.4) · [对应旧仓库 LICENSE](https://github.com/SonarSource/eslint-plugin-sonarjs/blob/ebe523b9539d3dbc1bbcedc251bb8193c7ed9bf6/LICENSE) |
-| 2.0.0 | GNU LGPL v3 | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/2.0.0) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/c34f41b8ff136b6981ab0dbd4238ce87c7836bb7/LICENSE.txt) |
-| 3.0.0 | SSALv1，但 npm 仍写 LGPL | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/3.0.0) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/3b4ef37e905207d416f950a0906935468d0b60c0/LICENSE.txt) |
-| 4.2.2 | SSALv1，但 npm 仍写 LGPL | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/4.2.2) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/LICENSE.txt) |
+| 已抽查 npm 版本 | 对应源码实际许可         | 来源                                                                                                                                                                                             |
+| --------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1.0.4           | GNU LGPL v3              | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/1.0.4) · [对应旧仓库 LICENSE](https://github.com/SonarSource/eslint-plugin-sonarjs/blob/ebe523b9539d3dbc1bbcedc251bb8193c7ed9bf6/LICENSE) |
+| 2.0.0           | GNU LGPL v3              | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/2.0.0) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/c34f41b8ff136b6981ab0dbd4238ce87c7836bb7/LICENSE.txt)                 |
+| 3.0.0           | SSALv1，但 npm 仍写 LGPL | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/3.0.0) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/3b4ef37e905207d416f950a0906935468d0b60c0/LICENSE.txt)                 |
+| 4.2.2           | SSALv1，但 npm 仍写 LGPL | [npm](https://registry.npmjs.org/eslint-plugin-sonarjs/4.2.2) · [对应 LICENSE](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/LICENSE.txt)                 |
 
 SSALv1 的 `Non-competitive Purpose` 还包含对某些 AI 技术读取、分析或交互程序及其数据的限制；对本项目、AI coding workflow、CI 分发的具体法律适用**未核实，应由使用者判断是否需要法律意见**。首次改变许可的精确 npm patch、元数据为何未同步也**未核实**；不能把抽查推成“所有 2.x 都是 LGPL”。[完整许可文本](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/LICENSE.txt)
 
@@ -218,12 +218,12 @@ SSALv1 的 `Non-competitive Purpose` 还包含对某些 AI 技术读取、分析
 
 但原创规则之间有**语义交叉，而非实现完全等价**：
 
-| SonarJS recommended | TS strict / strict-type-checked | 重叠边界与源码 |
-|---|---|---|
-| `no-unused-vars` | `no-unused-vars` | 都涉及 unused 局部变量，但 Sonar 的 definition/scope 过滤不同。[S1481](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1481/rule.ts) |
-| `unused-import` | `no-unused-vars` | unused import 目标交叉，Sonar 有自身 JSDoc/Vue setup 处理。[S1128](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1128/rule.ts) |
-| `no-primitive-wrappers` | `no-wrapper-object-types` | wrapper 构造与类型注解的覆盖不能视为相同。[S1533](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1533/rule.ts) |
-| `deprecation` | `no-deprecated`（只有 typed strict） | 都涉及 deprecated API，Sonar 用 TS suggestion diagnostics。[S1874](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1874/rule.ts) |
+| SonarJS recommended     | TS strict / strict-type-checked      | 重叠边界与源码                                                                                                                                                                                              |
+| ----------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no-unused-vars`        | `no-unused-vars`                     | 都涉及 unused 局部变量，但 Sonar 的 definition/scope 过滤不同。[S1481](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1481/rule.ts) |
+| `unused-import`         | `no-unused-vars`                     | unused import 目标交叉，Sonar 有自身 JSDoc/Vue setup 处理。[S1128](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1128/rule.ts)     |
+| `no-primitive-wrappers` | `no-wrapper-object-types`            | wrapper 构造与类型注解的覆盖不能视为相同。[S1533](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1533/rule.ts)                      |
+| `deprecation`           | `no-deprecated`（只有 typed strict） | 都涉及 deprecated API，Sonar 用 TS suggestion diagnostics。[S1874](https://github.com/SonarSource/SonarJS/blob/aebf8d46933ec80ff3437ceb69e320b5a97b7108/packages/analysis/src/jsts/rules/S1874/rule.ts)     |
 
 `[INFERENCE]` 可采用整个 recommended 再精确消重，也可只选其复杂度、重复分支、特定 bug/security 规则；前者范围广但诊断维护较多，后者更可控但要人工维护选集。**全部 230 条与 TS strict 的行为等价映射、重复比例未核实**；不能凭名字相似就自动关闭。规则越多也不是正确性覆盖的简单线性指标。
 
@@ -235,16 +235,16 @@ SSALv1 的 `Non-competitive Purpose` 还包含对某些 AI 技术读取、分析
 
 ### 5.1 已抓取版本
 
-| 包 | npm latest（本次抓取） | 与本项目相关的元数据 | 来源 |
-|---|---:|---|---|
-| `oxlint` | **1.88.0** | Node `^20.19.0 || >=22.12.0`，Windows x64/arm64 分发；optional peer `oxlint-tsgolint >=7.0.2003`。 | [registry](https://registry.npmjs.org/oxlint/1.88.0) |
-| `eslint-plugin-oxlint` | **1.88.0** | peer `oxlint: ~1.88.0`，两者不能任意独立升级。 | [registry](https://registry.npmjs.org/eslint-plugin-oxlint/1.88.0) |
-| `oxlint-tsgolint` | **7.0.2004** | 当前原生类型后端的版本编码跟随 TypeScript；有 Windows 平台包。 | [registry](https://registry.npmjs.org/oxlint-tsgolint/7.0.2004) |
-| `@biomejs/biome` | **2.5.15** | 有 Windows x64/arm64 分发，npm Node 要求 >=14.21.3。 | [registry](https://registry.npmjs.org/@biomejs%2fbiome/2.5.15) |
-| `prettier` | **3.9.10** | Node >=14。 | [registry](https://registry.npmjs.org/prettier/3.9.10) |
-| `@stylistic/eslint-plugin` | **5.10.0** | ESM；ESLint 9/10 peer。官网部分 FAQ 仍保留旧版 Node/ESLint 要求，应以该发布版本为准。 | [registry](https://registry.npmjs.org/@stylistic%2feslint-plugin/5.10.0) |
-| `oxfmt` | **0.73.0** | Node `^20.19.0 || >=22.12.0`；有 Windows 分发。 | [registry](https://registry.npmjs.org/oxfmt/0.73.0) |
-| `eslint-config-prettier` | **10.1.8** | peer ESLint >=7；只是关闭冲突，不是 formatter。 | [registry](https://registry.npmjs.org/eslint-config-prettier/10.1.8) |
+| 包                         | npm latest（本次抓取） | 与本项目相关的元数据                                                                  | 来源                                                                     |
+| -------------------------- | ---------------------: | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `oxlint`                   |             **1.88.0** | Node `^20.19.0                                                                        |                                                                          | >=22.12.0`，Windows x64/arm64 分发；optional peer `oxlint-tsgolint >=7.0.2003`。 | [registry](https://registry.npmjs.org/oxlint/1.88.0) |
+| `eslint-plugin-oxlint`     |             **1.88.0** | peer `oxlint: ~1.88.0`，两者不能任意独立升级。                                        | [registry](https://registry.npmjs.org/eslint-plugin-oxlint/1.88.0)       |
+| `oxlint-tsgolint`          |           **7.0.2004** | 当前原生类型后端的版本编码跟随 TypeScript；有 Windows 平台包。                        | [registry](https://registry.npmjs.org/oxlint-tsgolint/7.0.2004)          |
+| `@biomejs/biome`           |             **2.5.15** | 有 Windows x64/arm64 分发，npm Node 要求 >=14.21.3。                                  | [registry](https://registry.npmjs.org/@biomejs%2fbiome/2.5.15)           |
+| `prettier`                 |             **3.9.10** | Node >=14。                                                                           | [registry](https://registry.npmjs.org/prettier/3.9.10)                   |
+| `@stylistic/eslint-plugin` |             **5.10.0** | ESM；ESLint 9/10 peer。官网部分 FAQ 仍保留旧版 Node/ESLint 要求，应以该发布版本为准。 | [registry](https://registry.npmjs.org/@stylistic%2feslint-plugin/5.10.0) |
+| `oxfmt`                    |             **0.73.0** | Node `^20.19.0                                                                        |                                                                          | >=22.12.0`；有 Windows 分发。                                                    | [registry](https://registry.npmjs.org/oxfmt/0.73.0)  |
+| `eslint-config-prettier`   |             **10.1.8** | peer ESLint >=7；只是关闭冲突，不是 formatter。                                       | [registry](https://registry.npmjs.org/eslint-config-prettier/10.1.8)     |
 
 ### 5.2 Oxlint type-aware 已不是“尚不存在”
 
@@ -286,12 +286,12 @@ Biome `check` 组合 formatter/linter/assist；`biome ci` 不写文件，可用 
 
 ### 5.5 格式化工具的独立选择
 
-| 选项（当前版本） | 覆盖与机制 | 取舍 / 边界 | 一手来源 |
-|---|---|---|---|
-| Prettier **3.9.10** | 内置 Vue/TS/HTML/CSS/Markdown/YAML 等，解析后重新打印；`prettier . --check` 不写文件，0=合规、1=格式不符、2=工具错误。 | 可用同一个 formatter 覆盖代码与本仓库 Markdown；不是逻辑 lint。特定 Tailwind/import 排序属于插件/额外政策，不等同基础格式化。 | [支持与设计](https://prettier.io/docs/) · [CLI](https://prettier.io/docs/cli) |
-| ESLint Stylistic **5.10.0** | JS/TS/JSX 的规则与 autofix，统一插件整合此前分包；Nuxt 可选 `eslint.config.stylistic`。 | 细粒度规则更多、保留部分原布局；不是统一重打印。Vue template 排版还靠 Vue 规则，不能说它独立覆盖所有语言；官方承认 ESLint 格式化不是最高效路线。 | [getting started](https://eslint.style/guide/getting-started) · [why](https://eslint.style/guide/why) · [Nuxt 集成](https://eslint.nuxt.com/packages/module#eslint-stylistic) |
-| Biome **2.5.15** | 格式化与 lint/assist 可分开使用；Vue 为上述 experimental。 | 有 intentional Prettier divergences；当前 YAML/Markdown 表中仍为 in progress，不能宣称可覆盖全部 docs/workflows。 | [语言表](https://biomejs.dev/introduction/language-support/) · [差异](https://biomejs.dev/formatter/differences-with-prettier/) |
-| Oxfmt **0.73.0** | npm 包原生处理 JS/TS/JSON/CSS/GraphQL/TOML/YAML/Markdown 等；Vue/HTML/MDX 等由附带 Prettier 处理，Vue 内部 JS/TS 仍可用原生格式器；`oxfmt --check` 不写文件。 | 独立二进制不具备所有 Node/Prettier-backed 格式支持；不能加载任意 Prettier 插件。默认 width=100（Prettier=80），当前迁移兼容基线为 Prettier 3.9.9，并非 latest 3.9.10；存在 intentional divergences。 | [语言支持](https://oxc.rs/docs/guide/usage/formatter/language-support) · [不支持项](https://oxc.rs/docs/guide/usage/formatter/unsupported-features) · [迁移](https://oxc.rs/docs/guide/usage/formatter/migrate-from-prettier) |
+| 选项（当前版本）            | 覆盖与机制                                                                                                                                                    | 取舍 / 边界                                                                                                                                                                                          | 一手来源                                                                                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prettier **3.9.10**         | 内置 Vue/TS/HTML/CSS/Markdown/YAML 等，解析后重新打印；`prettier . --check` 不写文件，0=合规、1=格式不符、2=工具错误。                                        | 可用同一个 formatter 覆盖代码与本仓库 Markdown；不是逻辑 lint。特定 Tailwind/import 排序属于插件/额外政策，不等同基础格式化。                                                                        | [支持与设计](https://prettier.io/docs/) · [CLI](https://prettier.io/docs/cli)                                                                                                                                                 |
+| ESLint Stylistic **5.10.0** | JS/TS/JSX 的规则与 autofix，统一插件整合此前分包；Nuxt 可选 `eslint.config.stylistic`。                                                                       | 细粒度规则更多、保留部分原布局；不是统一重打印。Vue template 排版还靠 Vue 规则，不能说它独立覆盖所有语言；官方承认 ESLint 格式化不是最高效路线。                                                     | [getting started](https://eslint.style/guide/getting-started) · [why](https://eslint.style/guide/why) · [Nuxt 集成](https://eslint.nuxt.com/packages/module#eslint-stylistic)                                                 |
+| Biome **2.5.15**            | 格式化与 lint/assist 可分开使用；Vue 为上述 experimental。                                                                                                    | 有 intentional Prettier divergences；当前 YAML/Markdown 表中仍为 in progress，不能宣称可覆盖全部 docs/workflows。                                                                                    | [语言表](https://biomejs.dev/introduction/language-support/) · [差异](https://biomejs.dev/formatter/differences-with-prettier/)                                                                                               |
+| Oxfmt **0.73.0**            | npm 包原生处理 JS/TS/JSON/CSS/GraphQL/TOML/YAML/Markdown 等；Vue/HTML/MDX 等由附带 Prettier 处理，Vue 内部 JS/TS 仍可用原生格式器；`oxfmt --check` 不写文件。 | 独立二进制不具备所有 Node/Prettier-backed 格式支持；不能加载任意 Prettier 插件。默认 width=100（Prettier=80），当前迁移兼容基线为 Prettier 3.9.9，并非 latest 3.9.10；存在 intentional divergences。 | [语言支持](https://oxc.rs/docs/guide/usage/formatter/language-support) · [不支持项](https://oxc.rs/docs/guide/usage/formatter/unsupported-features) · [迁移](https://oxc.rs/docs/guide/usage/formatter/migrate-from-prettier) |
 
 Oxfmt 0.73.0 内置 import/Tailwind 类/package.json 排序，但默认 `sortImports`、`sortTailwindcss` 关闭，`sortPackageJson` 开启；不能因“有内置替代”推断所有第三方 Prettier 插件行为等价。[unsupported features/替代](https://oxc.rs/docs/guide/usage/formatter/unsupported-features)
 
@@ -325,21 +325,21 @@ pnpm **12.2 起** regex 多脚本默认并发，串行要用 `pnpm run --sequent
 
 ### 6.2 typecheck 与 typed lint 的职责边界
 
-| 检查（本次版本） | 独有责任 | 重复与接线原则 |
-|---|---|---|
+| 检查（本次版本）                                               | 独有责任                                                                                                                                                  | 重复与接线原则                                                                                                       |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Nuxt **4.6.2** `typecheck` + vue-tsc **3.3.13** + TS **6.0.3** | 各 context 类型合法性、Vue SFC/模板/props 等类型检查；Nuxt 当前命令也能选 Golar，本项目计划明确选 vue-tsc。solution references 会自动走 build-mode 检查。 | dev/build 默认不 typecheck，不能只靠 build。无需再单独跑一遍相同 scope 的 `vue-tsc` 和 `tsc --noEmit` 冒充额外覆盖。 |
-| typescript-eslint **8.71.2** typed rules | 类型合法但有风险的 Promise 误用、unsafe any 流动、不必要条件等。 | 不转发全部 TS diagnostics，所以不能取代 typecheck；也不必同时跑重叠 core 与 TS extension 规则。 |
-| Knip **6.42.0** | 文件/导出/包依赖可达性。 | 局部 unused 交给选定的 TS lint/compiler，跨模块导出不是 noUnusedLocals 能完成的。 |
+| typescript-eslint **8.71.2** typed rules                       | 类型合法但有风险的 Promise 误用、unsafe any 流动、不必要条件等。                                                                                          | 不转发全部 TS diagnostics，所以不能取代 typecheck；也不必同时跑重叠 core 与 TS extension 规则。                      |
+| Knip **6.42.0**                                                | 文件/导出/包依赖可达性。                                                                                                                                  | 局部 unused 交给选定的 TS lint/compiler，跨模块导出不是 noUnusedLocals 能完成的。                                    |
 
 来源：[Nuxt typecheck](https://nuxt.com/docs/4.x/api/commands/typecheck) · [typed lint](https://typescript-eslint.io/getting-started/typed-linting/) · [ESLint extension/no-undef FAQ](https://typescript-eslint.io/troubleshooting/faqs/eslint/) · [Knip issue types](https://knip.dev/reference/issue-types)。`[INFERENCE]` 先 typecheck 再 typed lint 可先解决类型错误造成的级联诊断，但两个独立 CLI 仍各自承担类型计算，不能宣称复用一个常驻编译器进程。
 
 ### 6.3 三种 git hook 方案
 
-| 方案 / 当前版本 | 安装与维护 | Windows + pnpm 边界 | 一手来源 |
-|---|---|---|---|
-| Lefthook **2.2.2** | 依赖 postinstall 自动 install；运行时读取配置，改命令无需重新生成；可描述多命令/并行任务。 | 有 Windows native 包，但 run 经 `sh`，不是 PowerShell；GUI PATH 与 Git for Windows shell 仍要匹配。可 `LEFTHOOK=0/false` 禁用，CI 默认跳过安装。 | [npm](https://registry.npmjs.org/lefthook/2.2.2) · [安装](https://lefthook.dev/installation/node/) · [run/shell](https://lefthook.dev/configuration/run/) · [禁用](https://lefthook.dev/usage/envs/LEFTHOOK/) |
-| simple-git-hooks **2.14.0** | 一 hook 一命令（可调用整个 pnpm check）；改配置后需重新执行 CLI 写 hooks；可用项目 prepare 安装。 | 生成 `#!/bin/sh`；依赖 postinstall 受批准政策影响，而项目 prepare 是不同机制。`SKIP_SIMPLE_GIT_HOOKS=1` 禁用运行，另有跳过安装变量。 | [npm](https://registry.npmjs.org/simple-git-hooks/2.14.0) · [官方 README](https://github.com/toplenboren/simple-git-hooks#readme) |
-| Husky **9.1.7** | `husky init` 建立 `.husky` 并更新项目 prepare；安装用 `core.hooksPath`，不是依赖 postinstall。 | hook 应用 POSIX shell；官方列出 Windows startup/GUI PATH 情况；`HUSKY=0` 可跳过安装与运行。 | [npm](https://registry.npmjs.org/husky/9.1.7) · [setup](https://typicode.github.io/husky/get-started.html) · [Windows/CI/GUI](https://typicode.github.io/husky/how-to.html) |
+| 方案 / 当前版本             | 安装与维护                                                                                        | Windows + pnpm 边界                                                                                                                              | 一手来源                                                                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lefthook **2.2.2**          | 依赖 postinstall 自动 install；运行时读取配置，改命令无需重新生成；可描述多命令/并行任务。        | 有 Windows native 包，但 run 经 `sh`，不是 PowerShell；GUI PATH 与 Git for Windows shell 仍要匹配。可 `LEFTHOOK=0/false` 禁用，CI 默认跳过安装。 | [npm](https://registry.npmjs.org/lefthook/2.2.2) · [安装](https://lefthook.dev/installation/node/) · [run/shell](https://lefthook.dev/configuration/run/) · [禁用](https://lefthook.dev/usage/envs/LEFTHOOK/) |
+| simple-git-hooks **2.14.0** | 一 hook 一命令（可调用整个 pnpm check）；改配置后需重新执行 CLI 写 hooks；可用项目 prepare 安装。 | 生成 `#!/bin/sh`；依赖 postinstall 受批准政策影响，而项目 prepare 是不同机制。`SKIP_SIMPLE_GIT_HOOKS=1` 禁用运行，另有跳过安装变量。             | [npm](https://registry.npmjs.org/simple-git-hooks/2.14.0) · [官方 README](https://github.com/toplenboren/simple-git-hooks#readme)                                                                             |
+| Husky **9.1.7**             | `husky init` 建立 `.husky` 并更新项目 prepare；安装用 `core.hooksPath`，不是依赖 postinstall。    | hook 应用 POSIX shell；官方列出 Windows startup/GUI PATH 情况；`HUSKY=0` 可跳过安装与运行。                                                      | [npm](https://registry.npmjs.org/husky/9.1.7) · [setup](https://typicode.github.io/husky/get-started.html) · [Windows/CI/GUI](https://typicode.github.io/husky/how-to.html)                                   |
 
 这三者是不同的配置/安装模型，不改变实际 lint 工具严格度。`[INFERENCE]` pre-commit 适合快速反馈，pre-push 更容易容纳全量 typed lint/test；到底在哪个 hook 执行多少检查是用户体验选择，不是工具事实。staged-file 检查也不能独立替代 Knip/跨文件类型图的全量检查。多个 manager 可能争夺 hook 路径，尤其 Husky 使用 core.hooksPath，Lefthook 当前 install 遇到已有值会停止；没有必要默认叠三套。[Lefthook install](https://lefthook.dev/usage/commands/install/) · [Husky 实现](https://github.com/typicode/husky/blob/v9.1.7/index.js)
 
@@ -390,20 +390,20 @@ Actions 运行检查与“阻止不合格合并”还是两个步骤：需在受
 
 TS **6.0** 自身也改变了默认值：strict=true、noUncheckedSideEffectImports=true、types=[]，并弃用 baseUrl、node10 moduleResolution 等。不能照旧教程把这些当成全部尚未启用；“nuxt 当前生成器是否显式写该键”与“TS6 最终默认是否开启”也要区别。[TS 6.0 发布说明](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/)
 
-| 选项（TS 6.0.3） | 语义 / Nuxt 4.6.2 情况 / 取舍 | 一手来源 |
-|---|---|---|
-| `strict` | 一组 strict-family 检查，不是所有下面的旗标；新 TS 版本可能继续加强。Nuxt 默认 true。 | [strict](https://www.typescriptlang.org/tsconfig/strict.html) |
-| `noUncheckedIndexedAccess` | 数组/索引签名访问加入潜在 undefined；Nuxt 已默认 true。能避免 typed lint 仅因过于乐观的索引类型就把合理防御条件判为多余。 | [选项](https://www.typescriptlang.org/tsconfig/noUncheckedIndexedAccess.html) · [no-unnecessary-condition 限制](https://typescript-eslint.io/rules/no-unnecessary-condition/) |
-| `exactOptionalPropertyTypes` | 区分字段缺席与字段存在且值 undefined；`p?: T` 不再允许显式写 undefined，除非类型含它。Nuxt 生成器未默认设置 true；开启会影响 props 转发、部分更新 DTO、库 options 等调用点。 | [选项](https://www.typescriptlang.org/tsconfig/exactOptionalPropertyTypes.html) · [Nuxt 源码](https://github.com/nuxt/nuxt/blob/v4.6.2/packages/kit/src/template.ts) |
-| `noImplicitOverride` | 覆盖基类成员时必须写 override，防止基类重命名后静默失去覆盖关系；Nuxt 已默认 true。 | [选项](https://www.typescriptlang.org/tsconfig/noImplicitOverride.html) |
-| `noPropertyAccessFromIndexSignature` | 只有索引签名提供的成员须用 `obj['key']`，显式成员仍可点访问；Nuxt 未默认设置。对动态字典/env/config 访问影响较多，目的是表达意图，不是新增运行时校验。 | [选项](https://www.typescriptlang.org/tsconfig/noPropertyAccessFromIndexSignature.html) |
-| `verbatimModuleSyntax` | 明确 type-only imports/exports 的删除，保留其他 imports；Nuxt 已默认 true。与 CJS/ESM 配置不匹配时会报错，不会偷偷把 ESM import 改写成 require。 | [选项](https://www.typescriptlang.org/tsconfig/verbatimModuleSyntax.html) |
-| `isolatedModules` | 约束源码可被单文件 transpiler 安全处理，涉及只导出类型、ambient const enum、非模块 namespace；Nuxt 已默认 true。 | [选项](https://www.typescriptlang.org/tsconfig/isolatedModules.html) |
-| `noImplicitReturns` / `noFallthroughCasesInSwitch` | 检查部分分支不返回、非空 switch case 意外贯穿；不属于 strict 总开关，是否接受所有相应编码限制需另外决定。 | [returns](https://www.typescriptlang.org/tsconfig/noImplicitReturns.html) · [fallthrough](https://www.typescriptlang.org/tsconfig/noFallthroughCasesInSwitch.html) |
-| `noUnusedLocals` / `noUnusedParameters` | 编译期 unused 检查；和 lint 局部变量重复，且 compiler 策略与 ESLint 可配置粒度不同（参数 `_` 有特例）。它们也不替代 Knip 的跨模块 exports/deps 检查。 | [locals](https://www.typescriptlang.org/tsconfig/noUnusedLocals.html) · [parameters](https://www.typescriptlang.org/tsconfig/noUnusedParameters.html) · [TS unused-vars 规则](https://typescript-eslint.io/rules/no-unused-vars/) |
-| `noUncheckedSideEffectImports` | TS6 默认 true；解析不到 `import './x.css'` 一类副作用模块时会报错，需正确 ambient declarations。Nuxt 4.6.2 源码在 future compatibility≥5 才显式写 true，并不取消 TS6 自身默认。 | [选项](https://www.typescriptlang.org/tsconfig/noUncheckedSideEffectImports.html) · [TS6 默认变更](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/) |
-| `forceConsistentCasingInFileNames` | Nuxt 默认 true；Windows 本地到 Linux CI 的路径大小写是实际边界，不应为方便而关闭。 | [选项](https://www.typescriptlang.org/tsconfig/forceConsistentCasingInFileNames.html) · [Nuxt 生成器](https://github.com/nuxt/nuxt/blob/v4.6.2/packages/kit/src/template.ts) |
-| `skipLibCheck` | Nuxt 默认 true；false 会扩展到第三方声明文件的一致性检查，时间和第三方冲突暴露都增加。它不是忽略所有库类型，true 时项目对库 API 的实际用法仍被检查；也不会把复制来的 `.vue/.ts` shadcn 源码变成免检声明。 | [选项](https://www.typescriptlang.org/tsconfig/skipLibCheck.html) |
+| 选项（TS 6.0.3）                                   | 语义 / Nuxt 4.6.2 情况 / 取舍                                                                                                                                                                             | 一手来源                                                                                                                                                                                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `strict`                                           | 一组 strict-family 检查，不是所有下面的旗标；新 TS 版本可能继续加强。Nuxt 默认 true。                                                                                                                     | [strict](https://www.typescriptlang.org/tsconfig/strict.html)                                                                                                                                                                     |
+| `noUncheckedIndexedAccess`                         | 数组/索引签名访问加入潜在 undefined；Nuxt 已默认 true。能避免 typed lint 仅因过于乐观的索引类型就把合理防御条件判为多余。                                                                                 | [选项](https://www.typescriptlang.org/tsconfig/noUncheckedIndexedAccess.html) · [no-unnecessary-condition 限制](https://typescript-eslint.io/rules/no-unnecessary-condition/)                                                     |
+| `exactOptionalPropertyTypes`                       | 区分字段缺席与字段存在且值 undefined；`p?: T` 不再允许显式写 undefined，除非类型含它。Nuxt 生成器未默认设置 true；开启会影响 props 转发、部分更新 DTO、库 options 等调用点。                              | [选项](https://www.typescriptlang.org/tsconfig/exactOptionalPropertyTypes.html) · [Nuxt 源码](https://github.com/nuxt/nuxt/blob/v4.6.2/packages/kit/src/template.ts)                                                              |
+| `noImplicitOverride`                               | 覆盖基类成员时必须写 override，防止基类重命名后静默失去覆盖关系；Nuxt 已默认 true。                                                                                                                       | [选项](https://www.typescriptlang.org/tsconfig/noImplicitOverride.html)                                                                                                                                                           |
+| `noPropertyAccessFromIndexSignature`               | 只有索引签名提供的成员须用 `obj['key']`，显式成员仍可点访问；Nuxt 未默认设置。对动态字典/env/config 访问影响较多，目的是表达意图，不是新增运行时校验。                                                    | [选项](https://www.typescriptlang.org/tsconfig/noPropertyAccessFromIndexSignature.html)                                                                                                                                           |
+| `verbatimModuleSyntax`                             | 明确 type-only imports/exports 的删除，保留其他 imports；Nuxt 已默认 true。与 CJS/ESM 配置不匹配时会报错，不会偷偷把 ESM import 改写成 require。                                                          | [选项](https://www.typescriptlang.org/tsconfig/verbatimModuleSyntax.html)                                                                                                                                                         |
+| `isolatedModules`                                  | 约束源码可被单文件 transpiler 安全处理，涉及只导出类型、ambient const enum、非模块 namespace；Nuxt 已默认 true。                                                                                          | [选项](https://www.typescriptlang.org/tsconfig/isolatedModules.html)                                                                                                                                                              |
+| `noImplicitReturns` / `noFallthroughCasesInSwitch` | 检查部分分支不返回、非空 switch case 意外贯穿；不属于 strict 总开关，是否接受所有相应编码限制需另外决定。                                                                                                 | [returns](https://www.typescriptlang.org/tsconfig/noImplicitReturns.html) · [fallthrough](https://www.typescriptlang.org/tsconfig/noFallthroughCasesInSwitch.html)                                                                |
+| `noUnusedLocals` / `noUnusedParameters`            | 编译期 unused 检查；和 lint 局部变量重复，且 compiler 策略与 ESLint 可配置粒度不同（参数 `_` 有特例）。它们也不替代 Knip 的跨模块 exports/deps 检查。                                                     | [locals](https://www.typescriptlang.org/tsconfig/noUnusedLocals.html) · [parameters](https://www.typescriptlang.org/tsconfig/noUnusedParameters.html) · [TS unused-vars 规则](https://typescript-eslint.io/rules/no-unused-vars/) |
+| `noUncheckedSideEffectImports`                     | TS6 默认 true；解析不到 `import './x.css'` 一类副作用模块时会报错，需正确 ambient declarations。Nuxt 4.6.2 源码在 future compatibility≥5 才显式写 true，并不取消 TS6 自身默认。                           | [选项](https://www.typescriptlang.org/tsconfig/noUncheckedSideEffectImports.html) · [TS6 默认变更](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/)                                                          |
+| `forceConsistentCasingInFileNames`                 | Nuxt 默认 true；Windows 本地到 Linux CI 的路径大小写是实际边界，不应为方便而关闭。                                                                                                                        | [选项](https://www.typescriptlang.org/tsconfig/forceConsistentCasingInFileNames.html) · [Nuxt 生成器](https://github.com/nuxt/nuxt/blob/v4.6.2/packages/kit/src/template.ts)                                                      |
+| `skipLibCheck`                                     | Nuxt 默认 true；false 会扩展到第三方声明文件的一致性检查，时间和第三方冲突暴露都增加。它不是忽略所有库类型，true 时项目对库 API 的实际用法仍被检查；也不会把复制来的 `.vue/.ts` shadcn 源码变成免检声明。 | [选项](https://www.typescriptlang.org/tsconfig/skipLibCheck.html)                                                                                                                                                                 |
 
 ### 7.2 在生成配置中如何开
 
@@ -443,12 +443,12 @@ export default defineNuxtConfig({
 
 以下是供访谈比较的 **4 个可行组合**，不是推荐排序；共同底座为 Nuxt **4.6.2** / TS **6.0.3** / vue-tsc **3.3.13** 的 typecheck、Vue ESLint 接线与 Vitest **5.0.5** 的非 watch 测试。formatter 和 hook 挂载点是独立轴，可在任何一行另选。严格度、速度、配置复杂度与误报风险均为依据前文机制的 **`[INFERENCE]` 定性比较**，没有项目 benchmark；“快”不表示检查范围等价。事实依据见 [typed lint 成本](https://typescript-eslint.io/getting-started/typed-linting/#performance)、[Knip 插件](https://knip.dev/reference/plugins)、[SonarJS 4.2.2](https://registry.npmjs.org/eslint-plugin-sonarjs/4.2.2)、[Oxlint 共存](https://oxc.rs/docs/guide/usage/linter/migrate-from-eslint#running-oxlint-and-eslint-together)。
 
-| 组合 | 严格度/覆盖 | 速度 | 配置复杂度 | 误报/维护风险 |
-|---|---|---|---|---|
-| **A：最小类型规则门禁** — typecheck + Nuxt ESLint + typescript-eslint **8.71.2 strict-type-checked** + test | 类型正确性与 70 项 TS 规则、Vue 专属规则；**不提供依赖图/死文件门禁**，不默认增加 21 项 stylistic。 | typed lint 本身有类型图成本；少一套全项目图工具。 | 低到中：Project Service、四个 context、测试归属与 Vue parser。 | Vue 组件 no-unsafe 与严格表达式限制仍可能需精确例外；strict 预设升级非稳定。 |
-| **B：增加依赖图** — A + Knip **6.42.0** | 新增 unused files/exports/deps/types 与 unresolved/unlisted；和 A 是不同覆盖维度。 | 增加一次模块图/插件配置加载。 | 中：Nuxt prepare、entry/aliases、shadcn unused 政策。 | 动态入口、生成声明缺失会影响图；预留 UI 组件可能是真 unused 而非误报。 |
-| **C：广覆盖规则集** — B + SonarJS **4.2.2 recommended** 或明确选集；stylistic 可另选 | recommended 当前增加 230 个启用项，但与 TS/Vue 的语义有交叉，不是 230 种全新缺陷。 | 更多规则执行，实际增量未测；部分规则复用 TS 类型信息。 | 高：消重、复杂度阈值、第三方风格范围及许可审查。 | 诊断重叠/主观复杂度标准增加；**当前 SSALv1 与 npm LGPL 元数据冲突是独立风险**。 |
-| **D：Oxlint 混合** — typecheck + Oxlint **1.88.0** 非类型规则 + ESLint 保留 Vue/TS typed/未覆盖规则，配 eslint-plugin-oxlint **1.88.0**；Knip 可叠加 | 以实际启用项生成 ESLint 关闭项，可保持所迁移规则覆盖；不把 Oxlint script lint 当模板覆盖。 | 可加速迁走的非类型规则；ESLint 若仍建立类型图，整套耗时收益未核实。 | 高：两份运行路径、启用项同步与文件 scope。 | 错用 flat/all 可能制造空档；若选择当前 Oxlint type-aware，还引入 **TS7 后端与项目 TS6** 的语义差异，不视为透明替换。 |
+| 组合                                                                                                                                                 | 严格度/覆盖                                                                                         | 速度                                                                | 配置复杂度                                                     | 误报/维护风险                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **A：最小类型规则门禁** — typecheck + Nuxt ESLint + typescript-eslint **8.71.2 strict-type-checked** + test                                          | 类型正确性与 70 项 TS 规则、Vue 专属规则；**不提供依赖图/死文件门禁**，不默认增加 21 项 stylistic。 | typed lint 本身有类型图成本；少一套全项目图工具。                   | 低到中：Project Service、四个 context、测试归属与 Vue parser。 | Vue 组件 no-unsafe 与严格表达式限制仍可能需精确例外；strict 预设升级非稳定。                                         |
+| **B：增加依赖图** — A + Knip **6.42.0**                                                                                                              | 新增 unused files/exports/deps/types 与 unresolved/unlisted；和 A 是不同覆盖维度。                  | 增加一次模块图/插件配置加载。                                       | 中：Nuxt prepare、entry/aliases、shadcn unused 政策。          | 动态入口、生成声明缺失会影响图；预留 UI 组件可能是真 unused 而非误报。                                               |
+| **C：广覆盖规则集** — B + SonarJS **4.2.2 recommended** 或明确选集；stylistic 可另选                                                                 | recommended 当前增加 230 个启用项，但与 TS/Vue 的语义有交叉，不是 230 种全新缺陷。                  | 更多规则执行，实际增量未测；部分规则复用 TS 类型信息。              | 高：消重、复杂度阈值、第三方风格范围及许可审查。               | 诊断重叠/主观复杂度标准增加；**当前 SSALv1 与 npm LGPL 元数据冲突是独立风险**。                                      |
+| **D：Oxlint 混合** — typecheck + Oxlint **1.88.0** 非类型规则 + ESLint 保留 Vue/TS typed/未覆盖规则，配 eslint-plugin-oxlint **1.88.0**；Knip 可叠加 | 以实际启用项生成 ESLint 关闭项，可保持所迁移规则覆盖；不把 Oxlint script lint 当模板覆盖。          | 可加速迁走的非类型规则；ESLint 若仍建立类型图，整套耗时收益未核实。 | 高：两份运行路径、启用项同步与文件 scope。                     | 错用 flat/all 可能制造空档；若选择当前 Oxlint type-aware，还引入 **TS7 后端与项目 TS6** 的语义差异，不视为透明替换。 |
 
 Biome **2.5.15** 也可作为选定路径的 formatter/linter 补充，但当前 Vue 仍 experimental、TS6 完整语法承诺未核实，因此本表不把“完整移除 Nuxt/Vue ESLint 与 vue-tsc”描述为已经证实的等价组合。这是证据边界，不是排除用户选择。[Biome 语言支持](https://biomejs.dev/introduction/language-support/)
 

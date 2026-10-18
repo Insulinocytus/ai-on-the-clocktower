@@ -1,0 +1,7 @@
+strictDepBuilds: true
+allowBuilds:
+  esbuild: true
+  # Hooks are installed by our own `prepare` script instead.
+  simple-git-hooks: false
+  # Only a fallback for missing native bindings; the platform optional dependency ships them.
+  unrs-resolver: false

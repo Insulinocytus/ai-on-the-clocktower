@@ -1,0 +1,54 @@
+{
+  "app": { "title": "AI 血染钟楼", "language": "EN" },
+  "nav": { "models": "模型" },
+  "common": {
+    "add": "添加",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "saved": "已保存",
+    "deleted": "已删除",
+    "yes": "是",
+    "no": "否"
+  },
+  "providers": {
+    "title": "LLM 提供商",
+    "add": "添加提供商",
+    "edit": "编辑提供商",
+    "empty": "还没有提供商。",
+    "name": "名称",
+    "baseUrl": "Base URL",
+    "apiKeyEnv": "凭据环境变量名",
+    "keySet": "已设置",
+    "keyUnset": "未设置",
+    "timeoutSec": "单次调用超时（秒）",
+    "maxConcurrency": "最大并发",
+    "confirmDelete": "删除提供商“{name}”及其下全部模型预设？"
+  },
+  "presets": {
+    "title": "模型预设",
+    "add": "添加模型预设",
+    "edit": "编辑模型预设",
+    "empty": "还没有模型预设。",
+    "needProvider": "请先添加提供商。",
+    "name": "名称",
+    "provider": "所属提供商",
+    "model": "模型名",
+    "forceToolChoice": "允许强制 tool_choice",
+    "extraBody": "extra_body（JSON 对象）",
+    "extraBodyInvalid": "必须是合法的 JSON 对象。",
+    "trial": "试调用",
+    "confirmDelete": "删除模型预设“{name}”？"
+  },
+  "trial": {
+    "title": "试调用：{name}",
+    "description": "用整局固定的六个工具和最小提示发一次真实请求，结果不存档。",
+    "running": "正在调用模型…",
+    "valid": "得到合法的 tool call",
+    "invalid": "没有得到合法的 tool call",
+    "toolCall": "Tool call",
+    "raw": "原始响应",
+    "retry": "再试一次"
+  }
+}
