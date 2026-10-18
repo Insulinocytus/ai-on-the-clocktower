@@ -195,20 +195,45 @@ describe('trial call', () => {
     expect(requests[0]?.body).not.toHaveProperty('tool_choice')
   })
 
+  it('does not let extra_body send temperature or force a disallowed tool_choice', async () => {
+    fake.script({ kind: 'toolCall', name: 'speak', arguments: speak })
+    const { result, requests } = await trial({
+      forceToolChoice: false,
+      extraBody: '{"temperature":0.7,"tool_choice":"required","max_tokens":64}',
+    })
+    expect(result.valid).toBe(true)
+    expect(requests[0]?.body).toMatchObject({ max_tokens: 64 })
+    expect(requests[0]?.body).not.toHaveProperty('temperature')
+    expect(requests[0]?.body).not.toHaveProperty('tool_choice')
+  })
+
   it.each([
     ['plain text instead of a tool call', { kind: 'text', content: 'Hello!' }],
     ['an unknown tool', { kind: 'toolCall', name: 'shout', arguments: speak }],
+    [
+      'a different valid game tool than requested',
+      { kind: 'toolCall', name: 'vote', arguments: '{"reasoning":"r","raise_hand":true}' },
+    ],
     ['malformed arguments', { kind: 'toolCall', name: 'speak', arguments: '{"reasoning": ' }],
     [
       'a seat outside 1..N',
-      { kind: 'toolCall', name: 'nominate', arguments: '{"reasoning":"r","nominee":6}' },
+      {
+        kind: 'toolCall',
+        name: 'speak',
+        arguments: '{"reasoning":"r","speech":"hi","slayer_target":6}',
+      },
     ],
     [
       'a memo over 2000 characters',
       {
         kind: 'toolCall',
-        name: 'vote',
-        arguments: JSON.stringify({ reasoning: 'r', raise_hand: true, memo: 'x'.repeat(2001) }),
+        name: 'speak',
+        arguments: JSON.stringify({
+          reasoning: 'r',
+          speech: 'hi',
+          slayer_target: null,
+          memo: 'x'.repeat(2001),
+        }),
       },
     ],
   ] as const)('reports %s as invalid, with the raw response', async (_, step) => {

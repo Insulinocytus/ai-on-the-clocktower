@@ -52,7 +52,7 @@ export default defineEventHandler(async (event): Promise<TrialResult> => {
     if (!(error instanceof LlmCallError)) throw error
     return { valid: false, error: error.message, raw: error.body ?? null }
   }
-  const check = checkToolCall(raw, tools)
+  const check = checkToolCall(raw, tools, 'speak')
   return check.ok
     ? { valid: true, toolCall: { name: check.name, arguments: check.arguments }, raw }
     : { valid: false, error: check.error, raw }

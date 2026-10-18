@@ -22,6 +22,7 @@ const props = withDefaults(
   },
 )
 const emits = defineEmits<DialogContentEmits>()
+const { t } = useI18n()
 
 const delegatedProps = reactiveOmit(props, 'class')
 
@@ -46,7 +47,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       <DialogClose v-if="showCloseButton" data-slot="dialog-close" as-child>
         <Button variant="ghost" class="absolute top-2 right-2" size="icon-sm">
           <XIcon />
-          <span class="sr-only">Close</span>
+          <span class="sr-only">{{ t('common.close') }}</span>
         </Button>
       </DialogClose>
     </DialogContent>

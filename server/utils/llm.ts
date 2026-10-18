@@ -33,8 +33,8 @@ export async function chatCompletion(target: LlmTarget, request: ChatRequest): P
   const apiKey = process.env[target.apiKeyEnv]
   if (!apiKey) throw new LlmCallError(`Environment variable ${target.apiKeyEnv} is not set`)
 
-  // extra_body first so vendor parameters can never clobber the fields the game depends on; no temperature on purpose.
-  const body = {
+  // Core request fields and preset policies take precedence over extra_body.
+  const body: Record<string, unknown> = {
     ...target.extraBody,
     model: target.model,
     messages: request.messages,
@@ -43,6 +43,8 @@ export async function chatCompletion(target: LlmTarget, request: ChatRequest): P
       tool_choice: { type: 'function', function: { name: request.tool } },
     }),
   }
+  delete body.temperature
+  if (!target.forceToolChoice) delete body.tool_choice
   const timeout = AbortSignal.timeout(target.timeoutSec * 1000)
   let status: number
   let retryAfter: string | null

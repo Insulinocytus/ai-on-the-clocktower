@@ -18,29 +18,39 @@ const { t, locale } = useI18n()
 const result = ref<TrialResult>()
 const error = ref<string>()
 const running = ref(false)
+let controller: AbortController | undefined
 
 async function run() {
   if (!props.preset) return
+  controller?.abort()
+  const request = new AbortController()
+  controller = request
   running.value = true
   result.value = undefined
   error.value = undefined
   try {
     // Passing a plain string keeps Nitro's typed-route inference from exhausting the type checker here.
     const url = `/api/presets/${String(props.preset.id)}/trial`
-    result.value = await $fetch<TrialResult>(url, {
+    const response = await $fetch<TrialResult>(url, {
       method: 'POST',
       body: { lang: locale.value },
+      signal: request.signal,
+      retry: 0,
     })
+    if (!request.signal.aborted) result.value = response
   } catch (e) {
-    error.value = apiErrorMessage(e)
+    if (!request.signal.aborted) error.value = apiErrorMessage(e)
   } finally {
-    running.value = false
+    if (!request.signal.aborted) running.value = false
   }
 }
 
 watch(open, (isOpen) => {
   if (isOpen) void run()
+  else controller?.abort()
 })
+
+onBeforeUnmount(() => controller?.abort())
 
 const pretty = (value: unknown) =>
   typeof value === 'string' ? value : JSON.stringify(value, null, 2)

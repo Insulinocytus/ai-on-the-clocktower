@@ -120,8 +120,6 @@ export function contestantTools(lang: Lang, seatCount: number): Tool[] {
   ]
 }
 
-const ajv = new Ajv({ allowUnionTypes: true })
-
 const completionShape = z.object({
   choices: z
     .array(
@@ -139,8 +137,12 @@ const completionShape = z.object({
 export type ToolCallCheck =
   { ok: true; name: string; arguments: unknown } | { ok: false; error: string }
 
-/** Checks that a raw Chat Completions response holds exactly one call to one of `tools`, with schema-valid arguments. */
-export function checkToolCall(response: unknown, tools: Tool[]): ToolCallCheck {
+/** Checks for exactly one call to the requested tool, with schema-valid arguments. */
+export function checkToolCall(
+  response: unknown,
+  tools: Tool[],
+  expectedTool: string,
+): ToolCallCheck {
   const parsed = completionShape.safeParse(response)
   if (!parsed.success) return { ok: false, error: 'Response has no choices[0].message' }
   const calls = parsed.data.choices[0]?.message.tool_calls ?? []
@@ -152,12 +154,17 @@ export function checkToolCall(response: unknown, tools: Tool[]): ToolCallCheck {
   const { name } = call.function
   const tool = tools.find((t) => t.function.name === name)
   if (!tool) return { ok: false, error: `Unknown tool "${name}"` }
+  if (name !== expectedTool) {
+    return { ok: false, error: `Expected tool "${expectedTool}", got "${name}"` }
+  }
   let args: unknown
   try {
     args = JSON.parse(call.function.arguments)
   } catch {
     return { ok: false, error: `Arguments of ${name} are not valid JSON` }
   }
+  // Each call owns its schema cache; freshly generated schemas must not accumulate across requests.
+  const ajv = new Ajv({ allowUnionTypes: true })
   const validate = ajv.compile(tool.function.parameters)
   if (!validate(args)) {
     return {
