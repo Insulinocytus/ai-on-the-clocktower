@@ -3,21 +3,14 @@ import type { Alignment, RoleId, RoleType } from './types'
 export interface RoleMeta {
   id: RoleId
   type: RoleType
-  /** Initial alignment (all Townsfolk/Outsiders good, Minions/Demon evil). */
   alignment: Alignment
-  /** Position in the official first-night order (lower = earlier); null = does not act on the first night. */
   firstNight: number | null
-  /** Position in the official other-nights order; null = does not act on other nights. */
   otherNight: number | null
-  /** Official reminder token names (docs/research/trouble-brewing-rules.md §3.4). */
   reminders: string[]
   name: { zh: string; en: string }
   ability: { zh: string; en: string }
 }
 
-// Night order: docs/research/trouble-brewing-rules.md §4.1 (official digital nightsheet).
-// First night: [minion info, demon info] → poisoner → washerwoman → librarian → investigator → chef → empath → fortuneteller → butler → spy
-// Other nights: poisoner → monk → scarletwoman → imp → ravenkeeper → empath → fortuneteller → undertaker → butler → spy
 export const ROLES: readonly RoleMeta[] = [
   {
     id: 'washerwoman', type: 'townsfolk', alignment: 'good', firstNight: 2, otherNight: null,
@@ -215,7 +208,6 @@ export const ROLES: readonly RoleMeta[] = [
 
 export const ROLE_BY_ID: Readonly<Record<RoleId, RoleMeta>> = Object.fromEntries(ROLES.map((r) => [r.id, r])) as Record<RoleId, RoleMeta>
 
-/** Base setup counts by seat count (§3.1): [townsfolk, outsiders, minions, demons]. Baron: −2 townsfolk, +2 outsiders. */
 export const SETUP_COUNTS: Readonly<Record<number, readonly [number, number, number, number]>> = {
   5: [3, 0, 1, 1], 6: [3, 1, 1, 1], 7: [5, 0, 1, 1], 8: [5, 1, 1, 1], 9: [5, 2, 1, 1],
   10: [7, 0, 2, 1], 11: [7, 1, 2, 1], 12: [7, 2, 2, 1], 13: [9, 0, 3, 1], 14: [9, 1, 3, 1], 15: [9, 2, 3, 1],

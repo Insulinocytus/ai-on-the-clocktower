@@ -6,13 +6,13 @@ const { t, locale, setLocale } = useI18n()
 useHead(() => ({ title: t('app.title'), htmlAttrs: { lang: locale.value === 'zh' ? 'zh-CN' : 'en', dir: 'ltr' } }))
 onMounted(async () => {
   let remembered: string | null = null
-  try { remembered = localStorage.getItem('clocktower.locale') } catch { /* Browser storage can be disabled. */ }
+  try { remembered = localStorage.getItem('clocktower.locale') } catch {}
   await setLocale(remembered === 'zh' || remembered === 'en' ? remembered : navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en')
 })
 async function switchLanguage() {
   const next = locale.value === 'zh' ? 'en' : 'zh'
   await setLocale(next)
-  try { localStorage.setItem('clocktower.locale', next) } catch { /* Switching still works without persistence. */ }
+  try { localStorage.setItem('clocktower.locale', next) } catch {}
 }
 </script>
 

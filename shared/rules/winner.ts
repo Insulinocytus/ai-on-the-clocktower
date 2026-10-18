@@ -1,7 +1,6 @@
 import { isFunctioning } from './register'
 import type { Alignment, EndReason, Grimoire, Seat } from './types'
 
-/** `executed` is supplied immediately after an execution that killed a living seat; ordinary deaths omit it. */
 export function winner(g: Grimoire, opts: { dayEndedWithoutExecution?: boolean; executed?: Seat } = {}): { winner: Alignment; reason: EndReason } | null {
   if (g.seats.length === 0) return null
   const alive = g.seats.filter(s => s.alive)

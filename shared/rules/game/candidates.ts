@@ -23,7 +23,6 @@ export function firstInfo(g: Grimoire, self: Seat, as: RoleId, registered: boole
   if (as !== 'washerwoman' && (fake ? as === 'librarian' : !others.some(seat => ROLE_BY_ID[roleAt(seat.seat)].type === type))) {
     values.push({ seats: [], roles: [] })
   }
-  // A sole Washerwoman must see herself: excluding her would make truthful information impossible.
   if (!fake && as === 'washerwoman' && values.length === 0) {
     for (const other of others) values.push({ seats: [self, other.seat].sort((a, b) => a - b), roles: ['washerwoman'] })
   }

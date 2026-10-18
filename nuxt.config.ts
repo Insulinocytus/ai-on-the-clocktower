@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
-  // SPA: the server is an API + SSE backend; avoids hydration issues with Reka/shadcn components.
   ssr: false,
   devtools: { enabled: false },
   modules: ['shadcn-nuxt', '@nuxtjs/i18n'],

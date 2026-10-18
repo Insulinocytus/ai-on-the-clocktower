@@ -46,7 +46,7 @@ describe('night abilities and death path', () => {
       const target = poison === 1 ? 1 : 3
       const game = attack(base, target, { poison, protect: target })
       const g = await game.run()
-      if (poison === 1) expect(g.seats[0]!.alive).toBe(true) // Monk still protects this Soldier.
+      if (poison === 1) expect(g.seats[0]!.alive).toBe(true)
       else expect(g.seats[2]!.alive).toBe(false)
       expect(game.events.some(e => e.type === 'night.choice' && e.as === 'monk')).toBe(true)
     }

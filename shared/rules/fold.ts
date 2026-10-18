@@ -14,7 +14,6 @@ export function applyGrimoire(g: Grimoire, e: GameEvent | EventBody): Grimoire {
     case 'phase.started': return { ...g, day: e.day, phase: e.phase }
     case 'grimoire.set': {
       const { type: _type, seats, ...patch } = e
-      // GameEvent's seq is metadata, not part of the grimoire patch.
       const next: Grimoire = {
         ...g,
         ...('drunkBelieves' in patch ? { drunkBelieves: patch.drunkBelieves } : {}),
@@ -99,7 +98,6 @@ export function applyPublic(p: PublicState, e: GameEvent | EventBody): PublicSta
   }
 }
 
-/** Whole-log convenience; projections without game.created must reduce from initialPublic(config.seatCount). */
 export function foldPublic(events: readonly GameEvent[], uptoSeq = Infinity): PublicState {
   const created = events.find(e => e.seq <= uptoSeq && e.type === 'game.created')
   let p = initialPublic(created?.type === 'game.created' ? created.config.seatCount : 0)

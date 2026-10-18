@@ -5,7 +5,6 @@ import { winner } from '../winner'
 import type { AbilityInfo, ContestantAnswer, ContestantAsk, DeathCause, DiscretionContext, DiscretionId, DiscretionValue, EventBody, GameConfig, Ports, RoleId, Seat, SpeakContext, ToolName, ToolArgsByName } from '../types'
 import { fakeInfo, firstInfo, roleIds, rolesOfType, sameInfo, triples } from './candidates'
 
-/** The runtime owns persistence and model calls; all game effects pass through commit. */
 export async function runGame(config: GameConfig, ports: Ports): Promise<void> {
   let g = initialGrimoire(config.seatCount)
   let p = initialPublic(config.seatCount)
@@ -244,7 +243,6 @@ export async function runGame(config: GameConfig, ports: Ports): Promise<void> {
         continue
       }
       if (role.id === 'ravenkeeper') continue
-      // Snapshot this step: a starpass successor must not attack in the same night.
       const actors = g.seats.filter(player => player.alive && (player.role === role.id || player.role === 'drunk' && g.drunkBelieves === role.id)).map(player => player.seat)
       for (const seat of actors) {
         if (g.seats[seat - 1]!.alive) await act(seat, role.id)

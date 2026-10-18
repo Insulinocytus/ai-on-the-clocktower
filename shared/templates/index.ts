@@ -50,7 +50,6 @@ function formatValue(value: DiscretionValue, lang: Lang, self?: Seat): string {
   return parts.join(zh ? '；' : '; ') || (zh ? '无' : 'none')
 }
 
-/** Formats the documented AbilityInfo shapes, without adding truth or reliability claims. */
 export function formatAbilityInfo(ability: RoleId, info: AbilityInfo, lang: Lang): string {
   return abilityInfo(ability, info, lang)
 }
@@ -120,10 +119,6 @@ function toldText(e: EventOf<'told'>, lang: Lang, self?: Seat): string {
   }
 }
 
-/** Render an already-projected event. Audience checks belong to rules.project, not to templates.
- * Seat text depends only on the event, language and self; seq and current state never affect it.
- * Decisions and game creation are structural UI records and deliberately have no text template.
- */
 export function renderEvent(e: GameEvent, { lang, person, self }: RenderOptions): string | null {
   const zh = lang === 'zh'
   const perspective = person === 'seat' ? self : undefined

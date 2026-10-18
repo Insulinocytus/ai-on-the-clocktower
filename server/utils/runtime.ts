@@ -109,7 +109,6 @@ class Runner {
     const snapshot = this.log.slice()
     const truth = foldGrimoire(snapshot)
     const tools = contestantTools(this.config.seatCount, this.config.language)
-    // Build every initial request before the first acquire/fetch can run.
     const prepared = asks.map(ask => {
       const projection = project(snapshot, { kind: 'seat', seat: ask.seat })
       const build = (retry?: RetryNote) => buildContestantMessages({ config: this.config, seat: ask.seat, events: projection, request: ask.request, ...(retry ? { retry } : {}) })
@@ -146,7 +145,6 @@ class Runner {
       else if (ask.candidates.kind === 'seating') value = { roles: this.rng.shuffle(ask.candidates.roles) }
       else {
         const candidates = ask.candidates.values
-        // D12/D13 keep "do not redirect" equiprobable with all redirects together.
         const no = candidates.filter(c => c.answer === false || c.seats?.length === 0)
         const yes = candidates.filter(c => !no.includes(c))
         value = (ask.discretion === 'D12' || ask.discretion === 'D13') && no.length && yes.length

@@ -69,7 +69,7 @@ export function parseTool(raw: unknown): RawCall | null {
   if (!fn || typeof fn !== 'object' || !('name' in fn) || typeof fn.name !== 'string' || !('arguments' in fn)) return null
   const rawArgs = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments)
   let args: unknown = rawArgs
-  try { args = JSON.parse(rawArgs) } catch { /* Validator reports malformed arguments. */ }
+  try { args = JSON.parse(rawArgs) } catch {}
   return { tool: fn.name, rawArgs, args }
 }
 export async function callModel(preset: PresetSnapshot, body: Record<string, unknown>, signal: AbortSignal): Promise<{ raw: unknown; durationMs: number }> {
@@ -88,7 +88,7 @@ export async function callModel(preset: PresetSnapshot, body: Record<string, unk
     })
     const text = await response.text()
     let raw: unknown = text
-    try { raw = JSON.parse(text) } catch { /* Keep the complete body even for malformed responses. */ }
+    try { raw = JSON.parse(text) } catch {}
     if (!response.ok) {
       const header = response.headers.get('retry-after')
       let retryAfterMs: number | undefined

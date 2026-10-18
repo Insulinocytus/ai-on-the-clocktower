@@ -30,7 +30,6 @@ const decision = {
 const truth: AbilityInfo = { seats: [2, 3], roles: ['poisoner'] }
 const misinformation: AbilityInfo = { seats: [2, 3], roles: ['baron'] }
 
-// Record makes a newly added event type require an audience/rendering fixture.
 const examples = {
   'game.created': { type: 'game.created', config },
   'phase.started': { type: 'phase.started', phase: 'dawn', day: 2 },

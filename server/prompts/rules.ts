@@ -166,7 +166,6 @@ Dead players lose their ability at once, are not woken at night (except by the R
 - The Empath only counts the nearest alive player on each side; the Chef's neighbours include dead players.`;
   }
 
-  // ---------- 选手 system ----------
   export function contestantSystem(lang: Lang, g: GameConfig): string {
     if (lang === 'zh') return `你是一局《血染钟楼》（Blood on the Clocktower）的玩家，剧本为“暗流涌动”（Trouble Brewing）。下面是完整规则。你没有向说书人提问的渠道，规则以此为准。说书人掌握全部真相，但不在场上发言。
 
@@ -216,7 +215,6 @@ In order: your identity → your timeline (every event you know about, in order)
 Call exactly one tool each time: the one this request asks for.`;
   }
 
-  // ---------- 说书人 system ----------
   export function storytellerSystem(lang: Lang, g: GameConfig): string {
     if (lang === 'zh') return `你是一局《血染钟楼》（Blood on the Clocktower）暗流涌动（Trouble Brewing）的说书人，掌握魔典，也就是这局的全部真相。
 所有座位上都是 AI 玩家。流程推进、计票、能力的真实结果都由程序按规则计算；你不在场上发言，玩家也无法向你提问。你只负责“说书人裁量”：规则允许说书人自由选择的决定。每次请求只问一项裁量。

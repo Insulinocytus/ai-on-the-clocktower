@@ -117,7 +117,6 @@ export class Harness {
   }
 }
 
-// `npx vitest run test/app` builds exactly once before exercising the real production HTTP server.
 export async function buildApp(): Promise<void> {
   const complete = Promise.withResolvers<void>()
   const child = spawn(process.execPath, ['node_modules/nuxt/bin/nuxt.mjs', 'build'], { stdio: ['ignore', 'pipe', 'pipe'] })

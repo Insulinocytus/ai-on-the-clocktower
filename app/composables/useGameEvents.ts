@@ -25,7 +25,6 @@ export function useGameEvents(id: string) {
   }
   const start = async (live: boolean) => {
     if (!live) { await backfill(); return }
-    // EventSource sends Accept: text/event-stream and resumes with Last-Event-ID on reconnect.
     source = new EventSource(`/api/games/${encodeURIComponent(id)}/events?observer=spectator&after=0`)
     source.onopen = () => { disconnected.value = false; void backfill() }
     source.onmessage = message => {

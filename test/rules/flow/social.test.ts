@@ -100,7 +100,7 @@ describe('conversations, whispers, nominations and voting', () => {
     expect(deadVotes).toEqual([expect.objectContaining({ raised: true, tokenUsed: true }), expect.objectContaining({ raised: false, tokenUsed: false, decisionSeq: null })])
     const requests = game.asks.filter(a => a.seat === 2 && a.request.kind === 'vote')
     expect(requests).toHaveLength(1)
-    expect(game.asks.filter(a => a.seat === 2 && a.request.kind === 'nominate')).toHaveLength(1) // Day one only.
+    expect(game.asks.filter(a => a.seat === 2 && a.request.kind === 'nominate')).toHaveLength(1)
   })
 
   it('counts Butler votes regardless of master vote', async () => {

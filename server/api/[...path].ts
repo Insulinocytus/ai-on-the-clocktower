@@ -155,7 +155,6 @@ async function route(event: H3Event): Promise<unknown> {
         cursor = item.seq
         if (canSee(item, observer)) void stream.push({ id: String(item.seq), data: JSON.stringify(item) }).catch(() => { unsubscribe() })
       }
-      // Subscribe before taking the backlog; both paths share a monotonically advancing cursor.
       const unsubscribe = store.subscribe(id, push)
       stream.onClosed(unsubscribe)
       for (const item of store.events(id, after)) push(item)

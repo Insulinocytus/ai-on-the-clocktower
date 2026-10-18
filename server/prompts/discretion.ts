@@ -20,7 +20,6 @@ function describeDomain(values: unknown[]): unknown {
   return { oneOf: values }
 }
 
-// Factor equal suffixes so hundreds of seat-pair × role candidates remain an exact, small relation.
 function describeRelation(values: DiscretionValue[], fields: Field[]): unknown {
   const [field, ...rest] = fields
   if (!field) return {}

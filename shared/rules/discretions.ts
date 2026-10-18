@@ -1,6 +1,5 @@
 import type { DiscretionId } from './types'
 
-/** Per discretion and language: [name, what to decide, official soft advice] (rules doc §8). Shared by the storyteller prompt and the manual dialog. */
 export const DISCRETION_TEXT: Readonly<Record<DiscretionId, { zh: [string, string, string]; en: [string, string, string] }>> = {
   D1: { zh: ['选角与分座', '为每个座位分配一个角色。roles 按座位顺序填写，第一个为 1 号。', '选有趣、能互动的角色；避免 5 人局同时带男爵和洗衣妇；避免某类信息强到没有悬念。'], en: ['Characters and seating', 'Assign one character per seat. Put roles in seat order, starting with Seat 1.', 'Choose interesting interacting characters; avoid Baron plus Washerwoman in a 5-player game; avoid making one information type overwhelmingly strong.'] },
   seating: { zh: ['分座', '将已选角色重新分配到座位。roles 按座位顺序填写，第一个为 1 号。', '本项没有额外官方软建议。'], en: ['Seating', 'Assign the selected characters to seats. Put roles in seat order, starting with Seat 1.', 'There is no additional official soft advice for seating.'] },

@@ -1,6 +1,5 @@
 import type { Rng } from './types'
 
-/** Deterministic PRNG (cyrb128 seed hash → sfc32). Same seed ⇒ same sequence on server and browser. */
 export function createRng(seed: string): Rng {
   let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762
   for (let i = 0; i < seed.length; i++) {
