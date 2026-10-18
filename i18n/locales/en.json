@@ -1,0 +1,55 @@
+{
+  "app": { "title": "AI on the Clocktower", "language": "中文" },
+  "nav": { "models": "Models" },
+  "common": {
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "providers": {
+    "title": "LLM providers",
+    "add": "Add provider",
+    "edit": "Edit provider",
+    "empty": "No providers yet.",
+    "name": "Name",
+    "baseUrl": "Base URL",
+    "apiKeyEnv": "API key environment variable",
+    "keySet": "set",
+    "keyUnset": "not set",
+    "timeoutSec": "Timeout per call (s)",
+    "maxConcurrency": "Max concurrency",
+    "confirmDelete": "Delete provider “{name}” and all of its model presets?"
+  },
+  "presets": {
+    "title": "Model presets",
+    "add": "Add preset",
+    "edit": "Edit preset",
+    "empty": "No model presets yet.",
+    "needProvider": "Add a provider first.",
+    "name": "Name",
+    "provider": "Provider",
+    "model": "Model",
+    "forceToolChoice": "Allow forcing tool_choice",
+    "extraBody": "extra_body (JSON object)",
+    "extraBodyInvalid": "Must be a valid JSON object.",
+    "trial": "Trial call",
+    "confirmDelete": "Delete preset “{name}”?"
+  },
+  "trial": {
+    "title": "Trial call: {name}",
+    "description": "One real request with the six game tools and a minimal prompt. Nothing is saved.",
+    "running": "Calling the model…",
+    "valid": "Valid tool call",
+    "invalid": "No valid tool call",
+    "toolCall": "Tool call",
+    "raw": "Raw response",
+    "retry": "Call again"
+  }
+}
