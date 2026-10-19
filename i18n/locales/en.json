@@ -55,6 +55,10 @@
   "games": {
     "title": "Games",
     "new": "New game",
+    "template": "New game from this template",
+    "templateFrom": "Using game {id} as a template. A new seed will be generated.",
+    "deletedPreset": "Preset “{name}” was deleted. Select another preset before starting.",
+    "storyteller": "Storyteller model",
     "game": "Game",
     "models": "Model presets",
     "status": "Status",
