@@ -22,6 +22,7 @@ export const gameInput = z.object({
   presets: z.array(z.int()).length(5),
   language: z.enum(['zh', 'en']),
   speechLimit: z.int().min(1).default(10),
+  whisperLimit: z.int().min(0).default(3),
 })
 
 interface Runner {
@@ -94,7 +95,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       D14: 'random',
     },
     speechLimit: input.speechLimit,
-    whisperLimit: 3,
+    whisperLimit: input.whisperLimit,
     language: input.language,
     seed: randomBytes(4).readUInt32LE(),
     logVersion: LOG_VERSION,

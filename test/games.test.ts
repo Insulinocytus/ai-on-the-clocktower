@@ -77,7 +77,11 @@ describe('games HTTP seam', () => {
     const response = await fetch('/api/games', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ presets: [a.id, b.id, a.id, b.id, a.id], language: 'en' }),
+      body: JSON.stringify({
+        presets: [a.id, b.id, a.id, b.id, a.id],
+        language: 'en',
+        whisperLimit: 0,
+      }),
     })
     expect(response.status).toBe(400)
     expect(await response.json()).toMatchObject({
@@ -123,7 +127,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+        },
       })
       const summary = () => $fetch<GameSummary>(`/api/games/${opened.id}`)
       await expect
@@ -246,7 +254,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'zh' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'zh',
+          whisperLimit: 0,
+        },
       })
       await expect
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
@@ -339,7 +351,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+        },
       })
       await expect
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
@@ -393,7 +409,11 @@ describe('games HTTP seam', () => {
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 1)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
-          body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          body: {
+            presets: Array.from({ length: 5 }, () => model.id),
+            language: 'en',
+            whisperLimit: 0,
+          },
         })
         await expect
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
@@ -447,7 +467,7 @@ describe('games HTTP seam', () => {
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
-          body: { presets: Array.from({ length: 5 }, () => model.id), language },
+          body: { presets: Array.from({ length: 5 }, () => model.id), language, whisperLimit: 0 },
         })
         await expect
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
@@ -507,7 +527,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+        },
       })
       await expect
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
@@ -551,7 +575,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+        },
       })
       await expect
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
@@ -581,7 +609,11 @@ describe('games HTTP seam', () => {
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
-          body: { presets: Array.from({ length: 5 }, () => model.id), language: 'zh' },
+          body: {
+            presets: Array.from({ length: 5 }, () => model.id),
+            language: 'zh',
+            whisperLimit: 0,
+          },
         })
         await expect
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
@@ -650,7 +682,12 @@ it.each([0, -1, 1.5, '2', null])(
     const response = await fetch('/api/games', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ presets: [1, 1, 1, 1, 1], language: 'en', speechLimit }),
+      body: JSON.stringify({
+        presets: [1, 1, 1, 1, 1],
+        language: 'en',
+        whisperLimit: 0,
+        speechLimit,
+      }),
     })
     expect(response.status).toBe(400)
     expect(await response.text()).toContain('speechLimit')
@@ -703,7 +740,12 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
-      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+      body: {
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        whisperLimit: 0,
+        speechLimit: 1,
+      },
     })
     const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
     await expect.poll(() => fake.requests.length).toBe(5)
@@ -810,7 +852,12 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
     const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
-      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+      body: {
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        whisperLimit: 0,
+        speechLimit: 1,
+      },
     })
     await expect
       .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
@@ -905,7 +952,12 @@ it('retries only the failing public seat and commits speech and memos after the 
     const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
-      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+      body: {
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        whisperLimit: 0,
+        speechLimit: 1,
+      },
     })
     const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
     await expect.poll(() => attempts.get(5)).toBe(2)
@@ -973,6 +1025,180 @@ it('retries only the failing public seat and commits speech and memos after the 
     ).toBe(true)
   } finally {
     release?.()
+    await fake.close()
+  }
+})
+
+it.each([-1, 0.5, '3', null])('rejects invalid whisper room limit %s', async (whisperLimit) => {
+  const response = await fetch('/api/games', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ presets: [1, 1, 1, 1, 1], language: 'en', whisperLimit }),
+  })
+  expect(response.status).toBe(400)
+  expect(await response.text()).toContain('whisperLimit')
+})
+
+it.each(['en', 'zh'] as const)(
+  'runs private rooms with localized %s requests, semantic retries and isolated projections',
+  async (language) => {
+    const invalid = new Set<string>()
+    const fake = await startFakeProvider((request) => {
+      const input = gameRequest.parse(request.body)
+      const name = input.tool_choice.function.name
+      const user = input.messages[1].content
+      const seat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
+      let args: Record<string, unknown>
+      if (name === 'propose_whisper') {
+        const fail = seat === 1 && !invalid.has('members')
+        if (fail) invalid.add('members')
+        args = { members: fail ? [1] : seat <= 4 ? [seat % 2 ? seat + 1 : seat - 1] : null }
+      } else if (name === 'rank_whispers') {
+        const fail = seat === 3 && !invalid.has('ranking')
+        if (fail) invalid.add('ranking')
+        args = { ranking: [fail ? 999 : seat <= 2 ? 1 : 2] }
+      } else if (name === 'speak') {
+        const whisper = user.includes(
+          language === 'en' ? 'Only room members see the conversation.' : '内容仅房间成员可见。',
+        )
+        const fail = whisper && seat === 1 && !invalid.has('shot')
+        if (fail) invalid.add('shot')
+        args = {
+          speech: whisper ? `Room secret ${seat <= 2 ? 'A' : 'B'} seat ${String(seat)}` : null,
+          slayer_target: fail ? 2 : null,
+        }
+      } else if (name === 'nominate') args = { nominee: null }
+      else args = { targets: [seat] }
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning: 'Private reasoning', ...args }),
+      }
+    })
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+      const opened = await $fetch<GameSummary>('/api/games', {
+        method: 'POST',
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language,
+          whisperLimit: 1,
+          speechLimit: 1,
+        },
+      })
+      await expect
+        .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+          timeout: 15000,
+        })
+        .toBe('ended')
+      const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+      expect(events[0]).toMatchObject({ type: 'game.created', whisperLimit: 1 })
+      expect(
+        events
+          .filter((event) => event.type === 'whisper.room.opened')
+          .slice(0, 2)
+          .map((event) => event.members)
+          .sort(),
+      ).toEqual([
+        [1, 2],
+        [3, 4],
+      ])
+      const errors = events.flatMap((event) =>
+        event.type === 'contestant.decision' && event.attempt === 1
+          ? [JSON.stringify(event.validation)]
+          : [],
+      )
+      expect(errors).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('invalid_whisper_members'),
+          expect.stringContaining('invalid_whisper_ranking'),
+          expect.stringContaining('invalid_slayer_target'),
+        ]),
+      )
+      for (const observer of ['seat:1', 'seat:3', 'public', 'storyteller']) {
+        const projection = await $fetch<GameEvent[]>(
+          `/api/games/${opened.id}/events?observer=${observer}`,
+        )
+        const speech = projection.filter((event) => event.type === 'whisper.speech')
+        if (observer === 'public') expect(speech).toEqual([])
+        else if (observer === 'seat:1')
+          expect(
+            speech.every(
+              (event) => event.members.includes(1) && !event.speech.includes('Room secret B'),
+            ),
+          ).toBe(true)
+        else if (observer === 'seat:3')
+          expect(
+            speech.every(
+              (event) => event.members.includes(3) && !event.speech.includes('Room secret A'),
+            ),
+          ).toBe(true)
+        else expect(speech.length).toBeGreaterThan(0)
+        expect(
+          projection.some(
+            (event) => event.type === 'whisper.proposed' || event.type === 'whisper.ranked',
+          ),
+        ).toBe(false)
+      }
+      const requests = fake.requests.map((request) => gameRequest.parse(request.body))
+      for (const request of requests) {
+        const user = request.messages[1].content
+        const seat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
+        expect(user).not.toContain(seat <= 2 ? 'Room secret B' : 'Room secret A')
+        if (request.tool_choice.function.name === 'propose_whisper')
+          expect(user).toContain(language === 'en' ? 'room entries remaining' : '本阶段还可进入')
+        if (request.tool_choice.function.name === 'rank_whispers')
+          expect(user).toContain(
+            language === 'en'
+              ? 'Candidate rooms (number: member seats)'
+              : '候选房间（编号：成员座位）',
+          )
+      }
+    } finally {
+      await fake.close()
+    }
+  },
+)
+
+it('defaults to three private room entries and leaves a no-room round for public discussion', async () => {
+  const fake = await startFakeProvider((request) => {
+    const input = gameRequest.parse(request.body)
+    const name = input.tool_choice.function.name
+    const user = input.messages[1].content
+    const seat = Number(/You are Seat (\d+)/.exec(user)?.[1])
+    const args =
+      name === 'propose_whisper'
+        ? { members: null }
+        : name === 'nominate'
+          ? { nominee: null }
+          : name === 'speak'
+            ? { speech: null, slayer_target: null }
+            : { targets: [seat] }
+    return { kind: 'toolCall', name, arguments: JSON.stringify({ reasoning: '', ...args }) }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+    })
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 15000,
+      })
+      .toBe('ended')
+    const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    expect(events[0]).toMatchObject({ type: 'game.created', whisperLimit: 3 })
+    expect(events.filter((event) => event.type === 'whisper.room.opened')).toEqual([])
+    expect(events.some((event) => event.type === 'phase.started' && event.phase === 'public')).toBe(
+      true,
+    )
+    expect(
+      events.filter(
+        (event) => event.type === 'contestant.decision' && event.request.tool === 'rank_whispers',
+      ),
+    ).toEqual([])
+  } finally {
     await fake.close()
   }
 })

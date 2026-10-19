@@ -75,10 +75,11 @@ export interface SpeechRequest {
   tool: 'speak'
   seat: number
   day: number
-  kind: 'free' | 'nomination' | 'defense'
+  kind: 'free' | 'whisper' | 'nomination' | 'defense'
   remaining?: number
   nominator?: number
   nominee?: number
+  room?: { round: number; id: string; members: number[] }
 }
 export interface SpeechChoice {
   reasoning: string
@@ -114,8 +115,49 @@ interface VoteChoice {
   raise_hand: boolean
   memo?: string
 }
-export type ContestantRequest = NightRequest | SpeechRequest | NominationRequest | VoteRequest
-export type ContestantChoice = NightChoice | SpeechChoice | NominationChoice | VoteChoice
+interface WhisperRoom {
+  id: number
+  members: number[]
+}
+interface WhisperProposalRequest {
+  tool: 'propose_whisper'
+  seat: number
+  day: number
+  round: number
+  remaining: number
+  eligible: number[]
+}
+interface WhisperProposalChoice {
+  reasoning: string
+  members: number[] | null
+  memo?: string
+}
+interface WhisperRankingRequest {
+  tool: 'rank_whispers'
+  seat: number
+  day: number
+  round: number
+  rooms: WhisperRoom[]
+}
+interface WhisperRankingChoice {
+  reasoning: string
+  ranking: number[]
+  memo?: string
+}
+export type ContestantRequest =
+  | NightRequest
+  | SpeechRequest
+  | NominationRequest
+  | VoteRequest
+  | WhisperProposalRequest
+  | WhisperRankingRequest
+export type ContestantChoice =
+  | NightChoice
+  | SpeechChoice
+  | NominationChoice
+  | VoteChoice
+  | WhisperProposalChoice
+  | WhisperRankingChoice
 type ValidationCode =
   | 'invalid_seat_count'
   | 'duplicate_role'
@@ -129,6 +171,8 @@ type ValidationCode =
   | 'invalid_vote'
   | 'invalid_speech'
   | 'invalid_slayer_target'
+  | 'invalid_whisper_members'
+  | 'invalid_whisper_ranking'
   | 'invalid_response'
   | 'no_tool_call'
   | 'multiple_tool_calls'
