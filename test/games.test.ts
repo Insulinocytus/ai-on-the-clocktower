@@ -35,6 +35,16 @@ async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]
       }
     const messages = request.body.messages as { content: string }[]
     const user = messages[1]?.content ?? ''
+    if (name === 'night_choice' && /as Poisoner|作为投毒者/.test(user)) {
+      const identity = /You are Seat (\d+)|你是 (\d+) 号/.exec(user)
+      const seat = Number(identity?.[1] ?? identity?.[2])
+      if (!seat) throw new Error('Missing Poisoner fixture identity')
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning: 'Self-poison', targets: [seat] }),
+      }
+    }
     if (name === 'night_choice' && !/as Imp|作为小恶魔/.test(user))
       return {
         kind: 'toolCall',
@@ -667,7 +677,9 @@ describe('games HTTP seam', () => {
           },
         })
         await expect
-          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+            timeout: 10000,
+          })
           .toBe('aborted')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(

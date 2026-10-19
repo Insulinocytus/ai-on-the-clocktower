@@ -372,9 +372,9 @@ export interface Ports {
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id: 'D1' | 'D3' | 'D4' | 'D5' | 'D6' | 'D12' | 'D13' | 'D14',
-    candidates: { type: 'setup'; sample: RoleId[] } | (number | PairInformation | boolean)[],
+    id: 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D8' | 'D12' | 'D13' | 'D14',
+    candidates: { type: 'setup'; sample: RoleId[] } | (InformationResult | RoleId)[],
     context: Grimoire,
-  ): Promise<RoleId[] | number | PairInformation | boolean>
+  ): Promise<RoleId[] | RoleId | InformationResult>
   rng(): number
 }
