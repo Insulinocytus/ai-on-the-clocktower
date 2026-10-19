@@ -8,15 +8,19 @@ type FakeStep =
   | { kind: 'toolCall'; name: string; arguments: string }
   /** Plain assistant text and no tool call. */
   | { kind: 'text'; content: string }
-  | { kind: 'rateLimit'; retryAfterSec: number }
+  | { kind: 'rateLimit'; retryAfterSec: number; retryAfter?: string }
   | { kind: 'serverError'; status: number }
   /** Never answers; the connection stays open until the caller gives up or the provider closes. */
   | { kind: 'hang' }
+  | { kind: 'raw'; body: unknown }
+  | { kind: 'disconnect' }
+  | { kind: 'truncated' }
 
 interface RecordedRequest {
   path: string
   headers: IncomingHttpHeaders
   body: Record<string, unknown>
+  receivedAt: number
 }
 
 export interface FakeProvider {
@@ -49,6 +53,7 @@ export async function startFakeProvider(): Promise<FakeProvider> {
         path: req.url ?? '',
         headers: req.headers,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
+        receivedAt: Date.now(),
       })
       const step = steps.shift()
       const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
@@ -86,13 +91,24 @@ export async function startFakeProvider(): Promise<FakeProvider> {
           json(
             429,
             { error: { message: 'rate limited' } },
-            { 'retry-after': String(step.retryAfterSec) },
+            { 'retry-after': step.retryAfter ?? String(step.retryAfterSec) },
           )
           return
         case 'serverError':
           json(step.status, { error: { message: 'upstream error' } })
           return
         case 'hang':
+          return
+        case 'raw':
+          json(200, step.body)
+          return
+        case 'disconnect':
+          req.socket.destroy()
+          return
+        case 'truncated':
+          res.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' })
+          res.write('{"choices":[')
+          res.destroy()
           return
       }
     })

@@ -79,6 +79,13 @@ type ValidationCode =
   | 'invalid_targets'
   | 'invalid_reasoning'
   | 'invalid_memo'
+  | 'invalid_response'
+  | 'no_tool_call'
+  | 'multiple_tool_calls'
+  | 'unknown_tool'
+  | 'wrong_tool'
+  | 'invalid_arguments_json'
+  | 'invalid_arguments'
 export interface ValidationError {
   code: ValidationCode
 }

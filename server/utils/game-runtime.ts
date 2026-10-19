@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
 import type {
   GameConfig,
@@ -10,6 +11,7 @@ import type {
 } from '#shared/types/game'
 import { createRng, runGame, validateNightChoice } from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
+import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { getPreset, getProvider } from './models'
 import { chatCompletion, LlmCallError } from './llm'
 import { checkToolCall, contestantTools } from './tools'
@@ -27,6 +29,18 @@ interface Runner {
 }
 const runners = new Map<string, Runner>()
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
+const MAX_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = 250
+
+function retryDelay(error: unknown, attempt: number): number {
+  if (error instanceof LlmCallError && error.retryAfter?.trim()) {
+    const seconds = Number(error.retryAfter)
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+    const date = Date.parse(error.retryAfter)
+    if (Number.isFinite(date)) return Math.max(0, date - Date.now())
+  }
+  return RETRY_BACKOFF_MS * 2 ** (attempt - 1)
+}
 
 class ContestantFailure extends Error {
   constructor(
@@ -110,49 +124,67 @@ export function createGame(input: z.infer<typeof gameInput>) {
       language: config.language,
       request,
     })
-    const start = performance.now()
-    let raw: unknown
-    try {
-      raw = await chatCompletion(
-        { ...provider, ...seat, extraBody: JSON.parse(seat.extraBody) as Record<string, unknown> },
-        { ...prompt, tools, tool: 'night_choice' },
-        runner.controller.signal,
-      )
-    } catch (error) {
-      runner.controller.signal.throwIfAborted()
-      const message = error instanceof Error ? error.message : String(error)
+    for (let attempt = 1; ; attempt++) {
+      const start = performance.now()
+      let raw: unknown
+      try {
+        raw = await chatCompletion(
+          {
+            ...provider,
+            ...seat,
+            extraBody: JSON.parse(seat.extraBody) as Record<string, unknown>,
+          },
+          { ...prompt, tools, tool: 'night_choice' },
+          runner.controller.signal,
+        )
+      } catch (error) {
+        runner.controller.signal.throwIfAborted()
+        const message = error instanceof Error ? error.message : String(error)
+        commit({
+          type: 'contestant.decision',
+          seat: request.seat,
+          request,
+          raw: error instanceof LlmCallError ? (error.body ?? null) : null,
+          model: seat.model,
+          usage: null,
+          durationMs: performance.now() - start,
+          attempt,
+          validation: {
+            ok: false,
+            code: 'call_failed',
+            errorType: error instanceof LlmCallError ? error.kind : 'unknown',
+            error: message,
+          },
+        })
+        if (attempt === MAX_ATTEMPTS) throw new ContestantFailure(request.seat, message)
+        await delay(retryDelay(error, attempt), undefined, { signal: runner.controller.signal })
+        continue
+      }
+      const toolCheck = checkToolCall(raw, tools, 'night_choice')
+      const errors = toolCheck.ok
+        ? validateNightChoice(toolCheck.arguments, request)
+        : [{ code: toolCheck.code }]
+      const valid = errors.length === 0
+      const usage = usageShape.safeParse(raw)
       commit({
         type: 'contestant.decision',
         seat: request.seat,
         request,
-        raw: error instanceof LlmCallError ? (error.body ?? null) : null,
+        raw,
         model: seat.model,
-        usage: null,
+        usage: usage.success ? (usage.data.usage ?? null) : null,
         durationMs: performance.now() - start,
-        attempt: 1,
-        validation: { ok: false, code: 'call_failed', error: message },
+        attempt,
+        validation: { ok: valid, errors },
       })
-      throw new ContestantFailure(request.seat, message)
+      if (valid && toolCheck.ok) return toolCheck.arguments as NightChoice
+      if (attempt === MAX_ATTEMPTS)
+        throw new ContestantFailure(request.seat, JSON.stringify(errors))
+      const calls = toolCheck.ok
+        ? [{ name: toolCheck.name, arguments: toolCheck.rawArguments }]
+        : toolCheck.calls
+      prompt.messages[1].content += `\n\n${invalidAttemptSuffix(config.language, attempt, MAX_ATTEMPTS, calls, errors)}`
     }
-    const toolCheck = checkToolCall(raw, tools, 'night_choice')
-    const errors = toolCheck.ok
-      ? validateNightChoice(toolCheck.arguments, request)
-      : [{ code: 'invalid_tool_call', error: toolCheck.error }]
-    const valid = errors.length === 0
-    const usage = usageShape.safeParse(raw)
-    commit({
-      type: 'contestant.decision',
-      seat: request.seat,
-      request,
-      raw,
-      model: seat.model,
-      usage: usage.success ? (usage.data.usage ?? null) : null,
-      durationMs: performance.now() - start,
-      attempt: 1,
-      validation: { ok: valid, errors },
-    })
-    if (!valid || !toolCheck.ok) throw new ContestantFailure(request.seat, JSON.stringify(errors))
-    return toolCheck.arguments as NightChoice
   }
 
   const ports: Ports = {
@@ -172,7 +204,6 @@ export function createGame(input: z.infer<typeof gameInput>) {
       return Promise.resolve(choice)
     },
   }
-  // shortcut: no retries; the retry ticket replaces first-failure termination.
   void runGame(ports)
     .catch((error: unknown) => {
       if (runner.controller.signal.aborted) return
