@@ -51,7 +51,7 @@ ${characters}
 
 # 一天的流程
 完整规则的流程：黎明 → 私聊 → 公聊 → 提名 → 处决（如有）→ 入夜；每天最多一次处决，处决后白天立即结束。
-本局黎明公告后进行公聊。首夜小恶魔不杀人，其他夜晚选择一个目标；私聊阶段尚未开放。
+本局黎明公告后进行公聊，然后进入提名阶段，依次结算提名理由、辩护、投票与处决，再入夜。首夜小恶魔不杀人，其他夜晚选择一个目标；私聊阶段尚未开放。
 黎明只公布昨夜死者（可为空），不公布死因或角色。私聊房间成员名单公开，内容仅成员可见；每轮先提议房间、再给包含自己的候选房间排序，只有全员愿意且未被其他房间分走的房间成立。每人每个私聊阶段最多进入 3 个房间；某轮没有房间成立或所有人次数用完则结束私聊。
 私聊和公聊都同时询问所有可接话者（不是刚发言者且仍有剩余条数）说话或 pass，剩余发言条数多者优先，平局用对局种子随机。每次只实际发出一条，落选发言不算说过；刚发言者不能连续发言，每人每段对话最多 ${String(speechLimit)} 条。所有可接话者 pass 或无人可接话时结束。
 
@@ -109,7 +109,7 @@ Abilities resolve immediately. Players who die before their wake do not wake, ex
 
 # Day flow
 The full flow is dawn → whispers → public discussion → nominations → execution, if any → night. At most one execution occurs per day; it ends the day immediately.
-This game has public discussion after dawn. The Imp does not kill on the first night; on other nights they choose one target. The whisper phase is not enabled yet.
+This game has public discussion after dawn, followed by nominations: nomination reason, defense, voting and execution, then night. The Imp does not kill on the first night; on other nights they choose one target. The whisper phase is not enabled yet.
 Dawn announces only who died last night, possibly nobody, never the cause or character. Whisper membership is public, but content is private to members. Each round players propose rooms, then rank the candidate rooms containing themselves. A room forms only if all members want it and none has been assigned elsewhere. Each player may enter 3 rooms per whisper phase. No rooms forming, or everyone exhausting their allowance, ends the phase.
 In public or private conversations, all eligible speakers (not the previous speaker, with speeches remaining) simultaneously offer a speech or pass. More remaining speeches takes priority, with seeded random ties. Only one speech is actually spoken; rejected speeches were not said. No consecutive speeches by the same player; at most ${String(speechLimit)} per player per conversation. End when all eligible speakers pass or nobody is eligible.
 

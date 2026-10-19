@@ -51,7 +51,7 @@ export async function startFakeProvider(
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
-      const request = {
+      const request: RecordedRequest = {
         path: req.url ?? '',
         headers: req.headers,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,

@@ -1,5 +1,6 @@
 import type {
   Alignment,
+  ContestantRequest,
   GameEvent,
   GameEventInput,
   Grimoire,
@@ -304,6 +305,7 @@ export function foldPublic(events: readonly GameEvent[], seatCount = 5): PublicS
           state = { ...state, aboutToBeExecuted: event.nominee, highestVoteCount: event.votes }
         else if (event.votes >= event.threshold && event.votes === state.highestVoteCount)
           state = { ...state, aboutToBeExecuted: null }
+        state = { ...state, highestVoteCount: Math.max(state.highestVoteCount, event.votes) }
         break
       case 'game.ended':
         state = { ...state, winner: event.winner }
@@ -383,6 +385,32 @@ export function validateSpeechChoice(value: unknown, request: SpeechRequest): Va
   return errors
 }
 
+export function validateContestantChoice(
+  value: unknown,
+  request: ContestantRequest,
+): ValidationError[] {
+  if (request.tool === 'night_choice') return validateNightChoice(value, request)
+  if (request.tool === 'speak') return validateSpeechChoice(value, request)
+  const choice =
+    typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
+  const errors: ValidationError[] = []
+  if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
+  if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
+    errors.push({ code: 'invalid_memo' })
+  if (request.tool === 'nominate') {
+    if (
+      choice.nominee !== null &&
+      (typeof choice.nominee !== 'number' || !request.nominees.includes(choice.nominee))
+    )
+      errors.push({ code: 'invalid_nominee' })
+  } else if (
+    typeof choice.raise_hand !== 'boolean' ||
+    (!request.canRaiseHand && choice.raise_hand)
+  ) {
+    errors.push({ code: 'invalid_vote' })
+  }
+  return errors
+}
 export function winner(state: Grimoire): { winner: Alignment; reason: string } | null {
   if (!state.seats.some((seat) => seat.alive && ROLES[seat.role].type === 'demon')) {
     return { winner: 'good', reason: 'all_demons_dead' }
@@ -424,16 +452,21 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       await commit({ type: 'told', seat: seat.seat, kind: 'role', content: { role: seat.role } })
   }
 
-  const kill = async (target: SeatState, suicide: boolean) => {
-    if (!target.alive) return
+  const kill = async (target: SeatState, cause: 'imp' | 'imp_suicide' | 'execution') => {
+    if (!target.alive && cause !== 'execution') return
     const aliveBeforeDeath = state.seats.filter((seat) => seat.alive).length
-    await commit({ type: 'night.death', seat: target.seat, cause: suicide ? 'imp_suicide' : 'imp' })
+    await commit(
+      cause === 'execution'
+        ? { type: 'execution', seat: target.seat }
+        : { type: 'night.death', seat: target.seat, cause },
+    )
+    if (!target.alive) return
     if (ROLES[target.role].type === 'demon') {
       let successor =
         aliveBeforeDeath >= 5
           ? state.seats.find((seat) => seat.alive && seat.role === 'scarletwoman' && !seat.poisoned)
           : undefined
-      if (!successor && suicide) {
+      if (!successor && cause === 'imp_suicide') {
         const candidates = state.seats
           .filter((seat) => seat.alive && ROLES[seat.role].type === 'minion')
           .map((seat) => seat.seat)
@@ -513,6 +546,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     },
     imp: async (seat) => {
       const request: NightRequest = {
+        tool: 'night_choice',
         seat: seat.seat,
         role: 'imp',
         day: state.day,
@@ -520,7 +554,12 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       }
       const choices = await ports.askContestants([request])
       const choice = choices[0]
-      if (choices.length !== 1 || !choice || validateNightChoice(choice, request).length !== 0)
+      if (
+        choices.length !== 1 ||
+        !choice ||
+        !('targets' in choice) ||
+        validateNightChoice(choice, request).length !== 0
+      )
         throw new Error('Invalid night choice from ports')
       if (!('targets' in choice)) throw new Error('Expected night choice')
       for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
@@ -544,7 +583,8 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         result: { target: target.seat, outcome },
         deviated: false,
       })
-      if (outcome === 'killed') await kill(target, target.seat === seat.seat)
+      if (outcome === 'killed')
+        await kill(target, target.seat === seat.seat ? 'imp_suicide' : 'imp')
     },
   }
 
@@ -620,6 +660,120 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           died: false,
         })
     }
+    await commit({ type: 'phase.started', day, phase: 'nomination' })
+    for (;;) {
+      const publicState = foldPublic(ports.log, ports.config.seatCount)
+      const nominees = state.seats
+        .map((seat) => seat.seat)
+        .filter((seat) => !publicState.nominees.includes(seat))
+      const batch: ContestantRequest[] = state.seats
+        .filter((seat) => seat.alive && !publicState.nominators.includes(seat.seat))
+        .map((seat) => ({ tool: 'nominate', seat: seat.seat, day, nominees }))
+      if (batch.length === 0 || nominees.length === 0) break
+      const choices = await ports.askContestants(batch)
+      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      if (stopped()) return state
+      if (
+        choices.length !== batch.length ||
+        choices.some(
+          (choice, index) =>
+            !batch[index] || validateContestantChoice(choice, batch[index]).length !== 0,
+        )
+      )
+        throw new Error('Invalid nomination from ports')
+      const submitted = choices.flatMap((choice, index) =>
+        'nominee' in choice && choice.nominee !== null
+          ? [{ nominator: batch[index]?.seat, nominee: choice.nominee }]
+          : [],
+      )
+      if (submitted.length === 0) break
+      const selected = submitted[Math.floor(ports.rng() * submitted.length)]
+      if (selected?.nominator === undefined) throw new Error('Missing nomination')
+      const { nominator, nominee } = selected
+      await commit({ type: 'nomination', nominator, nominee })
+      for (const [seat, kind] of [
+        [nominator, 'nomination'],
+        [nominee, 'defense'],
+      ] as const) {
+        const request: SpeechRequest = { tool: 'speak', seat, day, kind, nominator, nominee }
+        const speeches = await ports.askContestants([request])
+        for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+        if (stopped()) return state
+        const speech = speeches[0]
+        if (
+          speeches.length !== 1 ||
+          !speech ||
+          !('speech' in speech) ||
+          typeof speech.speech !== 'string' ||
+          validateSpeechChoice(speech, request).length !== 0
+        )
+          throw new Error('Invalid nomination speech from ports')
+        const decision =
+          speech.decision ??
+          ports.log.findLast((event) => event.type === 'contestant.decision' && event.seat === seat)
+            ?.seq
+        if (decision === undefined) throw new Error('Missing speech decision')
+        await commit({ type: 'public.speech', seat, kind, speech: speech.speech, decision })
+      }
+      const votes: { seat: number; raiseHand: boolean }[] = []
+      const threshold = Math.ceil(state.seats.filter((seat) => seat.alive).length / 2)
+      for (let offset = 0; offset < state.seats.length; offset++) {
+        const seatNumber = ((nominee + offset) % state.seats.length) + 1
+        const voter = state.seats.find((seat) => seat.seat === seatNumber)
+        if (!voter) throw new Error('Missing voter')
+        const canRaiseHand = voter.alive || !voter.voteUsed
+        const request: ContestantRequest = {
+          tool: 'vote',
+          seat: voter.seat,
+          day,
+          nominator,
+          nominee,
+          votes: [...votes],
+          threshold,
+          highestVoteCount: publicState.highestVoteCount,
+          canRaiseHand,
+        }
+        let raiseHand = false
+        if (canRaiseHand) {
+          const choices = await ports.askContestants([request])
+          for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+          if (stopped()) return state
+          const choice = choices[0]
+          if (
+            choices.length !== 1 ||
+            !choice ||
+            !('raise_hand' in choice) ||
+            validateContestantChoice(choice, request).length !== 0
+          )
+            throw new Error('Invalid vote from ports')
+          raiseHand = choice.raise_hand
+        }
+        votes.push({ seat: voter.seat, raiseHand })
+        await commit({
+          type: 'vote',
+          seat: voter.seat,
+          raiseHand,
+          voteUsed: !voter.alive && raiseHand,
+        })
+      }
+      const count = votes.filter((vote) => vote.raiseHand).length
+      await commit({
+        type: 'vote.tallied',
+        nominee,
+        votes: count,
+        threshold,
+        aboutToBeExecuted: count >= threshold && count > publicState.highestVoteCount,
+      })
+    }
+    const candidate = foldPublic(ports.log, ports.config.seatCount).aboutToBeExecuted
+    if (candidate !== null) {
+      const target = state.seats.find((seat) => seat.seat === candidate)
+      if (!target) throw new Error('Missing execution candidate')
+      await kill(target, 'execution')
+      if (stopped()) return state
+    }
+    const result = winner(state)
+    if (result) await commit({ type: 'game.ended', ...result })
   }
   return state
 }

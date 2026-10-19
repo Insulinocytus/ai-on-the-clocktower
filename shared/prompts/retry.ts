@@ -24,6 +24,14 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     zh: 'memo 必须是最多 2000 字的字符串。',
     en: 'memo must be a string of at most 2000 characters.',
   },
+  invalid_nominee: {
+    zh: 'nominee 必须是今天尚未被提名的合法座位号，或 null（pass）。',
+    en: 'nominee must be a legal seat not yet nominated today, or null to pass.',
+  },
+  invalid_vote: {
+    zh: 'raise_hand 必须是布尔值；死者投票标记已用时只能为 false。',
+    en: 'raise_hand must be boolean; a spent dead vote token permits only false.',
+  },
   invalid_speech: {
     zh: 'speech 必须是字符串或 null；提名理由和辩护必须非空。',
     en: 'speech must be a string or null; nomination reasons and defence must be nonempty.',

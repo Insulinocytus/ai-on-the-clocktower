@@ -20,12 +20,14 @@ await setup({
   },
 })
 
+const toolChoice = z.object({ function: z.object({ name: z.string() }) })
+
 const gameRequest = z.object({
   messages: z.tuple([
     z.object({ role: z.literal('system'), content: z.string() }),
     z.object({ role: z.literal('user'), content: z.string() }),
   ]),
-  tool_choice: z.object({ function: z.object({ name: z.string() }) }),
+  tool_choice: toolChoice,
 })
 
 async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1', timeoutSec = 300) {
@@ -48,6 +50,8 @@ async function nightProvider() {
   const fake = await startFakeProvider((request) => {
     const input = gameRequest.parse(request.body)
     const tool = input.tool_choice.function.name
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
     return tool === 'speak'
       ? {
           kind: 'toolCall',
@@ -83,22 +87,36 @@ describe('games HTTP seam', () => {
   })
 
   it('runs an actual game through the provider to game.ended and replays projected events', async () => {
-    let turn = 0
+    let nightTurn = 0
     const fake = await startFakeProvider((request) => {
-      const input = gameRequest.parse(request.body)
-      const tool = input.tool_choice.function.name
+      const choice = toolChoice.parse(request.body.tool_choice)
+      const name = choice.function.name
+      const messages = request.body.messages as { role: string; content: string }[]
+      const user = messages[1]?.content ?? ''
+      const args =
+        name === 'night_choice'
+          ? { targets: [(nightTurn++ % 5) + 1] }
+          : name === 'nominate'
+            ? {
+                nominee:
+                  user.includes('You are Seat 1.') && user.includes('Nominees today: none.')
+                    ? 1
+                    : null,
+              }
+            : name === 'vote'
+              ? { raise_hand: true }
+              : {
+                  speech: user.includes('phase: public discussion.')
+                    ? user.includes('You are Seat 1.') && !user.includes('A public claim.')
+                      ? 'A public claim.'
+                      : null
+                    : 'My nomination argument.',
+                  slayer_target: null,
+                }
       return {
         kind: 'toolCall',
-        name: tool,
-        arguments: JSON.stringify(
-          tool === 'speak'
-            ? { reasoning: 'Pass', speech: null, slayer_target: null }
-            : {
-                reasoning: 'Choose the next seat.',
-                targets: [(turn++ % 5) + 1],
-                memo: 'Remember my previous choice.',
-              },
-        ),
+        name,
+        arguments: JSON.stringify({ reasoning: 'Choose a legal action.', ...args }),
       }
     })
     try {
@@ -121,7 +139,7 @@ describe('games HTTP seam', () => {
         type: 'game.created',
         seatCount: 5,
         language: 'en',
-        logVersion: 1,
+        logVersion: 2,
         promptVersion: 2,
         speechLimit: 10,
         storyteller: null,
@@ -176,7 +194,8 @@ describe('games HTTP seam', () => {
         expect(messages[0]?.content).toContain('Saint')
         expect(messages[1]?.content).not.toContain('Game preset')
         expect(messages[1]?.content).not.toContain('fake-model')
-        expect(messages[1]?.content).toMatch(/Call (night_choice|speak)\./)
+        const choice = toolChoice.parse(request.body.tool_choice)
+        expect(messages[1]?.content).toContain(`Call ${choice.function.name}.`)
         expect(request.body).not.toHaveProperty('temperature')
         expect(request.body.tools).toEqual(first?.tools)
       }
@@ -185,10 +204,25 @@ describe('games HTTP seam', () => {
       })
       expect(
         publicEvents.every((event) =>
-          ['phase.started', 'dawn.announced', 'game.ended'].includes(event.type),
+          [
+            'phase.started',
+            'dawn.announced',
+            'game.ended',
+            'nomination',
+            'public.speech',
+            'vote',
+            'vote.tallied',
+            'execution',
+          ].includes(event.type),
         ),
       ).toBe(true)
       expect(publicEvents.at(-1)?.type).toBe('game.ended')
+      expect(
+        publicEvents.some((event) => event.type === 'public.speech' && event.kind === 'free'),
+      ).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'nomination')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'vote')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'execution')).toBe(true)
       const after = events.at(-3)?.seq ?? 0
       expect(await $fetch(`/api/games/${opened.id}/events`, { query: { after } })).toEqual(
         events.filter((event) => event.seq > after),
@@ -219,7 +253,7 @@ describe('games HTTP seam', () => {
         .toBe('ended')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       const decisions = events.filter(
-        (event) => event.type === 'contestant.decision' && event.request.tool !== 'speak',
+        (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
       )
       expect(decisions.slice(0, 2)).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -323,7 +357,10 @@ describe('games HTTP seam', () => {
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
         events
-          .filter((event) => event.type === 'contestant.decision' && event.request.tool !== 'speak')
+          .filter(
+            (event) =>
+              event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+          )
           .slice(0, 2),
       ).toMatchObject([
         { attempt: 1, validation: { ok: false } },
@@ -371,7 +408,8 @@ describe('games HTTP seam', () => {
         expect(
           events
             .filter(
-              (event) => event.type === 'contestant.decision' && event.request.tool !== 'speak',
+              (event) =>
+                event.type === 'contestant.decision' && event.request.tool === 'night_choice',
             )
             .slice(0, 2),
         ).toMatchObject([
@@ -477,7 +515,7 @@ describe('games HTTP seam', () => {
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
         events.filter(
-          (event) => event.type === 'contestant.decision' && event.request.tool !== 'speak',
+          (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
         ),
       ).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -551,7 +589,7 @@ describe('games HTTP seam', () => {
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
           events.flatMap((event) =>
-            event.type === 'contestant.decision' && event.request.tool !== 'speak'
+            event.type === 'contestant.decision' && event.request.tool === 'night_choice'
               ? [event.attempt]
               : [],
           ),
@@ -634,6 +672,8 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     const day = Number(/# Current public state\nDay (\d+);/.exec(user)?.[1])
     const role = /Your character: ([^;]+);/.exec(user)?.[1] ?? ''
     const tool = input.tool_choice.function.name
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
     roles.set(role, seat)
     captured.push({
       seat,

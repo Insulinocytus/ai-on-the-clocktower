@@ -9,7 +9,7 @@ import type {
   ContestantRequest,
   Ports,
 } from '#shared/types/game'
-import { createRng, runGame, validateNightChoice, validateSpeechChoice } from '#shared/game/rules'
+import { createRng, runGame, validateContestantChoice } from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { getPreset, getProvider } from './models'
@@ -128,7 +128,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       language: config.language,
       request,
     })
-    const tool = request.tool ?? 'night_choice'
+    const tool = request.tool
     for (let attempt = 1; ; attempt++) {
       const start = performance.now()
       let raw: unknown
@@ -167,9 +167,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       }
       const toolCheck = checkToolCall(raw, tools, tool)
       const errors = toolCheck.ok
-        ? request.tool === 'speak'
-          ? validateSpeechChoice(toolCheck.arguments, request)
-          : validateNightChoice(toolCheck.arguments, request)
+        ? validateContestantChoice(toolCheck.arguments, request)
         : [{ code: toolCheck.code }]
       const valid = errors.length === 0
       const usage = usageShape.safeParse(raw)

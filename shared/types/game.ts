@@ -60,7 +60,7 @@ export interface GameConfig {
   promptVersion: number
 }
 export interface NightRequest {
-  tool?: 'night_choice'
+  tool: 'night_choice'
   seat: number
   role: RoleId
   day: number
@@ -87,8 +87,35 @@ export interface SpeechChoice {
   memo?: string
   decision?: number
 }
-export type ContestantRequest = NightRequest | SpeechRequest
-export type ContestantChoice = NightChoice | SpeechChoice
+interface NominationRequest {
+  tool: 'nominate'
+  seat: number
+  day: number
+  nominees: number[]
+}
+interface NominationChoice {
+  reasoning: string
+  nominee: number | null
+  memo?: string
+}
+interface VoteRequest {
+  tool: 'vote'
+  seat: number
+  day: number
+  nominator: number
+  nominee: number
+  votes: { seat: number; raiseHand: boolean }[]
+  threshold: number
+  highestVoteCount: number
+  canRaiseHand: boolean
+}
+interface VoteChoice {
+  reasoning: string
+  raise_hand: boolean
+  memo?: string
+}
+export type ContestantRequest = NightRequest | SpeechRequest | NominationRequest | VoteRequest
+export type ContestantChoice = NightChoice | SpeechChoice | NominationChoice | VoteChoice
 type ValidationCode =
   | 'invalid_seat_count'
   | 'duplicate_role'
@@ -98,6 +125,8 @@ type ValidationCode =
   | 'invalid_targets'
   | 'invalid_reasoning'
   | 'invalid_memo'
+  | 'invalid_nominee'
+  | 'invalid_vote'
   | 'invalid_speech'
   | 'invalid_slayer_target'
   | 'invalid_response'
