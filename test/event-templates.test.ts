@@ -67,25 +67,27 @@ describe('localized terminal game events', () => {
       discretion: () => {
         throw new Error('This endgame needs no discretion')
       },
-      askContestants: async (batch) =>
-        batch.map((request) => {
-          if (request.day !== 1) throw new Error('The endgame should finish on day one')
-          if (request.tool === 'nominate')
-            return {
-              reasoning: '',
-              nominee:
-                role === 'saint' && request.seat === 2 && request.nominees.includes(1) ? 1 : null,
-            }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
-          if (request.tool === 'speak')
-            return {
-              reasoning: '',
-              speech: request.kind === 'free' ? null : 'Execute Seat 1',
-              slayer_target: null,
-              decision: 0,
-            }
-          throw new Error(`Unexpected request: ${request.tool}`)
-        }),
+      askContestants: (batch) =>
+        Promise.resolve(
+          batch.map((request) => {
+            if (request.day !== 1) throw new Error('The endgame should finish on day one')
+            if (request.tool === 'nominate')
+              return {
+                reasoning: '',
+                nominee:
+                  role === 'saint' && request.seat === 2 && request.nominees.includes(1) ? 1 : null,
+              }
+            if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+            if (request.tool === 'speak')
+              return {
+                reasoning: '',
+                speech: request.kind === 'free' ? null : 'Execute Seat 1',
+                slayer_target: null,
+                decision: 0,
+              }
+            throw new Error(`Unexpected request: ${request.tool}`)
+          }),
+        ),
     })
     const end = events.at(-1)
     expect(end).toMatchObject({ type: 'game.ended', reason })

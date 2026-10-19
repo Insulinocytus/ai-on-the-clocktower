@@ -143,8 +143,8 @@ describe('prompts at the scripted game seam', () => {
       let contestant = ''
       const { state } = await script(roles, {
         config: { language, whisperLimit: 1 },
-        async discretion(id, candidates, context) {
-          if (id === 'D1') return { choice: roles }
+        discretion(id, candidates, context) {
+          if (id === 'D1') return Promise.resolve({ choice: roles })
           if (id === 'D8' && context.day === 3)
             storyteller = buildStorytellerPrompt(
               { ...CONFIG, language, whisperLimit: 1 },
@@ -155,7 +155,7 @@ describe('prompts at the scripted game seam', () => {
             ).messages[1].content
           if (!Array.isArray(candidates) || candidates[0] === undefined)
             throw new Error(`Missing scripted ${id} choice`)
-          return { choice: candidates[0] }
+          return Promise.resolve({ choice: candidates[0] })
         },
         ask(request, ports) {
           log = ports.log
