@@ -72,6 +72,15 @@ export function appendGameEvent(id: string, input: GameEventInput, seq: number):
   return event
 }
 
+export function abortUnfinishedGames(): void {
+  const games = useDb().prepare<[], { id: string }>('SELECT id FROM games').all()
+  for (const { id } of games) {
+    const events = gameEvents(id)
+    if (!events.some((event) => event.type === 'game.ended' || event.type === 'game.aborted'))
+      appendGameEvent(id, { type: 'game.aborted', reason: 'process_restart' }, events.length + 1)
+  }
+}
+
 export function subscribeGame(id: string, listener: Listener): () => void {
   let subscribers = listeners.get(id)
   if (!subscribers) {

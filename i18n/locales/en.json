@@ -68,6 +68,7 @@
     "waiting": "Waiting for manual discretion",
     "ended": "Ended",
     "aborted": "Aborted",
+    "abort": "Abort game",
     "incompatible": "This log version cannot be replayed.",
     "live": "Live",
     "replay": "Replay",
