@@ -1,7 +1,7 @@
 import { ROLES } from '../game/roles'
 import type { Language } from '../types/game'
 
-// shortcut: fixed five-seat, night-only rules; replace when configurable full-day games ship.
+// shortcut: fixed five-seat role pool; replace with configurable full-role setup.
 export function contestantSystem(language: Language): string {
   const zh = language === 'zh'
   const roles = Object.values(ROLES)
@@ -51,7 +51,7 @@ ${characters}
 
 # 一天的流程
 完整规则的流程：黎明 → 私聊 → 公聊 → 提名 → 处决（如有）→ 入夜；每天最多一次处决，处决后白天立即结束。
-本局采用只有夜晚的流程：首夜后，每天只有黎明公告，然后立即进入下个夜晚；没有私聊、公聊、提名、投票、处决或白天能力。首夜小恶魔不杀人，其他夜晚选择一个目标。下述白天规则仅说明完整规则，不会在本局开放。
+本局首夜小恶魔不杀人；其他夜晚选择一个目标。黎明公告后进入提名阶段，依次结算提名理由、辩护、投票与处决，然后入夜。私聊和公聊暂不开放。
 黎明只公布昨夜死者（可为空），不公布死因或角色。私聊房间成员名单公开，内容仅成员可见；每轮先提议房间、再给包含自己的候选房间排序，只有全员愿意且未被其他房间分走的房间成立。每人每个私聊阶段最多进入 3 个房间；某轮没有房间成立或所有人次数用完则结束私聊。
 私聊和公聊都同时询问所有可接话者说话或 pass，剩余发言条数多者优先，平局随机。每次只实际发出一条，落选发言不算说过；刚发言者不能连续发言，每人每段对话最多 10 条。所有可接话者 pass 或无人可接话时结束。
 
@@ -78,7 +78,7 @@ ${characters}
 
 # 三条常识（不是规则）
 1. 善良靠分享和比对信息找恶魔，邪恶通常伪装成善良角色；任何玩家都能撒谎，醉酒或中毒也会产生假信息。
-2. 邪恶没有专用沟通频道；完整白天流程中可以私聊，或把信息藏在公聊里。公开暴露同伴或透露只有邪恶才知道的事会帮助善良；本局不开放白天交流。
+2. 邪恶没有专用沟通频道；只能利用实际开放的发言传递信息。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
 3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；本局 5 人，不提供这些伪装。
 
 # 发言、推理与备忘录
@@ -109,7 +109,7 @@ Abilities resolve immediately. Players who die before their wake do not wake, ex
 
 # Day flow
 The full flow is dawn → whispers → public discussion → nominations → execution, if any → night. At most one execution occurs per day; it ends the day immediately.
-This game is night-only: after the first night, each day contains only a dawn announcement followed immediately by the next night. There are no whispers, public discussion, nominations, votes, executions or daytime abilities in this game. The Imp does not kill on the first night; on other nights they choose one target. The daytime rules below explain the full game but are not enabled here.
+The Imp does not kill on the first night; on other nights they choose one target. Dawn is followed by nominations: nomination reason, defense, voting and execution, then night. Whispers and public discussion are not yet enabled.
 Dawn announces only who died last night, possibly nobody, never the cause or character. Whisper membership is public, but content is private to members. Each round players propose rooms, then rank the candidate rooms containing themselves. A room forms only if all members want it and none has been assigned elsewhere. Each player may enter 3 rooms per whisper phase. No rooms forming, or everyone exhausting their allowance, ends the phase.
 In public or private conversations, all eligible speakers simultaneously offer a speech or pass. More remaining speeches takes priority, with random ties. Only one speech is actually spoken; rejected speeches were not said. No consecutive speeches by the same player; at most 10 per player per conversation. End when all eligible speakers pass or nobody is eligible.
 
@@ -136,7 +136,7 @@ Spy and Recluse registration alignment and character are separately fixed at set
 
 # Three pieces of common knowledge (not rules)
 1. Good shares and compares information to find the Demon; evil usually pretends to be good. Anyone can lie, and drunkenness or poison may produce false information.
-2. Evil has no dedicated communication channel. In the full daytime game they can whisper or hide messages in public speech. Exposing teammates or evil-only knowledge helps good; this game has no daytime communication.
+2. Evil has no dedicated communication channel. Use only the speech opportunities actually offered to pass information. Exposing teammates or evil-only knowledge helps good.
 3. The 3 bluffs given to a Demon in a 7+ player game are not in play; privately passing them to Minions can avoid conflicting claims. This 5-player game provides no such bluffs.
 
 # Speech, reasoning and memo

@@ -102,8 +102,8 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
         : `Game aborted: ${REASONS[event.reason]?.en ?? event.reason}${event.seat === undefined ? '' : `, ${actor}`}${event.discretion ? `, discretion ${event.discretion}` : ''}. Error: ${JSON.stringify(event.error ?? event.details ?? null)}.`
     case 'contestant.decision':
       return zh
-        ? `${actor}的模型决策：night_choice；第 ${String(event.attempt)} 次尝试，耗时 ${String(event.durationMs)} ms；校验：${JSON.stringify(event.validation)}。`
-        : `${actor}: model decision for night_choice; attempt ${String(event.attempt)}, ${String(event.durationMs)} ms; validation: ${JSON.stringify(event.validation)}.`
+        ? `${actor}的模型决策：${event.request.tool}；第 ${String(event.attempt)} 次尝试，耗时 ${String(event.durationMs)} ms；校验：${JSON.stringify(event.validation)}。`
+        : `${actor}: model decision for ${event.request.tool}; attempt ${String(event.attempt)}, ${String(event.durationMs)} ms; validation: ${JSON.stringify(event.validation)}.`
     case 'storyteller.decision':
       return zh
         ? `说书人裁量 ${event.discretion}：第 ${String(event.attempt)} 次尝试，耗时 ${String(event.durationMs)} ms；校验：${JSON.stringify(event.validation)}。`

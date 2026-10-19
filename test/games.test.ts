@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
 import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
@@ -19,6 +20,8 @@ await setup({
   },
 })
 
+const toolChoice = z.object({ function: z.object({ name: z.string() }) })
+
 async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1') {
   const provider = await $fetch<{ id: number }>('/api/providers', {
     method: 'POST',
@@ -26,7 +29,12 @@ async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1') {
   })
   return $fetch<{ id: number }>('/api/presets', {
     method: 'POST',
-    body: { name: 'Game preset', providerId: provider.id, model: 'fake-model' },
+    body: {
+      name: 'Game preset',
+      providerId: provider.id,
+      model: 'fake-model',
+      forceToolChoice: true,
+    },
   })
 }
 
@@ -47,18 +55,32 @@ describe('games HTTP seam', () => {
   })
 
   it('runs an actual game through the provider to game.ended and replays projected events', async () => {
-    const fake = await startFakeProvider()
+    let nightTurn = 0
+    const fake = await startFakeProvider((request) => {
+      const choice = toolChoice.parse(request.body.tool_choice)
+      const name = choice.function.name
+      const messages = request.body.messages as { role: string; content: string }[]
+      const user = messages[1]?.content ?? ''
+      const args =
+        name === 'night_choice'
+          ? { targets: [(nightTurn++ % 5) + 1] }
+          : name === 'nominate'
+            ? {
+                nominee:
+                  user.includes('You are Seat 1.') && user.includes('Nominees today: none.')
+                    ? 1
+                    : null,
+              }
+            : name === 'vote'
+              ? { raise_hand: true }
+              : { speech: 'My nomination argument.', slayer_target: null }
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning: 'Choose a legal action.', ...args }),
+      }
+    })
     try {
-      for (let turn = 0; turn < 20; turn++)
-        fake.script({
-          kind: 'toolCall',
-          name: 'night_choice',
-          arguments: JSON.stringify({
-            reasoning: 'Choose the next seat.',
-            targets: [(turn % 5) + 1],
-            memo: 'Remember my previous choice.',
-          }),
-        })
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
@@ -78,8 +100,8 @@ describe('games HTTP seam', () => {
         type: 'game.created',
         seatCount: 5,
         language: 'en',
-        logVersion: 1,
-        promptVersion: 1,
+        logVersion: 2,
+        promptVersion: 2,
         storyteller: null,
       })
       expect(Object.values(opened.config.discretions)).toEqual(
@@ -132,7 +154,8 @@ describe('games HTTP seam', () => {
         expect(messages[0]?.content).toContain('Saint')
         expect(messages[1]?.content).not.toContain('Game preset')
         expect(messages[1]?.content).not.toContain('fake-model')
-        expect(messages[1]?.content).toContain('Call night_choice.')
+        const choice = toolChoice.parse(request.body.tool_choice)
+        expect(messages[1]?.content).toContain(`Call ${choice.function.name}.`)
         expect(request.body).not.toHaveProperty('temperature')
         expect(request.body.tools).toEqual(first?.tools)
       }
@@ -141,10 +164,22 @@ describe('games HTTP seam', () => {
       })
       expect(
         publicEvents.every((event) =>
-          ['phase.started', 'dawn.announced', 'game.ended'].includes(event.type),
+          [
+            'phase.started',
+            'dawn.announced',
+            'game.ended',
+            'nomination',
+            'public.speech',
+            'vote',
+            'vote.tallied',
+            'execution',
+          ].includes(event.type),
         ),
       ).toBe(true)
       expect(publicEvents.at(-1)?.type).toBe('game.ended')
+      expect(publicEvents.some((event) => event.type === 'nomination')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'vote')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'execution')).toBe(true)
       const after = events.at(-3)?.seq ?? 0
       expect(await $fetch(`/api/games/${opened.id}/events`, { query: { after } })).toEqual(
         events.filter((event) => event.seq > after),
@@ -159,7 +194,7 @@ describe('games HTTP seam', () => {
     ['invalid output', { kind: 'text', content: 'No tool call' }],
     [
       'semantic failure',
-      { kind: 'toolCall', name: 'night_choice', arguments: '{"reasoning":"r","targets":[]}' },
+      { kind: 'toolCall', name: 'nominate', arguments: '{"reasoning":"r","nominee":0}' },
     ],
   ] as const)(
     'aborts immediately after one %s, preserving the failing seat and error',
@@ -183,7 +218,7 @@ describe('games HTTP seam', () => {
           seat: expect.any(Number) as unknown,
           error: expect.any(String) as unknown,
         })
-        expect(fake.requests).toHaveLength(1)
+        expect(fake.requests).toHaveLength(5)
         const after = events.at(-3)?.seq ?? 0
         const response = await fetch(`/api/games/${opened.id}/stream?after=0`, {
           headers: { 'Last-Event-ID': String(after) },
