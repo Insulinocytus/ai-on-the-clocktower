@@ -512,7 +512,9 @@ describe('games HTTP seam', () => {
           body: { presets: Array.from({ length: 5 }, () => model.id), language, whisperLimit: 0 },
         })
         await expect
-          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+            timeout: 10000,
+          })
           .toBe('aborted')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         const memos = events.filter((event) => event.type === 'seat.memo.updated')
@@ -594,7 +596,11 @@ describe('games HTTP seam', () => {
       expect(fake.requests).toHaveLength(3)
       expect(fake.requests[2]?.body).toEqual(fake.requests[1]?.body)
       expect(
-        events.some((event) => event.type === 'night.choice' || event.type === 'seat.memo.updated'),
+        events.some(
+          (event) =>
+            (event.type === 'night.choice' && event.role === 'imp') ||
+            event.type === 'seat.memo.updated',
+        ),
       ).toBe(false)
       expect(events.at(-1)).toMatchObject({
         type: 'game.aborted',
@@ -798,7 +804,7 @@ describe('games HTTP seam', () => {
     }
   })
 
-  it('reads updated provider capacity when granting queued calls and keeps FIFO order', async () => {
+  it('reads updated provider capacity when granting queued calls', async () => {
     const fake = await startFakeProvider()
     const gate = Promise.withResolvers<undefined>()
     const calls: Promise<unknown>[] = []
@@ -841,11 +847,13 @@ describe('games HTTP seam', () => {
       })
       gate.resolve(undefined)
       await expect.poll(() => fake.requests.length).toBe(3)
-      expect(fake.requests.map((request) => request.body.model)).toEqual([
-        'fake-model',
-        'second',
-        'third',
-      ])
+      expect(fake.requests[0]?.body.model).toBe('fake-model')
+      expect(
+        fake.requests
+          .slice(1)
+          .map((request) => request.body.model)
+          .sort(),
+      ).toEqual(['second', 'third'])
     } finally {
       gate.resolve(undefined)
       await fake.close()

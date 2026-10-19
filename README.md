@@ -96,3 +96,5 @@ pnpm format  # prettier --write
 `pnpm install` 会通过 `simple-git-hooks` 安装 pre-commit hook，提交前自动跑 `pnpm check`；pull request 上 GitHub Actions 同样跑 `pnpm check`。
 
 测试缝为规则和应用两处：`test/rules.test.ts` 用脚本化 `Ports` 驱动 `runGame` 并核对事件、折叠和逐格受众；应用测试用 `@nuxt/test-utils` 构建并启动整个应用，经 HTTP API 驱动。`test/fake-provider.ts` 是按脚本返回 tool call、非法输出、429 + Retry-After、5xx 或超时的本地假 OpenAI 兼容提供商；`test/games.test.ts` 包含整局烟雾测试。界面不写自动化测试。
+
+私聊应用测试按本次请求的目标数量回答夜间选择，不依赖随机分配的角色池；中英请求均保留私聊重试、房间分配与投影隔离断言。
