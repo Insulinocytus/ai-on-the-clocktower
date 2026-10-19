@@ -12,6 +12,7 @@ import type {
 const REASONS: Record<string, { zh: string; en: string }> = {
   all_demons_dead: { zh: '所有恶魔均已死亡', en: 'all Demons are dead' },
   two_alive: { zh: '只剩两名玩家存活', en: 'only two players remain alive' },
+  saint_executed: { zh: '圣徒死于处决', en: 'the Saint died by execution' },
   model_call_failed: {
     zh: '模型调用失败或输出不合法',
     en: 'model call failed or returned invalid output',
@@ -41,8 +42,12 @@ function seatList(seats: readonly number[], language: Language, observer: Observ
       : 'none'
 }
 
-function grimoireText(seats: readonly SeatState[], language: Language): string {
-  return seats
+function grimoireText(
+  seats: readonly SeatState[],
+  language: Language,
+  redHerring?: number | null,
+): string {
+  const text = seats
     .map((seat) => {
       const statuses = [
         seat.poisoned ? (language === 'zh' ? '中毒' : 'poisoned') : '',
@@ -75,6 +80,10 @@ function grimoireText(seats: readonly SeatState[], language: Language): string {
         : `Seat ${String(seat.seat)}: ${ROLES[seat.role].name.en}, ${seat.alignment}, ${seat.alive ? 'alive' : 'dead'}${statuses.length ? `, ${statuses.join(', ')}` : ''}`
     })
     .join('; ')
+  if (redHerring === undefined) return text
+  return language === 'zh'
+    ? `${text}。占卜师干扰项：${redHerring === null ? '无' : `${String(redHerring)} 号`}。`
+    : `${text}. Fortune Teller red herring: ${redHerring === null ? 'none' : `Seat ${String(redHerring)}`}.`
 }
 
 function informationText(
@@ -85,6 +94,7 @@ function informationText(
   const zh = language === 'zh'
   if (typeof result === 'boolean') return zh ? (result ? '是' : '否') : result ? 'Yes' : 'No'
   if (typeof result === 'number') return String(result)
+  if ('redHerring' in result) return grimoireText(result.seats, language, result.redHerring)
   const role = ROLES[result.role].name[language]
   if ('seats' in result) {
     const seats = seatList(result.seats, language, observer)
@@ -232,7 +242,7 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
           : `${prefix}${role.name.en} ability result: ${result === undefined ? 'none' : informationText(result, language, observer)}.`
       }
       if (event.kind === 'grimoire')
-        return `${prefix}${grimoireText(event.content.seats, language)}`
+        return `${prefix}${grimoireText(event.content.seats, language, event.content.redHerring)}`
       const seats = seatList(event.content.seats, language, observer)
       if (event.kind === 'minion-info')
         return zh

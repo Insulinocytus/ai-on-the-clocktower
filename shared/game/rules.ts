@@ -18,7 +18,7 @@ import type {
 } from '../types/game'
 import { ROLES } from './roles'
 
-// shortcut: five seats and implemented roles only; lift with full-role setup and demon succession.
+// shortcut: five seats only; widen setup with #29.
 const ROLE_POOL: readonly RoleId[] = [
   'soldier',
   'chef',
@@ -35,6 +35,10 @@ const ROLE_POOL: readonly RoleId[] = [
   'slayer',
   'butler',
   'drunk',
+  'recluse',
+  'saint',
+  'spy',
+  'baron',
   'poisoner',
   'scarletwoman',
   'imp',
@@ -61,26 +65,38 @@ export function validate(roles: readonly string[]): ValidationError[] {
     Object.hasOwn(ROLES, role) ? ROLES[role as RoleId].type : undefined,
   )
   if (roles.filter((role) => role === 'imp').length !== 1) errors.push({ code: 'invalid_demon' })
+  const outsiders = roles.includes('baron') ? 2 : 0
   if (
-    types.filter((type) => type === 'townsfolk').length !== 3 ||
-    types.filter((type) => type === 'outsider').length !== 0 ||
+    types.filter((type) => type === 'townsfolk').length !== 3 - outsiders ||
+    types.filter((type) => type === 'outsider').length !== outsiders ||
     types.filter((type) => type === 'minion').length !== 1 ||
     types.filter((type) => type === 'demon').length !== 1
   ) {
     errors.push({ code: 'invalid_role_counts' })
   }
+  // Both D4 seats exclude the recipient, so a sole Townsfolk Washerwoman has no legal truth.
+  if (roles.includes('washerwoman') && types.filter((type) => type === 'townsfolk').length === 1)
+    errors.push({ code: 'no_washerwoman_truth' })
   return errors
 }
 
 export function sample(rng: () => number): RoleId[] {
-  const townsfolk = ROLE_POOL.filter((role) => ROLES[role].type === 'townsfolk')
   const minions = ROLE_POOL.filter((role) => ROLES[role].type === 'minion')
   const minion = minions[Math.floor(rng() * minions.length)]
   if (!minion) throw new Error('No implemented Minion')
+  const townsfolk = ROLE_POOL.filter(
+    (role) => ROLES[role].type === 'townsfolk' && (minion !== 'baron' || role !== 'washerwoman'),
+  )
   const roles: RoleId[] = [minion, 'imp']
-  for (let index = 0; index < 3; index++) {
-    const [role] = townsfolk.splice(Math.floor(rng() * townsfolk.length), 1)
-    if (role) roles.push(role)
+  const outsiders = ROLE_POOL.filter((role) => ROLES[role].type === 'outsider')
+  for (const [pool, count] of [
+    [townsfolk, minion === 'baron' ? 1 : 3],
+    [outsiders, minion === 'baron' ? 2 : 0],
+  ] as const) {
+    for (let index = 0; index < count; index++) {
+      const [role] = pool.splice(Math.floor(rng() * pool.length), 1)
+      if (role) roles.push(role)
+    }
   }
   for (let index = roles.length - 1; index > 0; index--) {
     const other = Math.floor(rng() * (index + 1))
@@ -488,11 +504,15 @@ function functioning(seat: SeatState): boolean {
 }
 
 function registeredAlignment(seat: SeatState): Alignment {
-  return seat.alignment
+  return functioning(seat) && (seat.role === 'spy' || seat.role === 'recluse')
+    ? (seat.registeredAlignment ?? seat.alignment)
+    : seat.alignment
 }
 
 function registeredRole(seat: SeatState): RoleId {
-  return seat.role
+  return functioning(seat) && (seat.role === 'spy' || seat.role === 'recluse')
+    ? (seat.registeredRole ?? seat.role)
+    : seat.role
 }
 
 export async function runGame(ports: Ports): Promise<Grimoire> {
@@ -575,6 +595,33 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       await commit({ type: 'discretion.resolved', discretion: 'D3', choice, source: 'random' })
     }
     await commit({ type: 'grimoire.set', seats: state.seats, redHerring: choice })
+  }
+  for (const role of ['spy', 'recluse'] as const) {
+    const seat = state.seats.find((player) => player.role === role)
+    if (!seat || (seat.registeredRole && seat.registeredAlignment)) continue
+    const discretion = role === 'spy' ? 'D10' : 'D11'
+    const roles = Object.values(ROLES).filter(
+      (candidate) => candidate.id === role || candidate.alignment !== ROLES[role].alignment,
+    )
+    const candidates = (['good', 'evil'] as const).flatMap((alignment) =>
+      roles.map((candidate) => ({ alignment, role: candidate.id })),
+    )
+    await commit({ type: 'discretion.requested', discretion, candidates, source: 'random' })
+    const selected = await ports.discretion(discretion, candidates, state)
+    const choice = candidates.find(
+      (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
+    )
+    if (!choice) throw new Error(`Invalid ${discretion} registration`)
+    await commit({ type: 'discretion.resolved', discretion, choice, source: 'random' })
+    await commit({
+      type: 'grimoire.set',
+      seats: state.seats.map((player) =>
+        player.seat === seat.seat
+          ? { ...player, registeredRole: choice.role, registeredAlignment: choice.alignment }
+          : player,
+      ),
+      redHerring: state.redHerring,
+    })
   }
 
   const nightChoice = async (seat: SeatState): Promise<number[]> => {
@@ -735,7 +782,14 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       )
     }
     const result = winner(state)
-    if (result) await commit({ type: 'game.ended', ...result })
+    if (
+      cause === 'execution' &&
+      target.role === 'saint' &&
+      functioning(target) &&
+      result?.winner !== 'good'
+    )
+      await commit({ type: 'game.ended', winner: 'evil', reason: 'saint_executed' })
+    else if (result) await commit({ type: 'game.ended', ...result })
   }
 
   const firstInformation = async (
@@ -783,6 +837,17 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
   }
 
   const handlers: Partial<Record<RoleId, (seat: SeatState) => Promise<void>>> = {
+    spy: async (seat) => {
+      const result = { seats: state.seats, redHerring: state.redHerring }
+      await commit({
+        type: 'ability.resolved',
+        seat: seat.seat,
+        role: 'spy',
+        result,
+        deviated: false,
+      })
+      await commit({ type: 'told', seat: seat.seat, kind: 'grimoire', content: result })
+    },
     poisoner: async (seat) => {
       const [target] = await nightChoice(seat)
       if (stopped() || target === undefined) return
@@ -1175,7 +1240,8 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       )
     for (const actor of actors) {
       const seat = state.seats.find((player) => player.seat === actor.seat)
-      if (seat?.alive) await handlers[seat.believedRole ?? seat.role]?.(seat)
+      if (seat?.alive && (seat.believedRole ?? seat.role) === (actor.believedRole ?? actor.role))
+        await handlers[seat.believedRole ?? seat.role]?.(seat)
       if (stopped()) return state
     }
     const deaths = ports.log.flatMap((event) =>

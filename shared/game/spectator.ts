@@ -123,6 +123,7 @@ function involvesSeat(event: GameEvent, seat: number): boolean {
   if (event.type === 'dawn.announced') return event.deaths.includes(seat)
   if (event.type === 'public.speech') return event.slayerTarget === seat
   if (event.type === 'ability.resolved' && typeof event.result === 'object') {
+    if ('redHerring' in event.result) return false
     return 'target' in event.result
       ? event.result.target === seat
       : event.result.seats.includes(seat)

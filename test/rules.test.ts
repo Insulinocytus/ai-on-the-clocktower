@@ -28,6 +28,7 @@ import type {
   NightRequest,
   Observer,
   Ports,
+  Registration,
   RoleId,
   SeatState,
   SpeechChoice,
@@ -276,10 +277,12 @@ describe('spectator channel blocks', () => {
 })
 
 describe('five-seat setup', () => {
-  it('samples three distinct implemented Townsfolk, one Minion and Imp from a reproducible seed', () => {
+  it('samples reproducible five-seat setups with the mandatory Baron modifier', () => {
     const roles = sample(createRng(18))
     expect(roles).toHaveLength(5)
-    expect(roles.filter((role) => ROLES[role].type === 'townsfolk')).toHaveLength(3)
+    expect(roles.filter((role) => ROLES[role].type === 'townsfolk')).toHaveLength(
+      roles.includes('baron') ? 1 : 3,
+    )
     expect(roles.filter((role) => ROLES[role].type === 'minion')).toHaveLength(1)
     expect(roles).toContain('imp')
     expect(sample(createRng(18))).toEqual(roles)
@@ -296,8 +299,28 @@ describe('five-seat setup', () => {
       'ravenkeeper',
       'poisoner',
       'scarletwoman',
+      'spy',
+      'baron',
+      'butler',
+      'drunk',
+      'recluse',
+      'saint',
     ])
       expect(sampled.has(role as RoleId)).toBe(true)
+  })
+  it('validates Baron as one Townsfolk and two distinct Outsiders, with no unmodified fallback', () => {
+    expect(validate(['soldier', 'butler', 'drunk', 'baron', 'imp'])).toEqual([])
+    expect(validate(['chef', 'recluse', 'saint', 'baron', 'imp'])).toEqual([])
+    expect(validate(['soldier', 'chef', 'empath', 'baron', 'imp'])).toContainEqual({
+      code: 'invalid_role_counts',
+    })
+    for (let seed = 0; seed < 100; seed++) {
+      const roles = sample(createRng(seed))
+      expect(validate(roles)).toEqual([])
+      expect(roles.filter((role) => ROLES[role].type === 'outsider')).toHaveLength(
+        roles.includes('baron') ? 2 : 0,
+      )
+    }
   })
 })
 
@@ -426,7 +449,7 @@ describe('setup and metadata boundaries', () => {
       'spy',
     ])
   })
-  it('rejects wrong seat counts, duplicate roles, unsupported roles and invalid demons', () => {
+  it('rejects wrong seat counts, duplicate roles, unknown roles and invalid demons', () => {
     expect(validate(['soldier'])).toContainEqual({ code: 'invalid_seat_count' })
     expect(validate(['soldier', 'soldier', 'empath', 'scarletwoman', 'imp'])).toContainEqual({
       code: 'duplicate_role',
@@ -437,7 +460,7 @@ describe('setup and metadata boundaries', () => {
     expect(validate(['soldier', 'chef', 'empath', 'saint', 'imp'])).toContainEqual({
       code: 'invalid_role_counts',
     })
-    expect(validate(['soldier', 'chef', 'empath', 'spy', 'imp'])).toContainEqual({
+    expect(validate(['soldier', 'chef', 'empath', 'invented', 'imp'])).toContainEqual({
       code: 'unsupported_role',
     })
   })
@@ -546,6 +569,12 @@ async function game(
         expect(candidates).toEqual({ type: 'setup', sample: sample(createRng(CONFIG.seed)) })
         return Promise.resolve(ORDER)
       }
+      if ((id === 'D10' || id === 'D11') && Array.isArray(candidates)) {
+        return Promise.resolve({
+          alignment: id === 'D10' ? 'evil' : 'good',
+          role: id === 'D10' ? 'spy' : 'recluse',
+        })
+      }
       if (id === 'D2' && Array.isArray(candidates)) {
         const role = candidates.find(
           (candidate) =>
@@ -643,7 +672,7 @@ async function game(
                   ? 'Yes'
                   : 'No',
             )
-          if (typeof event.content.result === 'object')
+          if (typeof event.content.result === 'object' && 'role' in event.content.result)
             expect(text).toContain(ROLES[event.content.result.role].name[language])
         }
       }
@@ -2792,5 +2821,547 @@ describe('poison lifecycle interactions', () => {
     expect(events.find((event) => event.type === 'told' && event.kind === 'ability')).toMatchObject(
       { content: { result: { seats: [2, 3], role: 'soldier' } } },
     )
+  })
+})
+
+describe('fixed registration and remaining Outsiders', () => {
+  it('resolves D10 then D11 after D2/D3 with independent alignment and role, once for the whole game', async () => {
+    const { events, state, discretionCalls } = await game([2, 1, 4], {
+      seats: seatsFor(['spy', 'recluse', 'fortuneteller', 'drunk', 'imp']),
+      choose: (request) =>
+        request.tool === 'night_choice' ? { reasoning: '', targets: [2, 4] } : passAction(request),
+      discretion: (id, candidates) => {
+        if (id === 'D2') return Promise.resolve('soldier')
+        if (id === 'D3') return Promise.resolve(3)
+        expect(id === 'D10' || id === 'D11').toBe(true)
+        expect(Array.isArray(candidates)).toBe(true)
+        const roles =
+          id === 'D10'
+            ? [
+                'spy',
+                ...Object.values(ROLES)
+                  .filter((role) => role.alignment === 'good')
+                  .map((role) => role.id),
+              ]
+            : [
+                'recluse',
+                ...Object.values(ROLES)
+                  .filter((role) => role.alignment === 'evil')
+                  .map((role) => role.id),
+              ]
+        expect(candidates).toHaveLength(id === 'D10' ? 36 : 12)
+        for (const role of roles) {
+          expect(candidates).toContainEqual({ alignment: 'good', role })
+          expect(candidates).toContainEqual({ alignment: 'evil', role })
+        }
+        return Promise.resolve(
+          id === 'D10' ? { alignment: 'evil', role: 'saint' } : { alignment: 'good', role: 'imp' },
+        )
+      },
+    })
+    expect(discretionCalls).toEqual(['D2', 'D3', 'D10', 'D11'])
+    expect(state.seats[0]).toMatchObject({
+      role: 'spy',
+      alignment: 'evil',
+      alive: false,
+      registeredRole: 'saint',
+      registeredAlignment: 'evil',
+    })
+    expect(state.seats[1]).toMatchObject({
+      role: 'recluse',
+      alignment: 'good',
+      alive: false,
+      registeredRole: 'imp',
+      registeredAlignment: 'good',
+    })
+    const registration = events.findLast((event) => event.type === 'grimoire.set')
+    const firstNight = events.find((event) => event.type === 'phase.started')
+    expect(registration?.seq).toBeLessThan(firstNight?.seq ?? 0)
+    expect(events.filter((event) => event.type === 'told' && event.kind === 'ability')).toEqual([
+      expect.objectContaining({ content: { role: 'fortuneteller', result: true } }),
+      expect.objectContaining({ content: { role: 'fortuneteller', result: true } }),
+      expect.objectContaining({ content: { role: 'fortuneteller', result: true } }),
+    ])
+  })
+})
+
+describe('Spy grimoire information', () => {
+  it('tells the full true grimoire every living night even while poisoned, without D8 or contestant calls', async () => {
+    const seats = seatsFor(['spy', 'fortuneteller', 'soldier', 'scarletwoman', 'imp'])
+    if (seats[0]) {
+      seats[0].poisoned = true
+      seats[0].registeredRole = 'drunk'
+      seats[0].registeredAlignment = 'good'
+    }
+    const { events, requests, discretionCalls } = await game([2, 4, 1], {
+      seats,
+      choose: (request) =>
+        request.tool === 'night_choice' ? { reasoning: '', targets: [1, 3] } : passAction(request),
+      discretion: (id) => {
+        expect(id).toBe('D3')
+        return Promise.resolve(2)
+      },
+    })
+    const tells = events.filter((event) => event.type === 'told' && event.kind === 'grimoire')
+    expect(tells).toHaveLength(3)
+    for (const told of tells) {
+      const prefix = events.filter((event) => event.seq < told.seq)
+      const truth = fold(prefix)
+      expect(told.content).toEqual({ seats: truth.seats, redHerring: 2 })
+      expect(prefix.at(-1)).toMatchObject({
+        type: 'ability.resolved',
+        seat: 1,
+        role: 'spy',
+        result: told.content,
+        deviated: false,
+      })
+      for (const language of ['zh', 'en'] as const) {
+        const text = renderEvent(told, language, 'seat:1')
+        expect(text).toContain(ROLES.spy.name[language])
+        expect(text).toContain(language === 'zh' ? '干扰项' : 'red herring')
+      }
+      expect(project([told], 'seat:2')).toEqual([])
+      expect(project([told], 'public')).toEqual([])
+    }
+    expect(tells[0]).toMatchObject({
+      content: { seats: [expect.objectContaining({ poisoned: true }), ...seats.slice(1)] },
+    })
+    expect(discretionCalls).toEqual(['D3'])
+    expect(requests.some((request) => request.role === 'spy')).toBe(false)
+  })
+})
+
+describe('Saint execution', () => {
+  it.each(['functioning', 'poisoned', 'already-dead', 'night-death', 'simultaneous-good'] as const)(
+    'checks actual execution death and good-win precedence: %s',
+    async (mode) => {
+      const seats = seatsFor(['chef', 'saint', 'soldier', 'scarletwoman', 'imp']).map((seat) => ({
+        ...seat,
+        poisoned: seat.seat === 2 && mode === 'poisoned',
+        alive:
+          !(seat.seat === 2 && mode === 'already-dead') &&
+          !(seat.seat === 5 && mode === 'simultaneous-good'),
+      }))
+      const { events } = await game([], {
+        seats,
+        act: (request) => {
+          if (request.tool === 'nominate' && mode !== 'night-death')
+            return {
+              reasoning: '',
+              nominee:
+                request.day === 1 && request.seat === 1 && request.nominees.includes(2) ? 2 : null,
+            }
+          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          if (request.tool === 'night_choice')
+            return {
+              reasoning: '',
+              targets: [request.day === 2 && mode === 'night-death' ? 2 : request.seat],
+            }
+          return passAction(request)
+        },
+      })
+      const end = events.at(-1)
+      expect(end).toMatchObject({
+        type: 'game.ended',
+        winner: mode === 'functioning' ? 'evil' : 'good',
+        reason: mode === 'functioning' ? 'saint_executed' : 'all_demons_dead',
+      })
+      if (mode === 'functioning' || mode === 'simultaneous-good')
+        expect(events.at(-2)).toMatchObject({ type: 'execution', seat: 2 })
+      else
+        expect(events.some((event) => event.type === 'phase.started' && event.day === 2)).toBe(true)
+      if (end?.type !== 'game.ended') throw new Error('Missing Saint ending')
+      for (const language of ['zh', 'en'] as const)
+        expect(renderEvent(end, language, 'public')).not.toContain('saint_executed')
+    },
+  )
+})
+
+describe('fixed registration across every §6.2 probe', () => {
+  for (const [probe, target, registration, healthy, poisoned] of [
+    [
+      'washerwoman',
+      'spy',
+      'mayor',
+      { seats: [2, 3], role: 'mayor' },
+      { seats: [2, 3], role: 'soldier' },
+    ],
+    ['librarian', 'spy', 'saint', { seats: [2, 3], role: 'saint' }, 0],
+    ['librarian', 'recluse', 'imp', 0, { seats: [2, 3], role: 'recluse' }],
+    ['investigator', 'spy', 'chef', 0, { seats: [2, 3], role: 'spy' }],
+    ['investigator', 'recluse', 'poisoner', { seats: [2, 3], role: 'poisoner' }, 0],
+  ] as const) {
+    it.each([false, true])(
+      `${probe} detects fixed ${target} role, unless poisoned=%s`,
+      async (impaired) => {
+        const seats = seatsFor([probe, target, 'soldier', 'virgin', 'imp'])
+        if (seats[1])
+          Object.assign(seats[1], {
+            registeredRole: registration,
+            registeredAlignment: ROLES[target].alignment,
+            poisoned: impaired,
+          })
+        const expected = impaired ? poisoned : healthy
+        const { events, discretionCalls } = await game([2, 4, 5], {
+          seats,
+          discretion: (_id, candidates) => {
+            expect(candidates).toContainEqual(expected)
+            return Promise.resolve(expected === 0 ? 0 : { ...expected, seats: [...expected.seats] })
+          },
+        })
+        expect(
+          events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
+        ).toMatchObject({
+          result: expected,
+          deviated: false,
+        })
+        if (expected === 0) expect(discretionCalls).toEqual([])
+      },
+    )
+  }
+
+  it.each([false, true])(
+    'Chef uses fixed alignment independently of role, unless poisoned=%s',
+    async (impaired) => {
+      const seats = seatsFor(['chef', 'spy', 'recluse', 'saint', 'imp'])
+      if (seats[1])
+        Object.assign(seats[1], {
+          registeredRole: 'mayor',
+          registeredAlignment: 'evil',
+          poisoned: impaired,
+        })
+      if (seats[2])
+        Object.assign(seats[2], {
+          registeredRole: 'poisoner',
+          registeredAlignment: 'evil',
+          poisoned: impaired,
+        })
+      const { events } = await game([2, 3, 4], { seats })
+      expect(
+        events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
+      ).toMatchObject({ result: impaired ? 0 : 1 })
+    },
+  )
+
+  it.each([false, true])(
+    'Empath uses fixed Spy alignment, unless poisoned=%s',
+    async (impaired) => {
+      const seats = seatsFor(['empath', 'spy', 'soldier', 'virgin', 'imp'])
+      if (seats[1])
+        Object.assign(seats[1], {
+          registeredRole: 'mayor',
+          registeredAlignment: 'good',
+          poisoned: impaired,
+        })
+      const { events } = await game([2, 4, 5], { seats })
+      expect(
+        events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
+      ).toMatchObject({ result: impaired ? 2 : 1 })
+      expect(
+        events.filter((event) => event.type === 'ability.resolved' && event.seat === 1).slice(1),
+      ).toEqual([expect.objectContaining({ result: 1 }), expect.objectContaining({ result: 1 })])
+    },
+  )
+
+  it.each([false, true])(
+    'Fortune Teller detects dead registered Demon Recluse, and poison temporarily restores truth: %s',
+    async (impaired) => {
+      const seats = seatsFor(['fortuneteller', 'recluse', 'soldier', 'virgin', 'imp'])
+      if (seats[1])
+        Object.assign(seats[1], {
+          registeredRole: 'imp',
+          registeredAlignment: 'good',
+          poisoned: impaired,
+        })
+      const { events } = await game([2, 4, 5], {
+        seats,
+        discretion: () => Promise.resolve(1),
+        choose: (request) =>
+          request.tool === 'night_choice'
+            ? { reasoning: '', targets: [2, 3] }
+            : passAction(request),
+      })
+      expect(
+        events
+          .filter((event) => event.type === 'ability.resolved' && event.seat === 1)
+          .map((event) => event.type === 'ability.resolved' && event.result),
+      ).toEqual([!impaired, true, true])
+    },
+  )
+
+  it.each(['spy', 'recluse'] as const)(
+    'Undertaker sees the dead %s fixed role, never its registered ability',
+    async (role) => {
+      const seats = seatsFor(['undertaker', role, 'soldier', 'virgin', 'imp'])
+      const registeredRole = role === 'spy' ? 'saint' : 'imp'
+      if (seats[1]) Object.assign(seats[1], { registeredRole, registeredAlignment: 'good' })
+      const { events } = await game([4, 5], {
+        seats,
+        choose: (request) => {
+          if (request.tool === 'nominate')
+            return {
+              reasoning: '',
+              nominee:
+                request.day === 1 && request.seat === 1 && request.nominees.includes(2) ? 2 : null,
+            }
+          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          return passAction(request)
+        },
+      })
+      expect(
+        events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
+      ).toMatchObject({ result: { target: 2, role: registeredRole } })
+      expect(events.at(-1)).toMatchObject({ type: 'game.ended', winner: 'good' })
+      expect(events.filter((event) => event.type === 'role.changed')).toEqual([])
+    },
+  )
+
+  for (const role of ['spy', 'recluse'] as const) {
+    it.each([false, true])(
+      `Ravenkeeper sees ${role} fixed role unless poisoned=%s`,
+      async (impaired) => {
+        const seats = seatsFor([
+          'ravenkeeper',
+          role,
+          'soldier',
+          impaired ? 'poisoner' : 'virgin',
+          'imp',
+        ])
+        const registration = role === 'spy' ? 'mayor' : 'imp'
+        if (seats[1])
+          Object.assign(seats[1], { registeredRole: registration, registeredAlignment: 'good' })
+        const { events } = await game([1, 2, 4], {
+          seats,
+          choose: (request) =>
+            request.tool === 'night_choice' ? { reasoning: '', targets: [2] } : passAction(request),
+        })
+        expect(
+          events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
+        ).toMatchObject({ result: { target: 2, role: impaired ? role : registration } })
+      },
+    )
+  }
+
+  it.each([false, true])(
+    'D16 uses fixed Spy role for Virgin and spends her first nomination, poisoned=%s',
+    async (impaired) => {
+      const seats = seatsFor(['virgin', 'spy', 'soldier', 'saint', 'imp'])
+      if (seats[1])
+        Object.assign(seats[1], {
+          registeredRole: 'mayor',
+          registeredAlignment: 'evil',
+          poisoned: impaired,
+        })
+      const { events, discretionCalls } = await game([], {
+        seats,
+        act: (request) => {
+          if (request.tool === 'nominate')
+            return {
+              reasoning: '',
+              nominee:
+                request.day === 1 && request.seat === 2 && request.nominees.includes(1) ? 1 : null,
+            }
+          if (request.tool === 'night_choice')
+            return {
+              reasoning: '',
+              targets: [request.day === 2 ? 2 : request.day === 3 ? 4 : request.seat],
+            }
+          return passAction(request)
+        },
+      })
+      expect(events.filter((event) => event.type === 'virgin.triggered')).toHaveLength(
+        impaired ? 0 : 1,
+      )
+      expect(events.filter((event) => event.type === 'execution')).toEqual(
+        impaired ? [] : [expect.objectContaining({ seat: 2 })],
+      )
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'status.changed',
+          seat: 1,
+          status: 'abilityUsed',
+          value: true,
+        }),
+      )
+      expect(discretionCalls).toEqual([])
+    },
+  )
+
+  it.each([false, true])(
+    'D17 kills only functioning registered Demon Recluse, without succession or ending the game, poisoned=%s',
+    async (impaired) => {
+      const seats = seatsFor(['slayer', 'recluse', 'soldier', 'scarletwoman', 'imp'])
+      if (seats[1])
+        Object.assign(seats[1], {
+          registeredRole: 'imp',
+          registeredAlignment: 'good',
+          poisoned: impaired,
+        })
+      const { events, discretionCalls } = await game([], {
+        seats,
+        act: (request) => {
+          if (
+            request.tool === 'speak' &&
+            request.kind === 'free' &&
+            request.day === 1 &&
+            request.seat === 1
+          )
+            return { reasoning: '', speech: 'Shoot the Recluse', slayer_target: 2 }
+          if (request.tool === 'night_choice')
+            return {
+              reasoning: '',
+              targets: [request.day === 2 ? 4 : request.day === 3 ? 2 : request.seat],
+            }
+          return passAction(request)
+        },
+      })
+      const shot = events.findIndex((event) => event.type === 'slayer.resolved')
+      expect(events[shot]).toMatchObject({ target: 2, died: !impaired })
+      expect(events[shot + 1]?.type).not.toBe('game.ended')
+      expect(events.filter((event) => event.type === 'role.changed')).toEqual([])
+      expect(discretionCalls).toEqual([])
+      expect(events.at(-1)).toMatchObject({ type: 'game.ended', winner: 'good' })
+    },
+  )
+})
+
+describe('registration never changes real roles or setup', () => {
+  it('a Spy registered good Saint remains a true Minion heir, then registers as its actual new Imp role', async () => {
+    const seats = seatsFor(['fortuneteller', 'spy', 'slayer', 'virgin', 'imp'])
+    if (seats[1]) Object.assign(seats[1], { registeredRole: 'saint', registeredAlignment: 'good' })
+    const { events } = await game([], {
+      seats,
+      discretion: () => Promise.resolve(1),
+      act: (request) => {
+        if (request.tool === 'night_choice')
+          return {
+            reasoning: '',
+            targets: request.role === 'fortuneteller' ? [2, 4] : [request.seat],
+          }
+        if (
+          request.tool === 'speak' &&
+          request.kind === 'free' &&
+          request.day === 2 &&
+          request.seat === 3
+        )
+          return { reasoning: '', speech: 'Shoot the new Imp', slayer_target: 2 }
+        return passAction(request)
+      },
+    })
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'role.changed', seat: 2, from: 'spy', to: 'imp' }),
+    )
+    expect(
+      events
+        .filter((event) => event.type === 'ability.resolved' && event.role === 'fortuneteller')
+        .map((event) => event.type === 'ability.resolved' && event.result),
+    ).toEqual([false, true])
+    expect(
+      events.filter((event) => event.type === 'told' && event.kind === 'grimoire'),
+    ).toHaveLength(1)
+    expect(events.slice(-2)).toEqual([
+      expect.objectContaining({ type: 'slayer.resolved', target: 2, died: true }),
+      expect.objectContaining({ type: 'game.ended', winner: 'good' }),
+    ])
+  })
+
+  it.each(['poisoner', 'imp'] as const)(
+    'a living Recluse registered %s is never an heir or a surviving true Demon',
+    async (registeredRole) => {
+      const seats = seatsFor(['recluse', 'chef', 'soldier', 'virgin', 'imp'])
+      if (seats[0]) Object.assign(seats[0], { registeredRole, registeredAlignment: 'evil' })
+      const { events } = await game([5], { seats })
+      expect(events.filter((event) => event.type === 'role.changed')).toEqual([])
+      expect(events.at(-1)).toMatchObject({
+        type: 'game.ended',
+        winner: 'good',
+        reason: 'all_demons_dead',
+      })
+    },
+  )
+
+  it('D1 tells the Spy its real identity before fixed registration, not its chosen good role', async () => {
+    const { events } = await game([4, 2, 3], {
+      discretion: (id) => {
+        if (id === 'D1') return Promise.resolve(['chef', 'slayer', 'virgin', 'spy', 'imp'])
+        expect(id).toBe('D10')
+        return Promise.resolve({ alignment: 'good', role: 'saint' })
+      },
+    })
+    expect(
+      events.filter((event) => event.type === 'told' && event.kind === 'role' && event.seat === 4),
+    ).toEqual([expect.objectContaining({ content: { role: 'spy' } })])
+    expect(fold(events).seats[3]).toMatchObject({
+      role: 'spy',
+      alignment: 'evil',
+      registeredRole: 'saint',
+      registeredAlignment: 'good',
+    })
+  })
+
+  it('Baron setup admits Butler and Drunk, and Baron death never removes Outsiders', async () => {
+    const { events, state, discretionCalls } = await game([4, 2, 1], {
+      discretion: (id) => {
+        if (id === 'D1') return Promise.resolve(['ravenkeeper', 'butler', 'drunk', 'baron', 'imp'])
+        expect(id).toBe('D2')
+        return Promise.resolve('soldier')
+      },
+      choose: (request) =>
+        request.tool === 'night_choice' ? { reasoning: '', targets: [5] } : passAction(request),
+    })
+    expect(discretionCalls).toEqual(['D1', 'D2'])
+    expect(
+      state.seats.filter((seat) => ROLES[seat.role].type === 'outsider').map((seat) => seat.role),
+    ).toEqual(['butler', 'drunk'])
+    expect(state.seats[3]).toMatchObject({ role: 'baron', alive: false })
+    expect(state.seats[2]).toMatchObject({ role: 'drunk', believedRole: 'soldier' })
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'status.changed', seat: 2, status: 'master', value: 5 }),
+    )
+  })
+
+  it.each([
+    ['spy', { alignment: 'good', role: 'imp' }],
+    ['recluse', { alignment: 'evil', role: 'saint' }],
+    ['spy', { alignment: 'good' }],
+    ['recluse', { role: 'imp' }],
+  ] as const)('rejects illegal %s setup registration %j', async (role, choice) => {
+    await expect(
+      game([], {
+        seats: seatsFor([role, 'soldier', 'slayer', 'virgin', 'imp']),
+        discretion: () => Promise.resolve(choice as Registration),
+      }),
+    ).rejects.toThrow(/Invalid D1[01] registration/)
+  })
+})
+
+describe('D1 guarantees a legal Washerwoman truth', () => {
+  it('rejects the sole-Townsfolk Washerwoman setup and never samples it', () => {
+    expect(validate(['washerwoman', 'recluse', 'saint', 'baron', 'imp'])).toEqual([
+      { code: 'no_washerwoman_truth' },
+    ])
+    expect(validate(['washerwoman', 'slayer', 'soldier', 'spy', 'imp'])).toEqual([])
+    for (let seed = 0; seed < 1000; seed++) {
+      const roles = sample(createRng(seed))
+      expect(validate(roles)).toEqual([])
+      expect(roles.includes('baron') && roles.includes('washerwoman')).toBe(false)
+    }
+  })
+  it('still gives D8 to a Drunk who believes Washerwoman in a Baron setup', async () => {
+    const seats = seatsFor(['soldier', 'drunk', 'saint', 'baron', 'imp'])
+    if (seats[1]) seats[1].believedRole = 'washerwoman'
+    const { events } = await game([4, 3, 2], {
+      seats,
+      discretion: (id, candidates) => {
+        expect(id).toBe('D8')
+        expect(candidates).toContainEqual({ seats: [1, 3], role: 'washerwoman' })
+        return Promise.resolve({ seats: [1, 3], role: 'washerwoman' })
+      },
+    })
+    expect(
+      events.find((event) => event.type === 'told' && event.kind === 'ability' && event.seat === 2),
+    ).toMatchObject({
+      content: { role: 'washerwoman', result: { seats: [1, 3], role: 'washerwoman' } },
+    })
   })
 })

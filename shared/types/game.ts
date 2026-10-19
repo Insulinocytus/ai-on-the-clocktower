@@ -163,6 +163,7 @@ type ValidationCode =
   | 'invalid_seat_count'
   | 'duplicate_role'
   | 'invalid_role_counts'
+  | 'no_washerwoman_truth'
   | 'invalid_demon'
   | 'unsupported_role'
   | 'invalid_targets'
@@ -230,7 +231,11 @@ export interface PairInformation {
   role: RoleId
 }
 export type InformationResult =
-  number | boolean | PairInformation | { target: number; role: RoleId }
+  | number
+  | boolean
+  | PairInformation
+  | { target: number; role: RoleId }
+  | Pick<Grimoire, 'seats' | 'redHerring'>
 type Event<T extends string, P> = { seq: number; type: T } & P
 export type GameEvent =
   | Event<'game.created', GameConfig>
@@ -319,7 +324,10 @@ export type GameEvent =
         content: { seats: number[]; bluffs?: RoleId[] }
       }
     >
-  | Event<'told', { seat: number; kind: 'grimoire'; content: { seats: SeatState[] } }>
+  | Event<
+      'told',
+      { seat: number; kind: 'grimoire'; content: Pick<Grimoire, 'seats' | 'redHerring'> }
+    >
   | Event<'seat.memo.updated', { seat: number; memo: string }>
   | Event<'night.choice', { seat: number; role: RoleId; targets: number[] }>
   | Event<'dawn.announced', { day: number; deaths: number[] }>
@@ -366,15 +374,19 @@ export type GameEventInput = GameEvent extends infer E
     ? Omit<E, 'seq'>
     : never
   : never
+export interface Registration {
+  alignment: Alignment
+  role: RoleId
+}
 export interface Ports {
   config: GameConfig
   log: readonly GameEvent[]
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id: 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D8' | 'D12' | 'D13' | 'D14',
-    candidates: { type: 'setup'; sample: RoleId[] } | (InformationResult | RoleId)[],
+    id: 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D8' | 'D10' | 'D11' | 'D12' | 'D13' | 'D14',
+    candidates: { type: 'setup'; sample: RoleId[] } | (InformationResult | RoleId | Registration)[],
     context: Grimoire,
-  ): Promise<RoleId[] | RoleId | InformationResult>
+  ): Promise<RoleId[] | RoleId | InformationResult | Registration>
   rng(): number
 }

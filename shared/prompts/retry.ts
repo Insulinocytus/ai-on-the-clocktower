@@ -10,6 +10,10 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     zh: '各类型角色人数不符合配置。',
     en: 'Character type counts do not match the setup.',
   },
+  no_washerwoman_truth: {
+    zh: '洗衣妇之外必须有可被探测为镇民的座位，否则没有合法首夜信息。',
+    en: 'The Washerwoman needs another detectable Townsfolk to receive legal first-night information.',
+  },
   invalid_demon: { zh: '必须恰有一个小恶魔。', en: 'There must be exactly one Imp.' },
   unsupported_role: {
     zh: '包含本局不支持的角色。',

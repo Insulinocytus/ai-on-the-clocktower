@@ -32,8 +32,8 @@ export function contestantSystem(language: Language, speechLimit = 10, whisperLi
 
 # 座位与本局配置
 本局固定 5 名玩家围坐一圈，按 1 号至 5 号顺时针排列，5 号之后是 1 号。“邻座”按此顺序计算。所有座位均为 AI 玩家，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
-5 人配置为 3 名镇民、0 名外来者、1 名爪牙、1 名恶魔；每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识。
-本局的角色池暂限士兵、厨师、共情者、红唇女郎、小恶魔，所有裁量随机。以下仍列出剧本全部 22 个角色及完整规则，供理解能力与互动。
+5 人通常配置为 3 名镇民、0 名外来者、1 名爪牙、1 名恶魔；男爵在场则改为 1 名镇民、2 名外来者、1 名爪牙、1 名恶魔。每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识。
+本局角色池包括全部 22 个角色，所有裁量随机。洗衣妇不会是唯一镇民：她的首夜信息必须指向自己以外的两人且至少一人被当作所示镇民。
 
 # 阵营与胜负
 镇民与外来者为善良阵营，爪牙与恶魔为邪恶阵营。本剧本的恶魔只有小恶魔。
@@ -64,7 +64,7 @@ ${characters}
 
 # 醉酒、中毒与被当作
 醉酒与中毒效果相同，不互相抵消：没有能力，但照常唤醒、选择而不生效，所得信息可能为假，本人不会被告知状态。酒鬼以为自己是镇民。中毒持续当夜和次日白天，到黄昏解除；投毒者死亡或变成小恶魔时立即解毒。醉酒或中毒时使用每局一次的能力仍会消耗它。
-间谍与陌客的被当作阵营、角色在开局分别确定，整局固定；能力有效时才生效，醉酒或中毒时恢复真实身份。死亡不取消写明死后仍有效的被当作。只有信息探测使用被当作；继位、恶魔死亡与胜负一律使用真实角色。间谍看到的魔典永远为真。
+间谍与陌客的被当作阵营、角色在开局分别独立确定，整局固定；能力有效时才生效，醉酒或中毒时恢复真实身份。死亡不取消写明死后仍有效的被当作。只有洗衣妇、图书管理员、调查员、厨师、共情者、占卜师、送葬者、守鸦人、猎手、贞洁者的探测使用被当作；继位、恶魔死亡与胜负一律使用真实角色。间谍看到的魔典永远为真，即使中毒。
 
 # 能力细节
 - 厨师计算座位环上相邻邪恶玩家的对数，包含死者；共情者只看两侧最近的存活玩家。
@@ -90,8 +90,8 @@ ${characters}
 
 # Seats and this game's setup
 Exactly 5 AI players sit clockwise in Seats 1 through 5; Seat 5 is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
-The setup is 3 Townsfolk, 0 Outsiders, 1 Minion and 1 Demon, with no duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other.
-This game's character pool is restricted to Soldier, Chef, Empath, Scarlet Woman and Imp, and all discretion is random. All 22 characters and full rules are included below to explain the script and interactions.
+The usual setup is 3 Townsfolk, 0 Outsiders, 1 Minion and 1 Demon; with the Baron it is 1 Townsfolk, 2 Outsiders, 1 Minion and 1 Demon. No duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other.
+All 22 characters are in this game's pool, and all discretion is random. The Washerwoman cannot be the sole Townsfolk: her first-night information must name two other seats, at least one registering as the shown Townsfolk.
 
 # Teams and winning
 Townsfolk and Outsiders are good; Minions and the Demon are evil. The only Demon in this script is the Imp.
@@ -122,7 +122,7 @@ Death is not elimination. Dead players still speak in every public or private co
 
 # Drunkenness, poison and registration
 Drunkenness and poison have the same effect and do not cancel: no ability, but normal waking and choices with no effect; information may be false and the player is not told their condition. The Drunk thinks they are a Townsfolk. Poison lasts that night and next day, ending at dusk, or immediately when the Poisoner dies or becomes the Imp. A once-per-game ability used while drunk or poisoned is still spent.
-Spy and Recluse registration alignment and character are separately fixed at setup for the whole game. They apply only while the ability works; drunk or poisoned players register truthfully. Death does not remove registration that explicitly works when dead. Only information checks use registration; succession, Demon death and victory use real characters. A Spy's Grimoire is always true.
+Spy and Recluse registration alignment and character are independently fixed at setup for the whole game. They apply only while the ability works; drunk or poisoned players register truthfully. Death does not remove registration that explicitly works when dead. Only Washerwoman, Librarian, Investigator, Chef, Empath, Fortune Teller, Undertaker, Ravenkeeper, Slayer and Virgin probes use registration; succession, Demon death and victory use real characters. A Spy's Grimoire is always true, even while poisoned.
 
 # Ability details
 - Chef counts adjacent evil pairs around the seating circle, including dead players; Empath counts only the nearest living player on each side.
