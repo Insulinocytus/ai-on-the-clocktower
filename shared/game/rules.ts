@@ -944,7 +944,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           }
         }
       }
-      if (type !== 'townsfolk') impaired.push(0)
+      if (type === 'outsider') impaired.push(0)
     }
     await information(seat, result, impaired, candidates)
   }

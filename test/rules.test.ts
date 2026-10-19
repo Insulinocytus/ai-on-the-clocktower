@@ -3064,7 +3064,11 @@ describe('drunkenness and poison through the rules seam', () => {
             expect(id).toBe('D8')
             expect(candidates).toContainEqual(answer)
             if (role === 'washerwoman' || role === 'librarian' || role === 'investigator') {
-              expect(candidates).toHaveLength(role === 'washerwoman' ? 78 : 25)
+              expect(candidates).toHaveLength(
+                role === 'washerwoman' ? 78 : role === 'librarian' ? 25 : 24,
+              )
+              if (role === 'librarian') expect(candidates).toContain(0)
+              else expect(candidates).not.toContain(0)
               for (const candidate of candidates as (number | { seats: number[] })[])
                 if (typeof candidate !== 'number') expect(candidate.seats).not.toContain(1)
             }
