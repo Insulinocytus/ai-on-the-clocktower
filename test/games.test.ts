@@ -557,7 +557,7 @@ describe('games HTTP seam', () => {
         args.nominee = Number(/You are Seat (\d+)\./.exec(user)?.[1])
         nominated = true
       }
-      if (name === 'speak' && user.includes('phase: public discussion.') && !claimed) {
+      if (name === 'speak' && currentRequestText(user).includes('Public discussion:') && !claimed) {
         args.speech = 'A public claim.'
         claimed = true
       }
