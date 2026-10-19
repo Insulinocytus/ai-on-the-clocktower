@@ -37,6 +37,7 @@ watch(
               ? 'border-violet-200 bg-violet-100/80 text-violet-950'
               : 'hover:bg-slate-100',
             block.kind === 'room' ? 'pl-6 text-violet-800' : '',
+            block.kind === 'allocation' ? 'opacity-55' : '',
           ]"
           :aria-current="selected === block.key ? 'step' : undefined"
           @click="$emit('select', block.key)"

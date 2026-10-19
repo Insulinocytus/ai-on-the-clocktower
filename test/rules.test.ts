@@ -16,6 +16,7 @@ import {
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
 import { channelBlocks } from '../shared/game/channels'
+import { seatFootprint, spectatorRows } from '../shared/game/spectator'
 import { renderEvent } from '../shared/event-templates'
 import type {
   ContestantChoice,
@@ -31,6 +32,113 @@ import type {
   SpeechChoice,
   SpeechRequest,
 } from '../shared/types/game'
+
+describe('spectator presentation of projected logs', () => {
+  it('limits a seat footprint to its actions and targets through the selected room end', () => {
+    const events: GameEvent[] = [
+      { seq: 1, type: 'phase.started', day: 1, phase: 'whisper' },
+      { seq: 2, type: 'whisper.room.opened', round: 1, roomId: 'a', members: [1, 2] },
+      { seq: 3, type: 'whisper.room.opened', round: 1, roomId: 'b', members: [3, 4] },
+      {
+        seq: 4,
+        type: 'whisper.speech',
+        round: 1,
+        roomId: 'a',
+        members: [1, 2],
+        seat: 2,
+        speech: 'Peer speech',
+        decision: 0,
+      },
+      {
+        seq: 5,
+        type: 'whisper.speech',
+        round: 1,
+        roomId: 'b',
+        members: [3, 4],
+        seat: 3,
+        speech: 'Selected end',
+        decision: 0,
+      },
+      {
+        seq: 6,
+        type: 'whisper.speech',
+        round: 1,
+        roomId: 'a',
+        members: [1, 2],
+        seat: 1,
+        speech: 'Future speech in earlier block',
+        decision: 0,
+      },
+      { seq: 7, type: 'phase.started', day: 1, phase: 'nomination' },
+      { seq: 8, type: 'nomination', nominator: 2, nominee: 1 },
+    ]
+    expect(seatFootprint(channelBlocks(events), 1, 5)).toEqual([])
+    expect(
+      seatFootprint(channelBlocks(events), 1, 8).map((block) =>
+        block.events.map((event) => event.seq),
+      ),
+    ).toEqual([[6], [8]])
+  })
+
+  it('attaches adopted reasoning, dims only losing decisions, and marks false tells only in their projected prefix', () => {
+    const decision = (seq: number, seat: number, speech: string | null): GameEvent => ({
+      seq,
+      type: 'contestant.decision',
+      seat,
+      request: { tool: 'speak', seat, day: 1, kind: 'free' },
+      raw: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    arguments: JSON.stringify({ reasoning: `Reason ${String(seq)}`, speech }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      model: 'fake',
+      usage: {},
+      durationMs: 10,
+      attempt: 1,
+      validation: { ok: true },
+    })
+    const events: GameEvent[] = [
+      decision(1, 1, 'Adopted'),
+      decision(2, 2, 'Not selected'),
+      decision(3, 3, null),
+      { seq: 4, type: 'public.speech', seat: 1, kind: 'free', speech: 'Adopted', decision: 1 },
+      {
+        seq: 5,
+        type: 'ability.resolved',
+        seat: 1,
+        role: 'chef',
+        result: 0,
+        deviated: true,
+        reason: 'poisoned',
+      },
+      { seq: 6, type: 'told', seat: 1, kind: 'ability', content: { role: 'chef', result: 1 } },
+    ]
+    const rows = spectatorRows(project(events, 'spectator'), false)
+    expect(rows.map((row) => row.event.seq)).toEqual([4, 5, 6])
+    expect(rows[0]).toMatchObject({ reasoning: 'Reason 1', losing: false })
+    expect(rows[2]).toMatchObject({ falseInfo: true, falseReason: 'poisoned' })
+    expect(
+      spectatorRows(events, true)
+        .filter((row) => row.losing)
+        .map((row) => row.speech),
+    ).toEqual(['Not selected', null])
+    expect(spectatorRows(project(events, 'seat:1'), true)).toEqual([
+      expect.objectContaining({ event: events[3], reasoning: undefined }),
+      expect.objectContaining({ event: events[5], falseInfo: false }),
+    ])
+    expect(spectatorRows(events.slice(0, 4), false).some((row) => row.falseInfo)).toBe(false)
+  })
+})
 
 describe('spectator channel blocks', () => {
   it('keeps interleaved room instances separate, announcements first, and folds at each end', () => {

@@ -1,0 +1,68 @@
+<script setup lang="ts">
+import { renderEvent } from '#shared/event-templates'
+import type { SpectatorRow } from '#shared/game/spectator'
+import type { Observer } from '#shared/types/game'
+
+defineProps<{ row: SpectatorRow; observer: Observer; reasoning: boolean }>()
+const { t, locale } = useI18n()
+</script>
+
+<template>
+  <li class="grid grid-cols-[2.5rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-55' : ''">
+    <span class="pt-1 text-xs tabular-nums text-muted-foreground">{{ row.event.seq }}</span>
+    <div class="min-w-0">
+      <p v-if="row.losing" class="mb-1 text-xs font-medium text-muted-foreground">
+        {{ t('spectator.notSelected') }}
+      </p>
+      <p
+        class="whitespace-pre-wrap break-words text-sm leading-7"
+        :class="
+          row.event.type === 'public.speech' || row.event.type === 'whisper.speech'
+            ? 'rounded-lg bg-slate-50 px-3 py-2 text-slate-900'
+            : 'text-muted-foreground'
+        "
+      >
+        {{ renderEvent(row.event, locale === 'zh' ? 'zh' : 'en', observer) }}
+      </p>
+      <p
+        v-if="row.losing && row.speech !== undefined"
+        class="mt-1 whitespace-pre-wrap break-words text-sm leading-7"
+      >
+        {{ row.speech === null ? t('spectator.pass') : row.speech }}
+      </p>
+      <p v-if="row.losing && row.nominee !== undefined" class="mt-1 text-sm">
+        {{
+          row.nominee === null
+            ? t('spectator.pass')
+            : t('spectator.proposedNomination', { seat: row.nominee })
+        }}
+      </p>
+      <span
+        v-if="observer === 'spectator' && row.falseInfo"
+        class="mt-2 inline-block rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900"
+        :title="row.falseReason"
+        >{{ t('spectator.falseInfo') }}</span
+      >
+      <details v-if="reasoning && row.reasoning && row.decision" class="mt-2 text-sm">
+        <summary
+          class="cursor-pointer text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {{ t('spectator.reasoning') }}
+        </summary>
+        <p class="mt-2 whitespace-pre-wrap break-words leading-6">{{ row.reasoning }}</p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          {{ row.decision.model }} · {{ row.decision.durationMs }} ms ·
+          {{ t('spectator.attempt', { attempt: row.decision.attempt }) }}
+        </p>
+        <details class="mt-2">
+          <summary class="cursor-pointer text-xs text-muted-foreground">
+            {{ t('trial.raw') }}
+          </summary>
+          <pre class="mt-2 max-h-64 overflow-auto rounded bg-muted p-3 text-xs">{{
+            JSON.stringify(row.decision.raw, null, 2)
+          }}</pre>
+        </details>
+      </details>
+    </div>
+  </li>
+</template>

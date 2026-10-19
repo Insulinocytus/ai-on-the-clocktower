@@ -1,25 +1,44 @@
 <script setup lang="ts">
 import { ROLES } from '#shared/game/roles'
-import type { GameConfig, Grimoire, PublicState } from '#shared/types/game'
+import type { GameConfig, GameEvent, Grimoire, PublicState, RoleId } from '#shared/types/game'
 
 const props = defineProps<{
   config: GameConfig
   grimoire: Grimoire
   publicState: PublicState
   title: string
+  events: GameEvent[]
+  focusedSeat: number | undefined
 }>()
+defineEmits<{ focus: [seat: number] }>()
 const { t, locale } = useI18n()
 const language = computed(() => (locale.value === 'zh' ? 'zh' : 'en'))
 const alive = computed(() =>
   props.grimoire.seats.length
     ? props.grimoire.seats.filter((seat) => seat.alive).length
-    : props.config.seatCount,
+    : props.publicState.seats.filter((seat) => seat.alive).length,
 )
+const toldRoles = computed(() => {
+  const roles = new Map<number, RoleId>()
+  for (const event of props.events) {
+    if (
+      event.type === 'told' &&
+      (event.kind === 'role' || event.kind === 'imp') &&
+      'role' in event.content
+    )
+      roles.set(event.seat, event.content.role)
+  }
+  return roles
+})
 const seats = computed(() =>
   props.config.seats.map((preset, index) => ({
     number: index + 1,
     preset: preset.name,
     state: props.grimoire.seats.find((seat) => seat.seat === index + 1),
+    role:
+      props.grimoire.seats.find((seat) => seat.seat === index + 1)?.role ??
+      toldRoles.value.get(index + 1),
+    publicSeat: props.publicState.seats.find((seat) => seat.seat === index + 1),
   })),
 )
 function position(index: number) {
@@ -58,65 +77,90 @@ function position(index: number) {
         <p v-if="publicState.aboutToBeExecuted !== null" class="text-xs font-medium text-rose-700">
           {{ t('spectator.executionSeat', { seat: publicState.aboutToBeExecuted }) }}
         </p>
+        <p class="text-xs text-muted-foreground">{{ t('spectator.footprintHint') }}</p>
       </div>
       <ol>
         <li
           v-for="(seat, index) in seats"
           :key="seat.number"
-          class="absolute w-[118px] -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 bg-white p-2.5 text-center text-xs shadow-sm"
-          :class="[
-            seat.state?.alignment === 'evil' ? 'border-rose-300' : 'border-blue-200',
-            seat.state && !seat.state.alive ? 'bg-slate-100 text-slate-500' : '',
-            publicState.aboutToBeExecuted === seat.number
-              ? 'outline-2 outline-offset-4 outline-rose-600'
-              : '',
-          ]"
+          class="absolute w-[118px] -translate-x-1/2 -translate-y-1/2"
           :style="position(index)"
         >
-          <p class="font-semibold">{{ t('games.seat', { seat: seat.number }) }}</p>
-          <p class="my-1 break-words font-medium text-slate-800">{{ seat.preset }}</p>
-          <p :title="seat.state ? ROLES[seat.state.role].ability[language] : undefined">
-            {{ seat.state ? ROLES[seat.state.role].name[language] : t('spectator.unknownRole') }}
-          </p>
-          <p v-if="seat.state?.believedRole" class="mt-1 text-violet-700">
-            {{ t('spectator.believes', { role: ROLES[seat.state.believedRole].name[language] }) }}
-          </p>
-          <div
-            v-if="seat.state"
-            class="mt-1 flex flex-wrap justify-center gap-x-1.5 gap-y-1 text-[10px]"
+          <button
+            type="button"
+            class="w-full rounded-xl border-2 bg-white p-2.5 text-center text-xs shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            :aria-label="t('spectator.footprint', { seat: seat.number })"
+            :aria-pressed="focusedSeat === seat.number"
+            :class="[
+              seat.state?.alignment === 'evil'
+                ? 'border-rose-300'
+                : seat.role
+                  ? 'border-blue-200'
+                  : 'border-slate-200',
+              !(seat.state?.alive ?? seat.publicSeat?.alive ?? true)
+                ? 'bg-slate-100 text-slate-500'
+                : '',
+              focusedSeat === seat.number ? 'ring-2 ring-violet-500 ring-offset-2' : '',
+              publicState.aboutToBeExecuted === seat.number
+                ? 'outline-2 outline-offset-4 outline-rose-600'
+                : '',
+            ]"
+            @click="$emit('focus', seat.number)"
           >
-            <span v-if="!seat.state.alive" class="font-semibold">{{ t('spectator.dead') }}</span>
-            <span v-if="!seat.state.alive">{{
-              t(seat.state.voteUsed ? 'spectator.voteUsed' : 'spectator.voteAvailable')
-            }}</span>
-            <span v-if="seat.state.poisoned" class="text-violet-700">{{
-              t('spectator.poisoned')
-            }}</span>
-            <span v-if="seat.state.protected" class="text-blue-700">{{
-              t('spectator.protected')
-            }}</span>
-            <span v-if="seat.state.abilityUsed">{{ t('spectator.abilityUsed') }}</span>
-            <span v-if="seat.state.master !== null">{{
-              t('spectator.master', { seat: seat.state.master })
-            }}</span>
-            <span v-if="grimoire.redHerring === seat.number">{{ t('spectator.redHerring') }}</span>
-            <span v-if="seat.state.registeredRole">{{
-              t('spectator.registeredRole', {
-                role: ROLES[seat.state.registeredRole].name[language],
-              })
-            }}</span>
-            <span v-if="seat.state.registeredAlignment">{{
-              t('spectator.registeredAlignment', {
-                alignment: t(`spectator.${seat.state.registeredAlignment}`),
-              })
-            }}</span>
-          </div>
-          <p
-            v-if="publicState.aboutToBeExecuted === seat.number"
-            class="mt-1 font-semibold text-rose-700"
-          >
-            {{ t('spectator.execution') }}
-          </p>
+            <p class="font-semibold">{{ t('games.seat', { seat: seat.number }) }}</p>
+            <p class="my-1 break-words font-medium text-slate-800">{{ seat.preset }}</p>
+            <p :title="seat.role ? ROLES[seat.role].ability[language] : undefined">
+              {{ seat.role ? ROLES[seat.role].name[language] : t('spectator.unknownRole') }}
+            </p>
+            <p v-if="seat.state?.believedRole" class="mt-1 text-violet-700">
+              {{ t('spectator.believes', { role: ROLES[seat.state.believedRole].name[language] }) }}
+            </p>
+            <div
+              v-if="!seat.state && seat.publicSeat && !seat.publicSeat.alive"
+              class="mt-1 text-[10px]"
+            >
+              {{ t('spectator.dead') }} ·
+              {{ t(seat.publicSeat.voteUsed ? 'spectator.voteUsed' : 'spectator.voteAvailable') }}
+            </div>
+            <div
+              v-if="seat.state"
+              class="mt-1 flex flex-wrap justify-center gap-x-1.5 gap-y-1 text-[10px]"
+            >
+              <span v-if="!seat.state.alive" class="font-semibold">{{ t('spectator.dead') }}</span>
+              <span v-if="!seat.state.alive">{{
+                t(seat.state.voteUsed ? 'spectator.voteUsed' : 'spectator.voteAvailable')
+              }}</span>
+              <span v-if="seat.state.poisoned" class="text-violet-700">{{
+                t('spectator.poisoned')
+              }}</span>
+              <span v-if="seat.state.protected" class="text-blue-700">{{
+                t('spectator.protected')
+              }}</span>
+              <span v-if="seat.state.abilityUsed">{{ t('spectator.abilityUsed') }}</span>
+              <span v-if="seat.state.master !== null">{{
+                t('spectator.master', { seat: seat.state.master })
+              }}</span>
+              <span v-if="grimoire.redHerring === seat.number">{{
+                t('spectator.redHerring')
+              }}</span>
+              <span v-if="seat.state.registeredRole">{{
+                t('spectator.registeredRole', {
+                  role: ROLES[seat.state.registeredRole].name[language],
+                })
+              }}</span>
+              <span v-if="seat.state.registeredAlignment">{{
+                t('spectator.registeredAlignment', {
+                  alignment: t(`spectator.${seat.state.registeredAlignment}`),
+                })
+              }}</span>
+            </div>
+            <p
+              v-if="publicState.aboutToBeExecuted === seat.number"
+              class="mt-1 font-semibold text-rose-700"
+            >
+              {{ t('spectator.execution') }}
+            </p>
+          </button>
         </li>
       </ol>
     </div>
