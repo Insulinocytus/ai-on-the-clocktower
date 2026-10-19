@@ -128,40 +128,67 @@ export function validate(roles: readonly string[]): ValidationError[] {
   return errors
 }
 
+function combinations(pool: readonly RoleId[], count: number): RoleId[][] {
+  const result: RoleId[][] = []
+  const selected: RoleId[] = []
+  const choose = (start: number) => {
+    if (selected.length === count) {
+      result.push(selected.slice())
+      return
+    }
+    for (let index = start; index <= pool.length - (count - selected.length); index++) {
+      const role = pool[index]
+      if (role === undefined) throw new Error('Missing combination role')
+      selected.push(role)
+      choose(index + 1)
+      selected.pop()
+    }
+  }
+  choose(0)
+  return result
+}
+
+function shuffle(roles: readonly RoleId[], rng: () => number): RoleId[] {
+  const shuffled = roles.slice()
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const other = Math.floor(rng() * (index + 1))
+    const role = shuffled[index]
+    const replacement = shuffled[other]
+    if (role !== undefined && replacement !== undefined) {
+      shuffled[index] = replacement
+      shuffled[other] = role
+    }
+  }
+  return shuffled
+}
+
+const LEGAL_ROLE_SETS = new Map<number, RoleId[][]>()
+
 export function sample(rng: () => number, seatCount = 5): RoleId[] {
   const counts = setupCounts(seatCount)
-  const minions = ROLE_POOL.filter((role) => ROLES[role].type === 'minion')
-  const roles: RoleId[] = ['imp']
-  for (let index = 0; index < counts.minions; index++) {
-    const [role] = minions.splice(Math.floor(rng() * minions.length), 1)
-    if (role) roles.push(role)
-  }
-  const baron = roles.includes('baron') ? 2 : 0
-  const townsfolk = ROLE_POOL.filter(
-    (role) =>
-      ROLES[role].type === 'townsfolk' &&
-      (counts.townsfolk - baron !== 1 || role !== 'washerwoman'),
-  )
-  const outsiders = ROLE_POOL.filter((role) => ROLES[role].type === 'outsider')
-  for (const [pool, count] of [
-    [townsfolk, counts.townsfolk - baron],
-    [outsiders, counts.outsiders + baron],
-  ] as const) {
-    for (let index = 0; index < count; index++) {
-      const [role] = pool.splice(Math.floor(rng() * pool.length), 1)
-      if (role) roles.push(role)
+  let candidates = LEGAL_ROLE_SETS.get(seatCount)
+  if (!candidates) {
+    candidates = []
+    const townsfolk = ROLE_POOL.filter((role) => ROLES[role].type === 'townsfolk')
+    const outsiders = ROLE_POOL.filter((role) => ROLES[role].type === 'outsider')
+    const minions = ROLE_POOL.filter((role) => ROLES[role].type === 'minion' && role !== 'baron')
+    for (const baron of [false, true]) {
+      const townSets = combinations(townsfolk, counts.townsfolk - (baron ? 2 : 0))
+      const outsiderSets = combinations(outsiders, counts.outsiders + (baron ? 2 : 0))
+      const minionSets = combinations(minions, counts.minions - (baron ? 1 : 0))
+      for (const towns of townSets)
+        for (const outsiders of outsiderSets)
+          for (const minions of minionSets) {
+            const roles: RoleId[] = ['imp', ...towns, ...outsiders, ...minions]
+            if (baron) roles.push('baron')
+            if (validate(roles).length === 0) candidates.push(roles)
+          }
     }
+    LEGAL_ROLE_SETS.set(seatCount, candidates)
   }
-  for (let index = roles.length - 1; index > 0; index--) {
-    const other = Math.floor(rng() * (index + 1))
-    const role = roles[index]
-    const replacement = roles[other]
-    if (role !== undefined && replacement !== undefined) {
-      roles[index] = replacement
-      roles[other] = role
-    }
-  }
-  return roles
+  const roles = candidates[Math.floor(rng() * candidates.length)]
+  if (!roles) throw new Error('No legal setup sampled')
+  return shuffle(roles, rng)
 }
 
 type Audience = 'public' | 'seat' | 'room' | 'storyteller' | 'spectator'
@@ -627,16 +654,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       throw new Error('Invalid D1 setup')
     if (ports.config.discretions.seating !== ports.config.discretions.D1) {
       const roles = choice
-      const shuffled = roles.slice()
-      for (let index = shuffled.length - 1; index > 0; index--) {
-        const other = Math.floor(ports.rng() * (index + 1))
-        const role = shuffled[index]
-        const replacement = shuffled[other]
-        if (role !== undefined && replacement !== undefined) {
-          shuffled[index] = replacement
-          shuffled[other] = role
-        }
-      }
+      const shuffled = shuffle(roles, () => ports.rng())
       const seated = await discretion('seating', { type: 'seating', roles, sample: shuffled })
       if (
         !Array.isArray(seated) ||

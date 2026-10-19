@@ -334,6 +334,69 @@ describe('five-seat setup', () => {
   })
 })
 
+describe('uniform legal role-set sampling', () => {
+  it.each([
+    [5, 930, 72],
+    [6, 3480, 48],
+    [7, 5577, 1716],
+    [8, 16588, 1144],
+    [9, 23452, 286],
+    [10, 28314, 23166],
+    [11, 36036, 15444],
+    [12, 34749, 3861],
+    [13, 31603, 30888],
+    [14, 23452, 20592],
+    [15, 9438, 5148],
+  ])('makes every legal %i-seat role set reachable with equal mass', (count, total, baronTotal) => {
+    const sets = new Set<string>()
+    let barons = 0
+    for (let index = 0; index < total; index++) {
+      let calls = 0
+      const roles = sample(() => (calls++ === 0 ? (index + 0.5) / total : 0.5), count)
+      expect(validate(roles)).toEqual([])
+      sets.add(roles.toSorted().join(','))
+      if (roles.includes('baron')) barons++
+      if (roles.includes('drunk'))
+        expect(
+          Object.values(ROLES).some((role) => role.type === 'townsfolk' && !roles.includes(role.id)),
+        ).toBe(true)
+    }
+    expect(sets.size).toBe(total)
+    expect(barons).toBe(baronTotal)
+  })
+
+  it('keeps the fixed-seed Baron ratio near 72/930 and seats the Imp uniformly', () => {
+    const rng = createRng(1632)
+    let barons = 0
+    const demonSeats = [0, 0, 0, 0, 0]
+    for (let index = 0; index < 10000; index++) {
+      const roles = sample(rng)
+      if (roles.includes('baron')) barons++
+      const seat = roles.indexOf('imp')
+      demonSeats[seat] = (demonSeats[seat] ?? 0) + 1
+    }
+    expect(Math.abs(barons / 10000 - 72 / 930)).toBeLessThan(0.01)
+    for (const count of demonSeats) expect(Math.abs(count / 10000 - 0.2)).toBeLessThan(0.015)
+  })
+
+  it('makes all 120 seat permutations of a fixed five-role set equally reachable', () => {
+    const permutations = new Set<string>()
+    for (let index = 0; index < 120; index++) {
+      let remainder = index
+      let calls = 0
+      const roles = sample(() => {
+        if (calls++ === 0) return 0
+        const bound = 7 - calls
+        const choice = remainder % bound
+        remainder = Math.floor(remainder / bound)
+        return (choice + 0.5) / bound
+      })
+      permutations.add(roles.join(','))
+    }
+    expect(permutations.size).toBe(120)
+  })
+})
+
 const PUBLIC_TYPES = [
   'phase.started',
   'game.ended',
