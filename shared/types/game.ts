@@ -109,6 +109,7 @@ interface VoteRequest {
   threshold: number
   highestVoteCount: number
   canRaiseHand: boolean
+  master?: number | null
 }
 interface VoteChoice {
   reasoning: string
@@ -371,9 +372,9 @@ export interface Ports {
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id: 'D1' | 'D3' | 'D4' | 'D5' | 'D6' | 'D14',
-    candidates: { type: 'setup'; sample: RoleId[] } | (number | PairInformation)[],
+    id: 'D1' | 'D3' | 'D4' | 'D5' | 'D6' | 'D12' | 'D13' | 'D14',
+    candidates: { type: 'setup'; sample: RoleId[] } | (number | PairInformation | boolean)[],
     context: Grimoire,
-  ): Promise<RoleId[] | number | PairInformation>
+  ): Promise<RoleId[] | number | PairInformation | boolean>
   rng(): number
 }

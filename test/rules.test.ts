@@ -270,6 +270,7 @@ async function game(
     d14?: number
     choose?: (request: ContestantRequest) => ContestantChoice
     discretion?: Ports['discretion']
+    act?: (request: ContestantRequest) => ContestantChoice
   } = {},
 ) {
   const events: GameEvent[] = [{ seq: 1, type: 'game.created', ...CONFIG }]
@@ -305,7 +306,11 @@ async function game(
     askContestants: (batch) => {
       const choices = batch.map((request) => {
         let choice: ContestantChoice
-        if (request.tool === 'nominate') {
+        if (options.act) {
+          if (request.day > 8) throw new Error('Role scenario did not finish within its script')
+          if (request.tool === 'night_choice') requests.push(structuredClone(request))
+          choice = options.act(request)
+        } else if (request.tool === 'nominate') {
           choice = options.choose?.(request) ?? { reasoning: 'Pass', nominee: null }
         } else if (request.tool === 'speak') {
           choice =
@@ -1627,5 +1632,573 @@ describe('whisper semantic boundaries', () => {
     })
     expect(events.filter((event) => event.type === 'whisper.room.opened')).toHaveLength(1)
     expect(requests.filter((request) => request.tool === 'propose_whisper')).toHaveLength(5)
+  })
+})
+
+function passAction(request: ContestantRequest): ContestantChoice {
+  switch (request.tool) {
+    case 'night_choice':
+      return { reasoning: '', targets: [5] }
+    case 'speak':
+      return {
+        reasoning: '',
+        speech: request.kind === 'free' ? null : 'Argument',
+        slayer_target: null,
+      }
+    case 'nominate':
+      return { reasoning: '', nominee: null }
+    case 'vote':
+      return { reasoning: '', raise_hand: false }
+    case 'propose_whisper':
+      return { reasoning: '', members: null }
+    case 'rank_whispers':
+      return { reasoning: '', ranking: [] }
+  }
+}
+
+describe('protection and daytime triggers', () => {
+  it('Monk skips first night, excludes self, protects Imp suicide, and expires next night', async () => {
+    const { events, requests } = await game([], {
+      seats: seatsFor(['monk', 'chef', 'soldier', 'scarletwoman', 'imp']),
+      act: (request) =>
+        request.tool === 'night_choice'
+          ? {
+              reasoning: '',
+              targets: [request.role === 'monk' ? (request.day === 2 ? 5 : 3) : request.seat],
+            }
+          : passAction(request),
+    })
+    const monk = requests.filter((request) => request.role === 'monk')
+    expect(monk.map((request) => request.day)).toEqual([2, 3, 4])
+    expect(monk.every((request) => !request.targets.includes(1))).toBe(true)
+    expect(
+      events.find((event) => event.type === 'ability.resolved' && event.role === 'imp'),
+    ).toMatchObject({ result: { target: 5, outcome: 'protected' } })
+    expect(
+      events.filter((event) => event.type === 'night.death').map((event) => event.seat),
+    ).toEqual([5, 4])
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'status.changed',
+        seat: 5,
+        status: 'protected',
+        value: false,
+      }),
+    )
+  })
+  it.each([
+    { redirect: false, target: 3, death: 1 },
+    { redirect: true, target: 3, death: 3 },
+    { redirect: true, target: 2, death: null },
+  ])(
+    'Mayor D12=$redirect D13=$target resolves exactly one Imp attack',
+    async ({ redirect, target, death }) => {
+      const candidatesSeen: unknown[] = []
+      const { events, discretionCalls } = await game([], {
+        seats: seatsFor(['mayor', 'soldier', 'chef', 'scarletwoman', 'imp']),
+        discretion: (id, candidates) => {
+          candidatesSeen.push(candidates)
+          return Promise.resolve(id === 'D12' ? redirect : target)
+        },
+        act: (request) =>
+          request.tool === 'night_choice'
+            ? { reasoning: '', targets: [request.day === 2 ? 1 : request.seat] }
+            : passAction(request),
+      })
+      const night2 = events.filter(
+        (event) =>
+          event.seq >
+            (events.find((event) => event.type === 'phase.started' && event.day === 2)?.seq ?? 0) &&
+          event.seq <
+            (events.find(
+              (event) =>
+                event.type === 'phase.started' && event.day === 2 && event.phase === 'dawn',
+            )?.seq ?? Infinity),
+      )
+      expect(
+        night2.filter((event) => event.type === 'night.death').map((event) => event.seat),
+      ).toEqual(death === null ? [] : [death])
+      expect(discretionCalls).toEqual(redirect ? ['D12', 'D13'] : ['D12'])
+      expect(candidatesSeen[0]).toEqual([false, true])
+      if (redirect) expect(candidatesSeen[1]).toEqual([2, 3, 4, 5])
+    },
+  )
+  it('Virgin immediately executes a Townsfolk nominator and overrides a leading execution', async () => {
+    const { events } = await game([], {
+      seats: seatsFor(['virgin', 'chef', 'soldier', 'scarletwoman', 'imp']),
+      act: (request) => {
+        if (request.tool === 'nominate' && request.day === 1)
+          return {
+            reasoning: '',
+            nominee:
+              request.nominees.includes(4) && request.seat === 2
+                ? 4
+                : !request.nominees.includes(4) && request.seat === 3
+                  ? 1
+                  : null,
+          }
+        if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+        if (request.tool === 'night_choice') return { reasoning: '', targets: [request.seat] }
+        return passAction(request)
+      },
+    })
+    const trigger = events.findIndex((event) => event.type === 'virgin.triggered')
+    expect(trigger).toBeGreaterThan(0)
+    expect(events[trigger + 1]).toMatchObject({ type: 'execution', seat: 3 })
+    expect(events.filter((event) => event.type === 'execution')).toEqual([
+      expect.objectContaining({ seat: 3 }),
+    ])
+    expect(events[trigger + 2]).toMatchObject({ type: 'phase.started', phase: 'night', day: 2 })
+    expect(fold(events).seats[0]?.abilityUsed).toBe(true)
+  })
+  it('Slayer spends one shot, kills the Imp, and routes death through Scarlet Woman succession', async () => {
+    const { events } = await game([], {
+      seats: seatsFor(['slayer', 'chef', 'soldier', 'scarletwoman', 'imp']),
+      act: (request) => {
+        if (
+          request.tool === 'speak' &&
+          request.kind === 'free' &&
+          request.seat === 1 &&
+          request.day <= 2
+        )
+          return { reasoning: '', speech: 'I shoot.', slayer_target: request.day === 1 ? 5 : 4 }
+        if (request.tool === 'night_choice')
+          return { reasoning: '', targets: [request.day === 2 ? 2 : request.seat] }
+        return passAction(request)
+      },
+    })
+    expect(events.filter((event) => event.type === 'slayer.resolved')).toEqual([
+      expect.objectContaining({ seat: 1, target: 5, died: true }),
+      expect.objectContaining({ seat: 1, target: 4, died: false }),
+    ])
+    expect(events.find((event) => event.type === 'role.changed')).toMatchObject({
+      seat: 4,
+      to: 'imp',
+    })
+    expect(
+      events.filter((event) => event.type === 'status.changed' && event.status === 'abilityUsed'),
+    ).toEqual([expect.objectContaining({ seat: 1, value: true })])
+  })
+  it('Butler chooses a nonself master every night and an illegal vote still counts', async () => {
+    const votes: ContestantRequest[] = []
+    const { events, requests } = await game([], {
+      seats: seatsFor(['butler', 'chef', 'soldier', 'scarletwoman', 'imp']),
+      act: (request) => {
+        if (request.tool === 'night_choice')
+          return { reasoning: '', targets: [request.role === 'butler' ? 5 : request.seat] }
+        if (
+          request.tool === 'nominate' &&
+          request.day === 1 &&
+          request.seat === 2 &&
+          request.nominees.includes(3)
+        )
+          return { reasoning: '', nominee: 3 }
+        if (request.tool === 'vote') {
+          votes.push(request)
+          return { reasoning: '', raise_hand: request.seat !== 5 }
+        }
+        return passAction(request)
+      },
+    })
+    expect(
+      requests.filter((request) => request.role === 'butler').map((request) => request.day),
+    ).toEqual([1, 2])
+    expect(
+      requests
+        .filter((request) => request.role === 'butler')
+        .every((request) => !request.targets.includes(1)),
+    ).toBe(true)
+    expect(votes.find((request) => request.seat === 1)).toMatchObject({
+      master: 5,
+      canRaiseHand: true,
+    })
+    expect(events.find((event) => event.type === 'vote.tallied')).toMatchObject({ votes: 4 })
+    expect(
+      events.filter((event) => event.type === 'status.changed' && event.status === 'master'),
+    ).toHaveLength(2)
+  })
+  it('Mayor wins only when three live at day end without execution and the ability is effective', async () => {
+    const seats = seatsFor(['mayor', 'soldier', 'chef', 'scarletwoman', 'imp']).map((seat) => ({
+      ...seat,
+      alive: ![2, 4].includes(seat.seat),
+    }))
+    const { events } = await game([], {
+      seats,
+      act: (request) =>
+        request.tool === 'night_choice'
+          ? { reasoning: '', targets: [request.seat] }
+          : passAction(request),
+    })
+    expect(events.at(-1)).toMatchObject({ type: 'game.ended', winner: 'good', reason: 'mayor' })
+    expect(events.some((event) => event.type === 'night.choice')).toBe(false)
+    for (const poisoned of [true, false]) {
+      const result = await game([], {
+        seats: seats.map((seat) => ({ ...seat, poisoned: seat.seat === 1 && poisoned })),
+        act: (request) => {
+          if (
+            !poisoned &&
+            request.tool === 'nominate' &&
+            request.day === 1 &&
+            request.seat === 3 &&
+            request.nominees.includes(2)
+          )
+            return { reasoning: '', nominee: 2 }
+          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          return request.tool === 'night_choice'
+            ? { reasoning: '', targets: [request.seat] }
+            : passAction(request)
+        },
+      })
+      expect(result.events.at(-1)).toMatchObject({ type: 'game.ended', reason: 'all_demons_dead' })
+      if (!poisoned)
+        expect(result.events).toContainEqual(
+          expect.objectContaining({ type: 'execution', seat: 2 }),
+        )
+    }
+  })
+  it('admits each implemented Townsfolk in setup', () => {
+    for (const role of ['monk', 'mayor', 'virgin', 'slayer'])
+      expect(validate([role, 'chef', 'soldier', 'scarletwoman', 'imp'])).toEqual([])
+  })
+  it.each(['monk', 'butler'] as const)(
+    '%s rejects self even when supplied in the target list',
+    (role) => {
+      expect(
+        validateNightChoice(
+          { reasoning: '', targets: [1] },
+          { tool: 'night_choice', seat: 1, role, day: 2, targets: [1, 2] },
+        ),
+      ).toContainEqual({ code: 'invalid_targets' })
+    },
+  )
+  it.each(['dead', 'protected', 'protected-mayor', 'poisoned-mayor'] as const)(
+    'Mayor attack handles %s without another Imp choice',
+    async (mode) => {
+      const seats = seatsFor(['mayor', 'monk', 'chef', 'scarletwoman', 'imp']).map((seat) => ({
+        ...seat,
+        alive: !(mode === 'dead' && seat.seat === 3),
+        poisoned: mode === 'poisoned-mayor' && seat.seat === 1,
+      }))
+      const { events, requests, discretionCalls } = await game([], {
+        seats,
+        discretion: (id) => Promise.resolve(id === 'D12' ? true : 3),
+        act: (request) =>
+          request.tool === 'night_choice'
+            ? {
+                reasoning: '',
+                targets: [
+                  request.role === 'monk'
+                    ? request.day > 2
+                      ? 3
+                      : mode === 'protected-mayor'
+                        ? 1
+                        : mode === 'protected'
+                          ? 3
+                          : 5
+                    : request.day === 2
+                      ? 1
+                      : request.seat,
+                ],
+              }
+            : passAction(request),
+      })
+      const dawn = events.find((event) => event.type === 'dawn.announced' && event.day === 2)
+      expect(dawn).toMatchObject({ deaths: mode === 'poisoned-mayor' ? [1] : [] })
+      expect(discretionCalls).toEqual(
+        mode === 'protected-mayor' || mode === 'poisoned-mayor' ? [] : ['D12', 'D13'],
+      )
+      expect(
+        requests.filter((request) => request.role === 'imp' && request.day === 2),
+      ).toHaveLength(1)
+    },
+  )
+  it.each(['minion', 'drunk-nominator', 'poisoned', 'drunk-virgin', 'dead-virgin'] as const)(
+    'Virgin first nomination with %s never executes and is not restored',
+    async (mode) => {
+      const seats = seatsFor(['virgin', 'chef', 'soldier', 'scarletwoman', 'imp'])
+      const virgin = seats[0]
+      const nominatorSeat = seats[1]
+      if (!virgin || !nominatorSeat) throw new Error('Missing fixture seats')
+      if (mode === 'poisoned') virgin.poisoned = true
+      if (mode === 'dead-virgin') virgin.alive = false
+      if (mode === 'drunk-virgin') {
+        virgin.role = 'drunk'
+        virgin.believedRole = 'virgin'
+      }
+      if (mode === 'drunk-nominator') {
+        nominatorSeat.role = 'drunk'
+        nominatorSeat.believedRole = 'chef'
+      }
+      const { events, state } = await game([], {
+        seats,
+        act: (request) => {
+          const nominator = request.day === 1 && mode === 'minion' ? 4 : 2
+          if (
+            request.tool === 'nominate' &&
+            request.day <= 2 &&
+            request.seat === nominator &&
+            request.nominees.includes(1)
+          )
+            return { reasoning: '', nominee: 1 }
+          if (request.tool === 'night_choice') return { reasoning: '', targets: [request.seat] }
+          return passAction(request)
+        },
+      })
+      expect(events.some((event) => event.type === 'virgin.triggered')).toBe(false)
+      expect(state.seats[0]?.abilityUsed).toBe(mode !== 'dead-virgin')
+      expect(events.filter((event) => event.type === 'nomination')).toHaveLength(2)
+    },
+  )
+  it.each(['miss', 'poisoned', 'drunk', 'dead', 'dead-target', 'before-succession'] as const)(
+    'Slayer shot with %s is a public no-op and never grants a second shot',
+    async (mode) => {
+      const seats = seatsFor(['slayer', 'chef', 'soldier', 'scarletwoman', 'imp'])
+      const slayer = seats[0]
+      const target = seats[1]
+      if (!slayer || !target) throw new Error('Missing fixture seats')
+      if (mode === 'poisoned') slayer.poisoned = true
+      if (mode === 'drunk') {
+        slayer.role = 'drunk'
+        slayer.believedRole = 'slayer'
+      }
+      if (mode === 'dead') slayer.alive = false
+      if (mode === 'dead-target') {
+        target.alive = false
+        target.role = 'imp'
+        target.alignment = 'evil'
+      }
+      const { events, state } = await game([], {
+        seats,
+        act: (request) => {
+          if (
+            request.tool === 'speak' &&
+            request.kind === 'free' &&
+            request.seat === 1 &&
+            request.day <= 2
+          )
+            return {
+              reasoning: '',
+              speech: 'I shoot.',
+              slayer_target:
+                request.day === 2
+                  ? 5
+                  : mode === 'before-succession'
+                    ? 4
+                    : mode === 'miss' || mode === 'dead-target'
+                      ? 2
+                      : 5,
+            }
+          if (request.tool === 'night_choice')
+            return { reasoning: '', targets: [request.day === 2 ? 2 : request.seat] }
+          return passAction(request)
+        },
+      })
+      expect(
+        events.filter((event) => event.type === 'slayer.resolved').every((event) => !event.died),
+      ).toBe(true)
+      expect(events.filter((event) => event.type === 'slayer.resolved')).toHaveLength(2)
+      expect(state.seats[0]?.abilityUsed).toBe(mode !== 'dead')
+    },
+  )
+  it.each(['poisoned', 'dead-target', 'execution'] as const)(
+    'Monk protection handles %s without reselecting',
+    async (mode) => {
+      const seats = seatsFor(['monk', 'chef', 'soldier', 'scarletwoman', 'imp']).map((seat) => ({
+        ...seat,
+        poisoned: mode === 'poisoned' && seat.seat === 1,
+        alive: !(mode === 'dead-target' && seat.seat === 2),
+      }))
+      const { events, requests } = await game([], {
+        seats,
+        act: (request) => {
+          if (request.tool === 'night_choice')
+            return {
+              reasoning: '',
+              targets: [
+                request.role === 'monk'
+                  ? 2
+                  : request.day === 2
+                    ? mode === 'execution'
+                      ? 3
+                      : 2
+                    : request.seat,
+              ],
+            }
+          if (
+            request.tool === 'nominate' &&
+            request.day === 2 &&
+            request.seat === 3 &&
+            request.nominees.includes(2) &&
+            mode === 'execution'
+          )
+            return { reasoning: '', nominee: 2 }
+          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          return passAction(request)
+        },
+      })
+      expect(
+        requests.filter((request) => request.role === 'imp' && request.day === 2),
+      ).toHaveLength(1)
+      expect(
+        events.find((event) => event.type === 'dawn.announced' && event.day === 2),
+      ).toMatchObject({ deaths: mode === 'poisoned' ? [2] : [] })
+      if (mode === 'execution')
+        expect(events.find((event) => event.type === 'execution')).toMatchObject({ seat: 2 })
+      if (mode === 'poisoned')
+        expect(
+          events.some(
+            (event) =>
+              event.type === 'status.changed' &&
+              event.status === 'protected' &&
+              event.value === true,
+          ),
+        ).toBe(false)
+    },
+  )
+  it.each(['dead', 'poisoned', 'dead-master'] as const)(
+    'Butler handles %s without enforcing the vote restriction',
+    async (mode) => {
+      const seats = seatsFor(['butler', 'chef', 'soldier', 'scarletwoman', 'imp']).map((seat) => ({
+        ...seat,
+        poisoned: mode === 'poisoned' && seat.seat === 1,
+        alive:
+          !(mode === 'dead' && seat.seat === 1) && !(mode === 'dead-master' && seat.seat === 3),
+        master: seat.seat === 1 ? 3 : null,
+      }))
+      const { events, requests } = await game([], {
+        seats,
+        act: (request) => {
+          if (request.tool === 'night_choice')
+            return { reasoning: '', targets: [request.role === 'butler' ? 3 : request.seat] }
+          if (
+            request.tool === 'nominate' &&
+            request.day === 1 &&
+            request.seat === 2 &&
+            request.nominees.includes(3)
+          )
+            return { reasoning: '', nominee: 3 }
+          if (request.tool === 'vote') return { reasoning: '', raise_hand: request.seat === 1 }
+          return passAction(request)
+        },
+      })
+      expect(requests.some((request) => request.role === 'butler')).toBe(mode !== 'dead')
+      expect(events.find((event) => event.type === 'vote' && event.seat === 1)).toMatchObject({
+        raiseHand: true,
+        voteUsed: mode === 'dead',
+      })
+      expect(events.find((event) => event.type === 'vote.tallied')).toMatchObject({ votes: 1 })
+      if (mode !== 'dead')
+        expect(events).toContainEqual(
+          expect.objectContaining({ type: 'status.changed', status: 'master', value: 3 }),
+        )
+    },
+  )
+  it('Slayer ends a game immediately when no Scarlet Woman can inherit, ignoring Monk protection', async () => {
+    const seats = seatsFor(['slayer', 'monk', 'soldier', 'scarletwoman', 'imp']).map((seat) => ({
+      ...seat,
+      alive: seat.seat !== 4,
+    }))
+    const { events } = await game([], {
+      seats,
+      act: (request) => {
+        if (request.tool === 'night_choice')
+          return { reasoning: '', targets: [request.role === 'monk' ? 5 : 3] }
+        if (
+          request.tool === 'speak' &&
+          request.kind === 'free' &&
+          request.day === 2 &&
+          request.seat === 1
+        )
+          return { reasoning: '', speech: 'Shoot', slayer_target: 5 }
+        return passAction(request)
+      },
+    })
+    expect(events.slice(-2)).toEqual([
+      expect.objectContaining({ type: 'slayer.resolved', died: true }),
+      expect.objectContaining({ type: 'game.ended', winner: 'good' }),
+    ])
+  })
+  it('Mayor substitute is an Imp kill and wakes Ravenkeeper immediately before dawn', async () => {
+    const { events } = await game([], {
+      seats: seatsFor(['mayor', 'ravenkeeper', 'soldier', 'scarletwoman', 'imp']),
+      discretion: (id) => Promise.resolve(id === 'D12' ? true : 2),
+      act: (request) =>
+        request.tool === 'night_choice'
+          ? {
+              reasoning: '',
+              targets: [request.role === 'ravenkeeper' ? 2 : request.day === 2 ? 1 : request.seat],
+            }
+          : passAction(request),
+    })
+    const death = events.find((event) => event.type === 'night.death' && event.seat === 2)
+    const choice = events.find((event) => event.type === 'night.choice' && event.seat === 2)
+    const told = events.find(
+      (event) => event.type === 'told' && event.kind === 'ability' && event.seat === 2,
+    )
+    const dawn = events.find((event) => event.type === 'dawn.announced' && event.day === 2)
+    expect(death).toMatchObject({ cause: 'imp' })
+    expect(choice).toMatchObject({ role: 'ravenkeeper', targets: [2] })
+    expect(told).toMatchObject({
+      content: { role: 'ravenkeeper', result: { target: 2, role: 'ravenkeeper' } },
+    })
+    expect(death?.seq).toBeLessThan(choice?.seq ?? 0)
+    expect(choice?.seq).toBeLessThan(told?.seq ?? 0)
+    expect(told?.seq).toBeLessThan(dawn?.seq ?? 0)
+  })
+  it('Virgin execution supplies Undertaker information the following night', async () => {
+    const { events } = await game([], {
+      seats: seatsFor(['virgin', 'undertaker', 'chef', 'scarletwoman', 'imp']),
+      act: (request) => {
+        if (
+          request.tool === 'nominate' &&
+          request.day === 1 &&
+          request.seat === 3 &&
+          request.nominees.includes(1)
+        )
+          return { reasoning: '', nominee: 1 }
+        if (request.tool === 'night_choice')
+          return { reasoning: '', targets: [request.day === 2 ? 3 : request.seat] }
+        return passAction(request)
+      },
+    })
+    const trigger = events.findIndex((event) => event.type === 'virgin.triggered')
+    expect(events[trigger + 1]).toMatchObject({ type: 'execution', seat: 3 })
+    expect(
+      events.filter(
+        (event) => event.type === 'told' && event.kind === 'ability' && event.seat === 2,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        content: { role: 'undertaker', result: { target: 3, role: 'chef' } },
+      }),
+    ])
+  })
+  it.each(['drunk', 'dead', 'two-alive'] as const)('Mayor cannot win while %s', async (mode) => {
+    const seats = seatsFor(['mayor', 'chef', 'soldier', 'scarletwoman', 'imp']).map((seat) => ({
+      ...seat,
+      alive:
+        mode === 'two-alive'
+          ? [1, 5].includes(seat.seat)
+          : mode === 'dead'
+            ? [2, 3, 5].includes(seat.seat)
+            : [1, 3, 5].includes(seat.seat),
+    }))
+    const mayor = seats[0]
+    if (!mayor) throw new Error('Missing Mayor fixture')
+    if (mode === 'drunk') {
+      mayor.role = 'drunk'
+      mayor.believedRole = 'mayor'
+    }
+    const { events } = await game([], {
+      seats,
+      act: (request) =>
+        request.tool === 'night_choice'
+          ? { reasoning: '', targets: [request.seat] }
+          : passAction(request),
+    })
+    expect(events.at(-1)).toMatchObject({
+      type: 'game.ended',
+      reason: mode === 'two-alive' ? 'two_alive' : 'all_demons_dead',
+    })
   })
 })

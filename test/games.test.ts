@@ -35,22 +35,27 @@ async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]
       }
     const messages = request.body.messages as { content: string }[]
     const user = messages[1]?.content ?? ''
-    if (name === 'night_choice' && /as Fortune Teller|作为占卜师/.test(user))
-      return { kind: 'toolCall', name, arguments: '{"reasoning":"Probe","targets":[1,2]}' }
-    if (name === 'night_choice' && /as Ravenkeeper|作为守鸦人/.test(user))
-      return { kind: 'toolCall', name, arguments: '{"reasoning":"Inspect","targets":[1]}' }
+    if (name === 'night_choice' && !/as Imp|作为小恶魔/.test(user))
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({
+          reasoning: 'Legal non-Imp choice',
+          targets: nightTargets(user),
+        }),
+      }
     return responder?.(request)
   })
   return {
     ...fake,
     get requests() {
-      return fake.requests.filter(
-        (request) =>
-          toolChoice.parse(request.body.tool_choice).function.name === 'night_choice' &&
-          !/as Fortune Teller|作为占卜师|as Ravenkeeper|作为守鸦人/.test(
-            JSON.stringify(request.body.messages),
-          ),
-      )
+      return fake.requests.filter((request) => {
+        const input = gameRequest.parse(request.body)
+        return (
+          input.tool_choice.function.name === 'night_choice' &&
+          /as Imp|作为小恶魔/.test(input.messages[1].content)
+        )
+      })
     },
   }
 }
@@ -61,6 +66,18 @@ const gameRequest = z.object({
   ]),
   tool_choice: toolChoice,
 })
+
+function nightTargets(user: string, turn = 0): number[] {
+  const domain = /Legal targets: ([^.]+)\.|合法目标：([^。]+)。/.exec(user)
+  const targets = (domain?.[1] ?? domain?.[2] ?? '').match(/\d+/g)?.map(Number) ?? []
+  const count = /as Fortune Teller|作为占卜师/.test(user) ? 2 : 1
+  if (targets.length < count) throw new Error('Missing legal night targets in fixture prompt')
+  return Array.from({ length: count }, (_, index) => {
+    const target = targets[(turn + index) % targets.length]
+    if (target === undefined) throw new Error('Missing fixture target')
+    return target
+  })
+}
 
 async function preset(
   apiKeyEnv: string,
@@ -112,16 +129,14 @@ describe('games HTTP seam', () => {
       const user = messages[1]?.content ?? ''
       const args =
         name === 'night_choice'
-          ? {
-              targets: user.includes('choose 2 distinct players')
-                ? [1, 2]
-                : [(nightTurn++ % 5) + 1],
-            }
+          ? { targets: nightTargets(user, nightTurn++) }
           : name === 'nominate'
             ? {
                 nominee:
                   user.includes('You are Seat 1.') && user.includes('Nominees today: none.')
-                    ? 1
+                    ? user.includes('Your character: Virgin;')
+                      ? 2
+                      : 1
                     : null,
               }
             : name === 'vote'
@@ -1019,18 +1034,19 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     roles.set(role, seat)
     if (tool === 'night_choice') {
       const victims = [...roles]
-        .filter(([character]) => !['Imp', 'Scarlet Woman', 'Soldier'].includes(character))
+        .filter(([character]) => !['Imp', 'Scarlet Woman', 'Soldier', 'Mayor'].includes(character))
         .map(([, target]) => target)
       return {
         kind: 'toolCall',
         name: tool,
         arguments: JSON.stringify({
           reasoning: 'Advance the night.',
-          targets: user.includes('choose 2 distinct players')
-            ? [1, 2]
-            : role === 'Imp'
-              ? [day === 2 ? victims[0] : day === 3 ? victims[1] : seat]
-              : [1],
+          targets:
+            role === 'Imp'
+              ? [day <= 3 ? victims[0] : seat]
+              : role === 'Monk'
+                ? [roles.get('Scarlet Woman')]
+                : nightTargets(user),
         }),
       }
     }
@@ -1091,8 +1107,15 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     const events = await log()
     expect(events[0]).toMatchObject({ type: 'game.created', speechLimit: 1 })
     const speeches = events.filter((event) => event.type === 'public.speech')
-    expect(speeches).toHaveLength(15)
-    expect(new Set(speeches.map((event) => event.speech)).size).toBe(15)
+    const publicDays = events.flatMap((event) =>
+      event.type === 'phase.started' && event.phase === 'public' ? [event.day] : [],
+    )
+    expect(publicDays.length).toBeGreaterThanOrEqual(3)
+    for (const day of publicDays)
+      expect(
+        speeches.filter((event) => event.speech.startsWith(`SPEECH-D${String(day)}-`)),
+      ).toHaveLength(5)
+    expect(new Set(speeches.map((event) => event.speech)).size).toBe(speeches.length)
     for (const speech of speeches)
       expect(events.find((event) => event.seq === speech.decision)).toMatchObject({
         type: 'contestant.decision',
@@ -1150,7 +1173,7 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
         name: tool,
         arguments: JSON.stringify({
           reasoning: 'Advance the game',
-          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
+          targets: nightTargets(user, nightTurn++),
         }),
       }
     if (tool === 'nominate')
@@ -1250,7 +1273,7 @@ it('retries only the failing public seat and commits speech and memos after the 
         name: tool,
         arguments: JSON.stringify({
           reasoning: 'Advance the game',
-          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
+          targets: nightTargets(user, nightTurn++),
         }),
       }
     if (tool === 'nominate')
@@ -1376,6 +1399,7 @@ it.each(['en', 'zh'] as const)(
   'runs private rooms with localized %s requests, semantic retries and isolated projections',
   async (language) => {
     const invalid = new Set<string>()
+    let nightTurn = 0
     const fake = await startFakeProvider((request) => {
       const input = gameRequest.parse(request.body)
       const name = input.tool_choice.function.name
@@ -1401,7 +1425,7 @@ it.each(['en', 'zh'] as const)(
           slayer_target: fail ? 2 : null,
         }
       } else if (name === 'nominate') args = { nominee: null }
-      else args = { targets: [seat] }
+      else args = { targets: nightTargets(user, nightTurn++) }
       return {
         kind: 'toolCall',
         name,
@@ -1494,11 +1518,11 @@ it.each(['en', 'zh'] as const)(
 )
 
 it('defaults to three private room entries and leaves a no-room round for public discussion', async () => {
+  let nightTurn = 0
   const fake = await startFakeProvider((request) => {
     const input = gameRequest.parse(request.body)
     const name = input.tool_choice.function.name
     const user = input.messages[1].content
-    const seat = Number(/You are Seat (\d+)/.exec(user)?.[1])
     const args =
       name === 'propose_whisper'
         ? { members: null }
@@ -1506,7 +1530,7 @@ it('defaults to three private room entries and leaves a no-room round for public
           ? { nominee: null }
           : name === 'speak'
             ? { speech: null, slayer_target: null }
-            : { targets: [seat] }
+            : { targets: nightTargets(user, nightTurn++) }
     return { kind: 'toolCall', name, arguments: JSON.stringify({ reasoning: '', ...args }) }
   })
   try {

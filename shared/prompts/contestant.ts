@@ -123,9 +123,19 @@ export function buildContestantPrompt({
           )
           .join(zh ? '；' : '; ')
         const count = request.votes.filter((vote) => vote.raiseHand).length
+        const butler =
+          request.master === undefined
+            ? ''
+            : state.seats.find((player) => player.seat === seat)?.alive
+              ? zh
+                ? `你的主人是 ${String(request.master)} 号。只有主人已举手或已被计入本次投票时，你才可以举手；你不必跟票。请自行遵守这一约束。`
+                : `Your master is Seat ${String(request.master)}. You may raise your hand only if your master has raised or already been counted in this vote; you need not follow their vote. Follow this restriction yourself.`
+              : zh
+                ? '你已死亡，管家不再限制你的唯一一票。'
+                : 'You are dead; the Butler no longer restricts your one remaining vote.'
         return zh
-          ? `# 本次请求\n${String(request.nominator)} 号提名 ${String(request.nominee)} 号，顺时针投票轮到你。前面的票：${votes || '无'}。当前 ${String(count)} 票；门槛 ${String(request.threshold)} 票；今天此前最高 ${String(request.highestVoteCount)} 票。达到门槛且严格超过此前最高票才能成为即将被处决者；与最高票平票则无人处决。${request.canRaiseHand ? 'raise_hand 填 true 或 false；死者举手将永久消耗唯一的投票标记。' : '你的死者投票标记已用，只能填 false。'}\n请调用 vote。`
-          : `# This request\nSeat ${String(request.nominator)} nominated Seat ${String(request.nominee)}. It is your clockwise voting turn. Previous individual votes: ${votes || 'none'}. Current tally: ${String(count)}; threshold: ${String(request.threshold)}; previous highest today: ${String(request.highestVoteCount)}. Meeting the threshold and strictly exceeding the previous high makes the nominee about to be executed; tying the high cancels the execution leader. ${request.canRaiseHand ? 'Set raise_hand to true or false; a dead voter raising permanently spends their only vote token.' : 'Your dead vote token is spent; only false is legal.'}\nCall vote.`
+          ? `# 本次请求\n${String(request.nominator)} 号提名 ${String(request.nominee)} 号，顺时针投票轮到你。前面的票：${votes || '无'}。当前 ${String(count)} 票；门槛 ${String(request.threshold)} 票；今天此前最高 ${String(request.highestVoteCount)} 票。达到门槛且严格超过此前最高票才能成为即将被处决者；与最高票平票则无人处决。${request.canRaiseHand ? 'raise_hand 填 true 或 false；死者举手将永久消耗唯一的投票标记。' : '你的死者投票标记已用，只能填 false。'}${butler}\n请调用 vote。`
+          : `# This request\nSeat ${String(request.nominator)} nominated Seat ${String(request.nominee)}. It is your clockwise voting turn. Previous individual votes: ${votes || 'none'}. Current tally: ${String(count)}; threshold: ${String(request.threshold)}; previous highest today: ${String(request.highestVoteCount)}. Meeting the threshold and strictly exceeding the previous high makes the nominee about to be executed; tying the high cancels the execution leader. ${request.canRaiseHand ? 'Set raise_hand to true or false; a dead voter raising permanently spends their only vote token.' : 'Your dead vote token is spent; only false is legal.'} ${butler}\nCall vote.`
       }
       case 'night_choice': {
         const targetCount = request.role === 'fortuneteller' ? 2 : 1
