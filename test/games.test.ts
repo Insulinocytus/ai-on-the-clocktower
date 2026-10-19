@@ -326,6 +326,87 @@ describe('games HTTP seam', () => {
     }
   })
 
+  it('accepts a manual D10 registration with reversed object keys and rejects duplicate submissions', async () => {
+    const action = gameActions()
+    const fake = await startFakeProvider((request) => {
+      const input = gameRequest.parse(request.body)
+      const name = input.tool_choice.function.name
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({
+          reasoning: 'Legal action',
+          ...action(name, input.messages[1].content),
+        }),
+      }
+    })
+    let gameId: string | undefined
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+      const game = await $fetch<GameSummary>('/api/games', {
+        method: 'POST',
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+          discretions: { ...randomDiscretions, D1: 'manual', D10: 'manual' },
+        },
+      })
+      gameId = game.id
+      const history = () => $fetch<GameEvent[]>(`/api/games/${game.id}/events`)
+      const pending = async () => {
+        const request = (await history()).findLast(
+          (event) => event.type === 'discretion.requested' && event.source === 'manual',
+        )
+        return request?.type === 'discretion.requested' ? request : undefined
+      }
+      const submit = (seq: number, choice: unknown) =>
+        fetch(`/api/games/${game.id}/discretions/${String(seq)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ choice }),
+        })
+      await expect.poll(async () => (await pending())?.discretion).toBe('D1')
+      const setup = await pending()
+      if (!setup) throw new Error('Missing setup request')
+      expect((await submit(setup.seq, ['chef', 'empath', 'soldier', 'spy', 'imp'])).status).toBe(200)
+      await expect.poll(async () => (await pending())?.discretion).toBe('D10')
+      const registration = await pending()
+      if (
+        registration?.type !== 'discretion.requested' ||
+        !Array.isArray(registration.candidates)
+      )
+        throw new Error('Missing registration request')
+      const candidate = z
+        .object({ alignment: z.string(), role: z.string() })
+        .parse(registration.candidates[0])
+      const choice = { role: candidate.role, alignment: candidate.alignment }
+      expect((await submit(registration.seq, choice)).status).toBe(200)
+      const duplicate = await submit(registration.seq, choice)
+      expect(duplicate.status).toBe(409)
+      expect(await duplicate.json()).toMatchObject({ data: { choice } })
+      await expect
+        .poll(async () => (await $fetch<GameSummary>(`/api/games/${game.id}`)).status)
+        .toBe('ended')
+      expect(await history()).toContainEqual(
+        expect.objectContaining({
+          type: 'discretion.resolved',
+          discretion: 'D10',
+          source: 'manual',
+          choice,
+        }),
+      )
+      expect(
+        (await history()).filter(
+          (event) => event.type === 'discretion.resolved' && event.discretion === 'D10',
+        ),
+      ).toHaveLength(1)
+    } finally {
+      if (gameId) await $fetch(`/api/games/${gameId}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
   it('requires a storyteller preset only when a discretion uses it and checks its credentials', async () => {
     const seat = await preset('CLOCKTOWER_GAME_KEY')
     const storyteller = await preset('CLOCKTOWER_MISSING_STORYTELLER')
