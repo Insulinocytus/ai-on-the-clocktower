@@ -180,6 +180,12 @@ export interface Grimoire {
   aborted: boolean
   executedToday: number | null
 }
+export interface PairInformation {
+  seats: number[]
+  role: RoleId
+}
+export type InformationResult =
+  number | boolean | PairInformation | { target: number; role: RoleId }
 type Event<T extends string, P> = { seq: number; type: T } & P
 export type GameEvent =
   | Event<'game.created', GameConfig>
@@ -245,7 +251,7 @@ export type GameEvent =
         seat: number
         role: RoleId
         result:
-          | number
+          | InformationResult
           | { target: number; outcome: 'killed' | 'dead' | 'soldier' | 'protected' | 'inactive' }
         deviated: boolean
         reason?: string
@@ -254,7 +260,11 @@ export type GameEvent =
   | Event<'night.death', { seat: number; cause: string }>
   | Event<
       'told',
-      { seat: number; kind: 'role' | 'ability' | 'imp'; content: { role: RoleId; result?: number } }
+      {
+        seat: number
+        kind: 'role' | 'ability' | 'imp'
+        content: { role: RoleId; result?: InformationResult }
+      }
     >
   | Event<
       'told',
@@ -317,9 +327,9 @@ export interface Ports {
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id: 'D1' | 'D14',
-    candidates: { type: 'setup'; sample: RoleId[] } | number[],
+    id: 'D1' | 'D3' | 'D4' | 'D5' | 'D6' | 'D14',
+    candidates: { type: 'setup'; sample: RoleId[] } | (number | PairInformation)[],
     context: Grimoire,
-  ): Promise<RoleId[] | number>
+  ): Promise<RoleId[] | number | PairInformation>
   rng(): number
 }

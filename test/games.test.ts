@@ -22,18 +22,28 @@ await setup({
 
 const toolChoice = z.object({ function: z.object({ name: z.string() }) })
 
-async function nightProvider() {
+async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]) {
   const fake = await startFakeProvider((request) => {
     const name = toolChoice.parse(request.body.tool_choice).function.name
     if (name === 'nominate')
       return { kind: 'toolCall', name, arguments: '{"reasoning":"Pass","nominee":null}' }
-    return undefined
+    const messages = request.body.messages as { content: string }[]
+    const user = messages[1]?.content ?? ''
+    if (name === 'night_choice' && /as Fortune Teller|作为占卜师/.test(user))
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Probe","targets":[1,2]}' }
+    if (name === 'night_choice' && /as Ravenkeeper|作为守鸦人/.test(user))
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Inspect","targets":[1]}' }
+    return responder?.(request)
   })
   return {
     ...fake,
     get requests() {
       return fake.requests.filter(
-        (request) => toolChoice.parse(request.body.tool_choice).function.name === 'night_choice',
+        (request) =>
+          toolChoice.parse(request.body.tool_choice).function.name === 'night_choice' &&
+          !/as Fortune Teller|作为占卜师|as Ravenkeeper|作为守鸦人/.test(
+            JSON.stringify(request.body.messages),
+          ),
       )
     },
   }
@@ -80,7 +90,11 @@ describe('games HTTP seam', () => {
       const user = messages[1]?.content ?? ''
       const args =
         name === 'night_choice'
-          ? { targets: [(nightTurn++ % 5) + 1] }
+          ? {
+              targets: user.includes('choose 2 distinct players')
+                ? [1, 2]
+                : [(nightTurn++ % 5) + 1],
+            }
           : name === 'nominate'
             ? {
                 nominee:
@@ -227,7 +241,10 @@ describe('games HTTP seam', () => {
         .toBe('ended')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       const decisions = events.filter(
-        (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+        (event) =>
+          event.type === 'contestant.decision' &&
+          event.request.tool === 'night_choice' &&
+          event.request.role === 'imp',
       )
       expect(decisions.slice(0, 2)).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -333,7 +350,9 @@ describe('games HTTP seam', () => {
         events
           .filter(
             (event) =>
-              event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+              event.type === 'contestant.decision' &&
+              event.request.tool === 'night_choice' &&
+              event.request.role === 'imp',
           )
           .slice(0, 2),
       ).toMatchObject([
@@ -383,7 +402,9 @@ describe('games HTTP seam', () => {
           events
             .filter(
               (event) =>
-                event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+                event.type === 'contestant.decision' &&
+                event.request.tool === 'night_choice' &&
+                event.request.role === 'imp',
             )
             .slice(0, 2),
         ).toMatchObject([
@@ -399,25 +420,28 @@ describe('games HTTP seam', () => {
   it.each(['zh', 'en'] as const)(
     'replaces only accepted seat memos, keeps them out of the timeline, and projects them privately (%s)',
     async (language) => {
-      const fake = await nightProvider()
       const original = '记'.repeat(2000)
+      const memos = [undefined, original, undefined, 'Keep only this claim.', '']
+      let turn = 0
+      const fake = await nightProvider((request) => {
+        const messages = request.body.messages as { content: string }[]
+        const user = messages[1]?.content ?? ''
+        const ownSeat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
+        if (!ownSeat) throw new Error('Missing contestant seat')
+        const accepted = turn < memos.length
+        const memo = accepted ? memos[turn] : 'Rejected'
+        turn++
+        return {
+          kind: 'toolCall',
+          name: 'night_choice',
+          arguments: JSON.stringify({
+            reasoning: 'Keep targeting the same other seat.',
+            targets: accepted ? [ownSeat === 1 ? 2 : 1] : [],
+            memo,
+          }),
+        }
+      })
       try {
-        for (const memo of [undefined, original, undefined, 'Keep only this claim.', ''])
-          fake.script({
-            kind: 'toolCall',
-            name: 'night_choice',
-            arguments: JSON.stringify({ reasoning: 'Keep choosing Seat 1.', targets: [1], memo }),
-          })
-        for (let attempt = 0; attempt < 3; attempt++)
-          fake.script({
-            kind: 'toolCall',
-            name: 'night_choice',
-            arguments: JSON.stringify({
-              reasoning: 'Invalid targets.',
-              targets: [],
-              memo: 'Rejected',
-            }),
-          })
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
@@ -489,7 +513,10 @@ describe('games HTTP seam', () => {
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
         events.filter(
-          (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+          (event) =>
+            event.type === 'contestant.decision' &&
+            event.request.tool === 'night_choice' &&
+            event.request.role === 'imp',
         ),
       ).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -563,7 +590,9 @@ describe('games HTTP seam', () => {
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
           events.flatMap((event) =>
-            event.type === 'contestant.decision' && event.request.tool === 'night_choice'
+            event.type === 'contestant.decision' &&
+            event.request.tool === 'night_choice' &&
+            event.request.role === 'imp'
               ? [event.attempt]
               : [],
           ),
