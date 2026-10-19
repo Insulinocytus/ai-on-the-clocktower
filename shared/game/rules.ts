@@ -557,6 +557,7 @@ function registeredRole(seat: SeatState): RoleId {
 
 export async function runGame(ports: Ports): Promise<Grimoire> {
   let state = fold(ports.log)
+  let executionDeath: number | null = null
   const stopped = () => state.ended || state.aborted
   const commit = async (input: GameEventInput) => {
     const event = await ports.commit(input)
@@ -840,6 +841,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       )
     }
     if (!target.alive) return
+    if (cause === 'execution') executionDeath = target.seat
     if (ROLES[target.role].type === 'demon') {
       let successor =
         aliveBeforeDeath >= 5
@@ -1014,7 +1016,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       await information(seat, result, [false, true])
     },
     undertaker: async (seat) => {
-      const target = state.seats.find((player) => player.seat === state.executedToday)
+      const target = state.seats.find((player) => player.seat === executionDeath)
       if (!target) return
       const result = { target: target.seat, role: registeredRole(target) }
       await information(
@@ -1372,6 +1374,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       event.seq > nightStart && event.type === 'night.death' ? [event.seat] : [],
     )
     await commit({ type: 'phase.started', day, phase: 'dawn' })
+    executionDeath = null
     await commit({ type: 'dawn.announced', day, deaths })
     if (ports.config.whisperLimit > 0) {
       await commit({ type: 'phase.started', day, phase: 'whisper' })

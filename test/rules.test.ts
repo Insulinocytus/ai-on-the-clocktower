@@ -1201,6 +1201,35 @@ describe('information Townsfolk through the rules seam', () => {
       events.filter((event) => event.type === 'ability.resolved' && event.role === 'undertaker'),
     ).toEqual([])
   })
+  it('Undertaker gets no information when an already-dead seat is executed', async () => {
+    const seats = seatsFor(['undertaker', 'chef', 'soldier', 'scarletwoman', 'imp'])
+    if (seats[1]) seats[1].alive = false
+    const { events } = await game([4, 5], {
+      seats,
+      choose: (request) =>
+        request.tool === 'nominate'
+          ? {
+              reasoning: 'Execute the corpse once',
+              nominee:
+                request.day === 1 && request.seat === 1 && request.nominees.length === 5
+                  ? 2
+                  : null,
+            }
+          : request.tool === 'speak'
+            ? { reasoning: '', speech: 'Execute this seat.', slayer_target: null }
+            : { reasoning: '', raise_hand: true },
+    })
+    expect(events).toContainEqual(expect.objectContaining({ type: 'execution', seat: 2 }))
+    expect(
+      events.filter((event) => event.type === 'ability.resolved' && event.role === 'undertaker'),
+    ).toEqual([])
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'told' && event.kind === 'ability' && event.content.role === 'undertaker',
+      ),
+    ).toEqual([])
+  })
   it.each([
     [3, 4],
     [3, 5],
