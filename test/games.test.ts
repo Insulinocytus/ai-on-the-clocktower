@@ -4,18 +4,38 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup, startServer, stopServer } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
+import Database from 'better-sqlite3'
 import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
+import type { Preset, Provider } from '../shared/types/models'
 import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
+
+const dbPath = join(mkdtempSync(join(tmpdir(), 'clocktower-games-')), 'app.db')
+const legacyDb = new Database(dbPath)
+legacyDb.exec(`
+  CREATE TABLE providers (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, baseUrl TEXT NOT NULL,
+    apiKeyEnv TEXT NOT NULL, timeoutSec INTEGER NOT NULL, maxConcurrency INTEGER NOT NULL
+  );
+  CREATE TABLE presets (
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+    providerId INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+    model TEXT NOT NULL, forceToolChoice INTEGER NOT NULL, extraBody TEXT NOT NULL
+  );
+  INSERT INTO providers VALUES (41, 'Existing provider', 'http://127.0.0.1:1/v1',
+    'CLOCKTOWER_GAME_KEY', 300, 5);
+  INSERT INTO presets VALUES (73, 'Existing preset', 41, 'existing-model', 1, '{}');
+`)
+legacyDb.close()
 
 await setup({
   rootDir: fileURLToPath(new URL('..', import.meta.url)),
   server: true,
   browser: false,
   env: {
-    NUXT_DB_PATH: join(mkdtempSync(join(tmpdir(), 'clocktower-games-')), 'app.db'),
+    NUXT_DB_PATH: dbPath,
     CLOCKTOWER_GAME_KEY: 'game-test-secret',
   },
 })
@@ -172,6 +192,59 @@ async function preset(
 }
 
 describe('games HTTP seam', () => {
+  it('preserves existing provider and preset relationships when upgrading an unversioned database', async () => {
+    expect(await $fetch<Provider[]>('/api/providers')).toContainEqual(
+      expect.objectContaining({ id: 41, name: 'Existing provider', apiKeySet: true }),
+    )
+    expect(await $fetch<Preset[]>('/api/presets')).toContainEqual(
+      expect.objectContaining({
+        id: 73,
+        providerId: 41,
+        name: 'Existing preset',
+        model: 'existing-model',
+      }),
+    )
+  })
+
+  it('keeps a deleted preset missing from a saved game template after another preset is created', async () => {
+    const original = await preset('CLOCKTOWER_GAME_KEY')
+    const savedTemplate = {
+      presets: Array.from({ length: 5 }, () => original.id),
+      language: 'en',
+    }
+    await $fetch(`/api/presets/${String(original.id)}`, { method: 'DELETE' })
+    const replacement = await $fetch<Preset>('/api/presets', {
+      method: 'POST',
+      body: { name: 'Replacement', providerId: original.providerId, model: 'replacement-model' },
+    })
+    const gamesBefore = await $fetch<GameSummary[]>('/api/games')
+    const response = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(savedTemplate),
+    })
+    expect(response.status).toBe(404)
+    expect(replacement.id).toBeGreaterThan(original.id)
+    expect(await $fetch<GameSummary[]>('/api/games')).toEqual(gamesBefore)
+  })
+
+  it('never reuses a deleted provider ID and preserves preset cascade deletion after upgrade', async () => {
+    const original = await preset('CLOCKTOWER_GAME_KEY')
+    await $fetch(`/api/providers/${String(original.providerId)}`, { method: 'DELETE' })
+    expect(await $fetch<Preset[]>('/api/presets')).not.toContainEqual(
+      expect.objectContaining({ id: original.id }),
+    )
+    const replacement = await $fetch<Provider>('/api/providers', {
+      method: 'POST',
+      body: {
+        name: 'Replacement provider',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        apiKeyEnv: 'CLOCKTOWER_GAME_KEY',
+      },
+    })
+    expect(replacement.id).toBeGreaterThan(original.providerId)
+  })
+
   it('refuses opening a game and lists every missing provider credential', async () => {
     const a = await preset('CLOCKTOWER_MISSING_A')
     const b = await preset('CLOCKTOWER_MISSING_B')
