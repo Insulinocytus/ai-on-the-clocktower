@@ -385,6 +385,7 @@ export function validateSpeechChoice(value: unknown, request: SpeechRequest): Va
   if (
     (choice.speech !== null && typeof choice.speech !== 'string') ||
     (request.kind !== 'free' &&
+      request.kind !== 'whisper' &&
       (typeof choice.speech !== 'string' || choice.speech.trim().length === 0))
   )
     errors.push({ code: 'invalid_speech' })
@@ -422,6 +423,25 @@ export function validateContestantChoice(
       (typeof choice.nominee !== 'number' || !request.nominees.includes(choice.nominee))
     )
       errors.push({ code: 'invalid_nominee' })
+  } else if (request.tool === 'propose_whisper') {
+    if (
+      choice.members !== null &&
+      (!Array.isArray(choice.members) ||
+        choice.members.length === 0 ||
+        new Set(choice.members).size !== choice.members.length ||
+        !choice.members.every(
+          (seat: unknown) =>
+            typeof seat === 'number' && seat !== request.seat && request.eligible.includes(seat),
+        ))
+    )
+      errors.push({ code: 'invalid_whisper_members' })
+  } else if (request.tool === 'rank_whispers') {
+    if (
+      !Array.isArray(choice.ranking) ||
+      new Set(choice.ranking).size !== choice.ranking.length ||
+      !choice.ranking.every((id: unknown) => request.rooms.some((room) => room.id === id))
+    )
+      errors.push({ code: 'invalid_whisper_ranking' })
   } else if (
     typeof choice.raise_hand !== 'boolean' ||
     (!request.canRaiseHand && choice.raise_hand)
@@ -755,32 +775,24 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     },
   }
 
-  // shortcut: whisper rooms are added by the private-conversation ticket.
-  for (let day = 1; !stopped(); day++) {
-    await commit({ type: 'phase.started', day, phase: day === 1 ? 'first-night' : 'night' })
-    const nightStart = state.seq
-    const order = day === 1 ? 'firstNight' : 'otherNight'
-    const actors = state.seats
-      .filter((seat) => handlers[seat.role] && ROLES[seat.role][order] !== null)
-      .sort((a, b) => (ROLES[a.role][order] ?? 0) - (ROLES[b.role][order] ?? 0))
-    for (const actor of actors) {
-      const seat = state.seats.find((player) => player.seat === actor.seat)
-      if (seat?.alive) await handlers[seat.role]?.(seat)
-      if (stopped()) return state
-    }
-    const deaths = ports.log.flatMap((event) =>
-      event.seq > nightStart && event.type === 'night.death' ? [event.seat] : [],
-    )
-    await commit({ type: 'phase.started', day, phase: 'dawn' })
-    await commit({ type: 'dawn.announced', day, deaths })
-    await commit({ type: 'phase.started', day, phase: 'public' })
-    const remaining = new Map(state.seats.map((seat) => [seat.seat, ports.config.speechLimit]))
+  const conversation = async (members: number[], room?: SpeechRequest['room']) => {
+    const day = state.day
+    const remaining = new Map(members.map((seat) => [seat, ports.config.speechLimit]))
     let lastSpeaker: number | null = null
     while (!stopped()) {
-      const batch: SpeechRequest[] = state.seats.flatMap((seat) => {
-        const allowance = remaining.get(seat.seat) ?? 0
-        return seat.seat !== lastSpeaker && allowance > 0
-          ? [{ tool: 'speak', seat: seat.seat, day, kind: 'free', remaining: allowance }]
+      const batch: SpeechRequest[] = members.flatMap((seat) => {
+        const allowance = remaining.get(seat) ?? 0
+        return seat !== lastSpeaker && allowance > 0
+          ? [
+              {
+                tool: 'speak',
+                seat,
+                day,
+                kind: room ? 'whisper' : 'free',
+                remaining: allowance,
+                ...(room && { room }),
+              },
+            ]
           : []
       })
       if (!batch.length) break
@@ -808,18 +820,30 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           : candidates[Math.floor(ports.rng() * candidates.length)]
       if (!selected) throw new Error('No speech selected')
       const { request, choice, speech } = selected
-      await commit({
-        type: 'public.speech',
-        seat: request.seat,
-        speech,
-        kind: 'free',
-        ...(choice.slayer_target !== null && { slayerTarget: choice.slayer_target }),
-        decision: choice.decision ?? 0,
-      })
+      await commit(
+        room
+          ? {
+              type: 'whisper.speech',
+              round: room.round,
+              roomId: room.id,
+              members,
+              seat: request.seat,
+              speech,
+              decision: choice.decision ?? 0,
+            }
+          : {
+              type: 'public.speech',
+              seat: request.seat,
+              speech,
+              kind: 'free',
+              ...(choice.slayer_target !== null && { slayerTarget: choice.slayer_target }),
+              decision: choice.decision ?? 0,
+            },
+      )
       remaining.set(request.seat, (request.remaining ?? 0) - 1)
       lastSpeaker = request.seat
       // shortcut: real Slayer shots arrive with daytime role abilities; this role pool only has fake shots.
-      if (choice.slayer_target !== null)
+      if (!room && choice.slayer_target !== null)
         await commit({
           type: 'slayer.resolved',
           seat: request.seat,
@@ -827,6 +851,141 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           died: false,
         })
     }
+  }
+
+  const whisperPhase = async () => {
+    const remaining = new Map(state.seats.map((seat) => [seat.seat, ports.config.whisperLimit]))
+    for (let round = 1; !stopped(); round++) {
+      const eligible = state.seats
+        .map((seat) => seat.seat)
+        .filter((seat) => (remaining.get(seat) ?? 0) > 0)
+      if (!eligible.length) break
+      const proposals: ContestantRequest[] = eligible.map((seat) => ({
+        tool: 'propose_whisper',
+        seat,
+        day: state.day,
+        round,
+        remaining: remaining.get(seat) ?? 0,
+        eligible,
+      }))
+      const choices =
+        eligible.length > 1
+          ? await ports.askContestants(proposals)
+          : [{ reasoning: '', members: null }]
+      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      if (stopped()) return
+      if (
+        choices.length !== proposals.length ||
+        choices.some(
+          (choice, index) =>
+            !proposals[index] || validateContestantChoice(choice, proposals[index]).length,
+        )
+      )
+        throw new Error('Invalid whisper proposal from ports')
+      const rooms: { id: number; members: number[] }[] = []
+      for (const [index, choice] of choices.entries()) {
+        const request = proposals[index]
+        if (!request || !('members' in choice)) throw new Error('Missing whisper proposal')
+        const members =
+          choice.members === null ? null : [request.seat, ...choice.members].sort((a, b) => a - b)
+        await commit({ type: 'whisper.proposed', seat: request.seat, round, members })
+        if (members && !rooms.some((room) => room.members.join(',') === members.join(',')))
+          rooms.push({ id: rooms.length + 1, members })
+      }
+      const rankings: ContestantRequest[] = []
+      for (const seat of state.seats) {
+        const candidates = rooms.filter((room) => room.members.includes(seat.seat))
+        await commit({ type: 'whisper.candidates', seat: seat.seat, round, rooms: candidates })
+        if (candidates.length)
+          rankings.push({
+            tool: 'rank_whispers',
+            seat: seat.seat,
+            day: state.day,
+            round,
+            rooms: candidates,
+          })
+        else await commit({ type: 'whisper.ranked', seat: seat.seat, round, ranking: [] })
+      }
+      const ranked = rankings.length ? await ports.askContestants(rankings) : []
+      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      if (stopped()) return
+      if (
+        ranked.length !== rankings.length ||
+        ranked.some(
+          (choice, index) =>
+            !rankings[index] || validateContestantChoice(choice, rankings[index]).length,
+        )
+      )
+        throw new Error('Invalid whisper ranking from ports')
+      const bySeat = new Map<number, number[]>()
+      for (const [index, choice] of ranked.entries()) {
+        const request = rankings[index]
+        if (!request || !('ranking' in choice)) throw new Error('Missing whisper ranking')
+        bySeat.set(request.seat, choice.ranking)
+        await commit({ type: 'whisper.ranked', seat: request.seat, round, ranking: choice.ranking })
+      }
+      const accepted = rooms
+        .filter((room) => room.members.every((seat) => bySeat.get(seat)?.includes(room.id)))
+        .map((room) => ({
+          ...room,
+          score: room.members.reduce(
+            (sum, seat) => sum + (bySeat.get(seat)?.indexOf(room.id) ?? 0) + 1,
+            0,
+          ),
+          tie: ports.rng(),
+        }))
+        .sort((a, b) => a.score - b.score || a.tie - b.tie)
+      const assigned = new Set<number>()
+      const opened = accepted.filter((room) => {
+        if (room.members.some((seat) => assigned.has(seat))) return false
+        for (const seat of room.members) assigned.add(seat)
+        return true
+      })
+      if (!opened.length) break
+      for (const room of opened) {
+        for (const seat of room.members) remaining.set(seat, (remaining.get(seat) ?? 0) - 1)
+        await commit({
+          type: 'whisper.room.opened',
+          round,
+          roomId: `${String(state.day)}:${String(round)}:${String(room.id)}`,
+          members: room.members,
+        })
+      }
+      await Promise.all(
+        opened.map(async (room) => {
+          const roomId = `${String(state.day)}:${String(round)}:${String(room.id)}`
+          await conversation(room.members, { round, id: roomId, members: room.members })
+          if (!stopped())
+            await commit({ type: 'whisper.room.closed', round, roomId, members: room.members })
+        }),
+      )
+    }
+  }
+
+  for (let day = 1; !stopped(); day++) {
+    await commit({ type: 'phase.started', day, phase: day === 1 ? 'first-night' : 'night' })
+    const nightStart = state.seq
+    const order = day === 1 ? 'firstNight' : 'otherNight'
+    const actors = state.seats
+      .filter((seat) => handlers[seat.role] && ROLES[seat.role][order] !== null)
+      .sort((a, b) => (ROLES[a.role][order] ?? 0) - (ROLES[b.role][order] ?? 0))
+    for (const actor of actors) {
+      const seat = state.seats.find((player) => player.seat === actor.seat)
+      if (seat?.alive) await handlers[seat.role]?.(seat)
+      if (stopped()) return state
+    }
+    const deaths = ports.log.flatMap((event) =>
+      event.seq > nightStart && event.type === 'night.death' ? [event.seat] : [],
+    )
+    await commit({ type: 'phase.started', day, phase: 'dawn' })
+    await commit({ type: 'dawn.announced', day, deaths })
+    if (ports.config.whisperLimit > 0) {
+      await commit({ type: 'phase.started', day, phase: 'whisper' })
+      await whisperPhase()
+      if (stopped()) return state
+    }
+    await commit({ type: 'phase.started', day, phase: 'public' })
+    await conversation(state.seats.map((seat) => seat.seat))
     await commit({ type: 'phase.started', day, phase: 'nomination' })
     for (;;) {
       const publicState = foldPublic(ports.log, ports.config.seatCount)

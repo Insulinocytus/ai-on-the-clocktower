@@ -74,23 +74,42 @@ export function buildContestantPrompt({
     : `# Current public state\nDay ${String(state.day)}; phase: ${state.phase ? phases[state.phase].en : 'not started'}. ${String(alive)} alive; voting threshold ${String(Math.ceil(alive / 2))}; today's highest tally ${String(state.highestVoteCount)}.\n${publicSeats}\nNominated today: ${state.nominators.join(', ') || 'none'}. Nominees today: ${state.nominees.join(', ') || 'none'}. About to be executed: ${state.aboutToBeExecuted === null ? 'nobody' : `Seat ${String(state.aboutToBeExecuted)}`}.`
   const requestText = (() => {
     switch (request.tool) {
+      case 'propose_whisper': {
+        const invited = request.eligible.filter((other) => other !== seat)
+        return zh
+          ? `# 本次请求\n私聊第 ${String(request.round)} 轮；本阶段还可进入 ${String(request.remaining)} 个房间。可邀请座位：${invited.join('、')}；其他座位的次数已用完，不能邀请。members 填至少一个可邀请座位，不含自己、不重复；你会自动加入。填 null 表示本轮不私聊。\n请调用 propose_whisper。`
+          : `# This request\nWhisper round ${String(request.round)}; ${String(request.remaining)} room entries remaining this phase. Eligible invitees: ${invited.join(', ')}; all other seats have exhausted their allowance. Put at least one eligible invitee in members, without yourself or duplicates; you join automatically. Set members to null to decline whispering this round.\nCall propose_whisper.`
+      }
+      case 'rank_whispers': {
+        const rooms = request.rooms
+          .map((room) => `${String(room.id)}: ${room.members.join(', ')}`)
+          .join('; ')
+        return zh
+          ? `# 本次请求\n私聊第 ${String(request.round)} 轮。候选房间（编号：成员座位）：${rooms}。ranking 按意愿从高到低填写这些房间编号，不能重复或使用未列出的编号；没排入就是拒绝，可以填空数组。\n请调用 rank_whispers。`
+          : `# This request\nWhisper round ${String(request.round)}. Candidate rooms (number: member seats): ${rooms}. Fill ranking with listed room numbers from most to least preferred, without duplicates or unlisted numbers. Omission refuses a room; an empty array is allowed.\nCall rank_whispers.`
+      }
       case 'nominate':
         return zh
           ? `# 本次请求\n请选择今天尚未被提名的座位：${request.nominees.join('、')}。可以提名自己或死者；nominee 填合法座位号或 null（pass）。只有本轮被选中执行的提名才消耗今天的提名次数，落选后下一轮重新选择。\n请调用 nominate。`
           : `# This request\nLegal nominees not nominated today: ${request.nominees.join(', ')}. You may nominate yourself or a dead seat. Put a legal seat number in nominee, or null to pass. Only the nomination selected this round spends your daily nomination; unselected proposals are asked again next round.\nCall nominate.`
       case 'speak': {
         const free = request.kind === 'free'
-        const purpose = free
-          ? zh
-            ? `公聊发言，还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。`
-            : `Public discussion: ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null.`
-          : request.kind === 'nomination'
+        const purpose =
+          request.kind === 'whisper' && request.room
             ? zh
-              ? `为提名 ${String(request.nominee)} 号给出一条非空的提名理由，不能 pass。`
-              : `Give one nonempty reason for nominating Seat ${String(request.nominee)}; you cannot pass.`
-            : zh
-              ? `回应 ${String(request.nominator)} 号的提名，给出一条非空辩护，不能 pass。`
-              : `Give one nonempty defence against Seat ${String(request.nominator)}'s nomination; you cannot pass.`
+              ? `私聊第 ${String(request.room.round)} 轮，房间 ${request.room.id}；成员：${request.room.members.join('、')}。还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。内容仅房间成员可见。`
+              : `Whisper round ${String(request.room.round)}, room ${request.room.id}; members: ${request.room.members.join(', ')}. ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null. Only room members see the conversation.`
+            : free
+              ? zh
+                ? `公聊发言，还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。`
+                : `Public discussion: ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null.`
+              : request.kind === 'nomination'
+                ? zh
+                  ? `为提名 ${String(request.nominee)} 号给出一条非空的提名理由，不能 pass。`
+                  : `Give one nonempty reason for nominating Seat ${String(request.nominee)}; you cannot pass.`
+                : zh
+                  ? `回应 ${String(request.nominator)} 号的提名，给出一条非空辩护，不能 pass。`
+                  : `Give one nonempty defence against Seat ${String(request.nominator)}'s nomination; you cannot pass.`
         return zh
           ? `# 本次请求\n${purpose}\n${free ? '只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–5）；任何座位都可以声称开枪，否则填 null。' : 'slayer_target 必须填 null。'}reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 speak。`
           : `# This request\n${purpose}\n${free ? 'Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–5), otherwise null. Any seat may claim a shot.' : 'slayer_target must be null.'} Put private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall speak.`
@@ -127,6 +146,7 @@ export function buildContestantPrompt({
         content: contestantSystem(
           language,
           events.find((event) => event.type === 'game.created')?.speechLimit ?? 10,
+          events.find((event) => event.type === 'game.created')?.whisperLimit ?? 3,
         ),
       },
       { role: 'user', content: [identity, timeline, memo, currentState, requestText].join('\n\n') },

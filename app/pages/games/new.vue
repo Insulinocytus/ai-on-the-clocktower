@@ -35,6 +35,7 @@ const form = reactive({
   storyteller: templateConfig?.storyteller ? String(templateConfig.storyteller.id) : '',
   language: templateConfig?.language ?? (locale.value === 'zh' ? 'zh' : 'en'),
   speechLimit: templateConfig?.speechLimit ?? 10,
+  whisperLimit: templateConfig?.whisperLimit ?? 3,
 })
 const missingPreset = (id: string) =>
   !!id && !presets.value.some((preset) => String(preset.id) === id)
@@ -151,6 +152,17 @@ async function create() {
           v-model.number="form.speechLimit"
           type="number"
           min="1"
+          step="1"
+          required
+        />
+      </div>
+      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
+        <Label for="whisper-limit">{{ t('games.whisperLimit') }}</Label>
+        <Input
+          id="whisper-limit"
+          v-model.number="form.whisperLimit"
+          type="number"
+          min="0"
           step="1"
           required
         />

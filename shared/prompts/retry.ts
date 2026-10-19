@@ -40,6 +40,14 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     zh: '猎手开枪目标只能附在非空公聊发言上，且必须是合法座位号。',
     en: 'A Slayer target must be a legal seat number attached to a nonempty public speech.',
   },
+  invalid_whisper_members: {
+    zh: 'members 必须为 null，或至少一个可邀请座位；不能包含自己、重复座位或次数用完的座位。',
+    en: 'members must be null or at least one eligible invitee, without yourself, duplicates or exhausted seats.',
+  },
+  invalid_whisper_ranking: {
+    zh: 'ranking 只能包含列出的房间编号，不能重复，可以为空。',
+    en: 'ranking may contain only listed room numbers, without duplicates; an empty array is allowed.',
+  },
   invalid_response: {
     zh: '响应必须包含 choices[0].message 及工具调用。',
     en: 'The response must contain choices[0].message and a tool call.',

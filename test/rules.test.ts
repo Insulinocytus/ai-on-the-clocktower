@@ -11,6 +11,7 @@ import {
   validateNightChoice,
   visibleTo,
   validateSpeechChoice,
+  validateContestantChoice,
   winner,
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
@@ -240,7 +241,7 @@ const CONFIG: GameConfig = {
     D14: 'random',
   },
   speechLimit: 10,
-  whisperLimit: 3,
+  whisperLimit: 0,
   language: 'en',
   seed: 18,
   logVersion: 2,
@@ -317,7 +318,7 @@ async function game(
                 })
         } else if (request.tool === 'vote') {
           choice = options.choose?.(request) ?? { reasoning: 'Vote', raise_hand: false }
-        } else {
+        } else if (request.tool === 'night_choice') {
           requests.push(structuredClone(request))
           if (request.role !== 'imp' && options.choose) choice = options.choose(request)
           else {
@@ -329,6 +330,8 @@ async function game(
               memo: `Day ${String(request.day)}`,
             }
           }
+        } else {
+          throw new Error('Unexpected whisper request')
         }
         commit({
           type: 'contestant.decision',
@@ -1308,5 +1311,321 @@ describe('public conversation edge cases', () => {
     expect(validateSpeechChoice({ ...choice, speech: '', slayer_target: null }, request)).toEqual(
       [],
     )
+  })
+})
+
+async function whispers(
+  choose: (request: ContestantRequest) => ContestantChoice | Promise<ContestantChoice>,
+  options: { limit?: number; seed?: number; seats?: SeatState[] } = {},
+) {
+  const config = { ...CONFIG, whisperLimit: options.limit ?? 1, seed: options.seed ?? 22 }
+  const events: GameEvent[] = [
+    { seq: 1, type: 'game.created', ...config },
+    { seq: 2, type: 'grimoire.set', seats: options.seats ?? seatsFor() },
+  ]
+  const requests: ContestantRequest[] = []
+  await expect(
+    runGame({
+      config,
+      log: events,
+      rng: createRng(config.seed),
+      discretion: () => Promise.reject(new Error('Unexpected discretion')),
+      commit: (input) => {
+        if (input.type === 'phase.started' && input.phase === 'public')
+          throw new Error('whispers_complete')
+        const event = { ...input, seq: events.length + 1 }
+        events.push(event)
+        return event
+      },
+      askContestants: (batch) => {
+        requests.push(...structuredClone(batch))
+        return Promise.all(batch.map(async (request) => choose(request)))
+      },
+    }),
+  ).rejects.toThrow('whispers_complete')
+  return { events, requests }
+}
+
+describe('whispers through the rules seam', () => {
+  it('merges identical membership regardless of proposal order and gives stable anonymous candidates', async () => {
+    const { events, requests } = await whispers((request) => {
+      if (request.tool === 'propose_whisper')
+        return {
+          reasoning: 'Meet',
+          members: request.seat === 1 ? [3, 2] : request.seat === 2 ? [1, 3] : null,
+        }
+      if (request.tool === 'rank_whispers')
+        return { reasoning: 'Accept', ranking: request.rooms.map((room) => room.id) }
+      return { reasoning: 'Pass', speech: null, slayer_target: null }
+    })
+    expect(events.filter((event) => event.type === 'whisper.room.opened')).toMatchObject([
+      { round: 1, members: [1, 2, 3] },
+    ])
+    expect(
+      events.filter((event) => event.type === 'whisper.candidates' && event.round === 1),
+    ).toMatchObject(
+      [1, 2, 3, 4, 5].map((seat) => ({
+        seat,
+        round: 1,
+        rooms: seat <= 3 ? [{ id: 1, members: [1, 2, 3] }] : [],
+      })),
+    )
+    expect(
+      requests.filter((request) => request.tool === 'rank_whispers').map((request) => request.seat),
+    ).toEqual([1, 2, 3])
+    expect(
+      project(events, 'storyteller').some(
+        (event) => event.type === 'whisper.proposed' || event.type === 'whisper.ranked',
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('whisper allocation and allowances', () => {
+  it('uses the whole membership rank sum before assigning disjoint rooms, without shrinking rooms', async () => {
+    const { events } = await whispers((request) => {
+      if (request.tool === 'propose_whisper')
+        return {
+          reasoning: '',
+          members:
+            request.round === 1
+              ? (({ 1: [2, 3], 2: [4], 3: [5] } as Record<number, number[]>)[request.seat] ?? null)
+              : null,
+        }
+      if (request.tool === 'rank_whispers')
+        return {
+          reasoning: '',
+          ranking:
+            ({ 1: [1], 2: [2, 1], 3: [3, 1], 4: [2], 5: [3] } as Record<number, number[]>)[
+              request.seat
+            ] ?? [],
+        }
+      return { reasoning: '', speech: null, slayer_target: null }
+    })
+    const rooms = events.filter((event) => event.type === 'whisper.room.opened')
+    expect(rooms.map((room) => room.members).sort()).toEqual([
+      [2, 4],
+      [3, 5],
+    ])
+    expect(rooms.every((room) => room.round === 1)).toBe(true)
+  })
+
+  it('breaks equal rank sums reproducibly with the seed rather than candidate order', async () => {
+    const play = async (seed: number) => {
+      const { events } = await whispers(
+        (request) => {
+          if (request.tool === 'propose_whisper')
+            return {
+              reasoning: '',
+              members:
+                request.round === 1
+                  ? (({ 1: [2], 2: [3], 3: [1] } as Record<number, number[]>)[request.seat] ?? null)
+                  : null,
+            }
+          if (request.tool === 'rank_whispers')
+            return {
+              reasoning: '',
+              ranking:
+                ({ 1: [1, 3], 2: [2, 1], 3: [3, 2] } as Record<number, number[]>)[request.seat] ??
+                [],
+            }
+          return { reasoning: '', speech: null, slayer_target: null }
+        },
+        { seed },
+      )
+      return events
+        .filter((event) => event.type === 'whisper.room.opened')
+        .map((event) => event.members)
+    }
+    expect(await play(22)).toEqual(await play(22))
+    const outcomes = await Promise.all([1, 2, 3, 4, 5, 6].map(play))
+    expect(outcomes.every((rooms) => rooms.length === 1)).toBe(true)
+    expect(new Set(outcomes.map((rooms) => JSON.stringify(rooms))).size).toBeGreaterThan(1)
+  })
+
+  it('drops a room omitted by one member, never downgrades it, and ends with no room', async () => {
+    const { events, requests } = await whispers(
+      (request) => {
+        if (request.tool === 'propose_whisper')
+          return { reasoning: '', members: request.seat === 1 ? [2, 3] : null }
+        if (request.tool === 'rank_whispers')
+          return { reasoning: '', ranking: request.seat === 3 ? [] : [1] }
+        throw new Error('No room should converse')
+      },
+      { limit: 3 },
+    )
+    expect(events.filter((event) => event.type === 'whisper.room.opened')).toEqual([])
+    expect(requests.filter((request) => request.tool === 'propose_whisper')).toHaveLength(5)
+  })
+
+  it('charges only formed rooms, excludes exhausted seats, allows dead seats and distinguishes repeated rooms', async () => {
+    const seats = seatsFor().map((seat) => ({ ...seat, alive: seat.seat !== 1 }))
+    const { events, requests } = await whispers(
+      (request) => {
+        if (request.tool === 'propose_whisper')
+          return {
+            reasoning: '',
+            members: request.seat === 1 ? [2] : request.seat === 3 ? [4] : null,
+          }
+        if (request.tool === 'rank_whispers')
+          return {
+            reasoning: '',
+            ranking:
+              request.round === 1 && request.seat === 4 ? [] : request.rooms.map((room) => room.id),
+          }
+        return {
+          reasoning: '',
+          speech: request.seat === 1 ? 'Even dead, I can speak.' : null,
+          slayer_target: null,
+        }
+      },
+      { limit: 2, seats },
+    )
+    const rooms = events.filter((event) => event.type === 'whisper.room.opened')
+    expect(rooms.map((room) => [room.round, room.members]).sort()).toEqual([
+      [1, [1, 2]],
+      [2, [1, 2]],
+      [2, [3, 4]],
+      [3, [3, 4]],
+    ])
+    expect(new Set(rooms.map((room) => room.roomId)).size).toBe(4)
+    expect(
+      requests.find(
+        (request) =>
+          request.tool === 'propose_whisper' && request.round === 2 && request.seat === 3,
+      ),
+    ).toMatchObject({ remaining: 2 })
+    expect(
+      requests.filter((request) => request.tool === 'propose_whisper' && request.round === 3),
+    ).toMatchObject([
+      { seat: 3, remaining: 1, eligible: [3, 4, 5] },
+      { seat: 4, remaining: 1, eligible: [3, 4, 5] },
+      { seat: 5, remaining: 2, eligible: [3, 4, 5] },
+    ])
+    expect(events.filter((event) => event.type === 'whisper.speech')).toMatchObject([
+      { seat: 1, round: 1 },
+      { seat: 1, round: 2 },
+    ])
+  })
+
+  it('converses concurrently with isolated events and closes all rooms before the next round', async () => {
+    let release: (() => void) | undefined
+    const otherRoomStarted = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { events } = await whispers(async (request) => {
+      if (request.tool === 'propose_whisper')
+        return {
+          reasoning: '',
+          members: request.seat === 1 ? [2] : request.seat === 3 ? [4] : null,
+        }
+      if (request.tool === 'rank_whispers')
+        return { reasoning: '', ranking: request.rooms.map((room) => room.id) }
+      if (request.tool !== 'speak' || !request.room) throw new Error('Expected room speech')
+      if (request.seat === 1) await otherRoomStarted
+      if (request.seat === 3) release?.()
+      return {
+        reasoning: '',
+        speech: request.seat % 2 === 1 ? `Private secret ${String(request.seat)}` : null,
+        slayer_target: null,
+      }
+    })
+    expect(events.filter((event) => event.type === 'whisper.speech')).toHaveLength(2)
+    expect(
+      project(events, 'seat:1')
+        .filter((event) => event.type === 'whisper.speech')
+        .map((event) => event.speech),
+    ).toEqual(['Private secret 1'])
+    expect(
+      project(events, 'seat:3')
+        .filter((event) => event.type === 'whisper.speech')
+        .map((event) => event.speech),
+    ).toEqual(['Private secret 3'])
+    expect(
+      project(events, 'public').filter(
+        (event) => event.type === 'whisper.speech' || event.type === 'whisper.room.closed',
+      ),
+    ).toEqual([])
+    const closed = events.filter((event) => event.type === 'whisper.room.closed')
+    expect(closed).toHaveLength(2)
+    expect(
+      closed.every(
+        (event) =>
+          event.seq <
+          (events.find((event) => event.type === 'whisper.proposed' && event.round === 2)?.seq ??
+            Infinity),
+      ),
+    ).toBe(true)
+  })
+
+  it('skips the private phase when the configured limit is zero', async () => {
+    const { events, requests } = await whispers(
+      () => {
+        throw new Error('Must not ask')
+      },
+      { limit: 0 },
+    )
+    expect(requests).toEqual([])
+    expect(
+      events.some((event) => event.type === 'phase.started' && event.phase === 'whisper'),
+    ).toBe(false)
+  })
+})
+
+describe('whisper semantic boundaries', () => {
+  it('accepts only other eligible distinct invitees or null, and listed distinct rankings', () => {
+    const proposal: ContestantRequest = {
+      tool: 'propose_whisper',
+      seat: 1,
+      day: 1,
+      round: 1,
+      remaining: 2,
+      eligible: [1, 2, 3],
+    }
+    for (const members of [[], [1], [2, 2], [4], [0], [2.5], ['2'], undefined])
+      expect(validateContestantChoice({ reasoning: '', members }, proposal)).toContainEqual({
+        code: 'invalid_whisper_members',
+      })
+    for (const members of [null, [2], [3, 2]])
+      expect(validateContestantChoice({ reasoning: '', members }, proposal)).toEqual([])
+    const ranking: ContestantRequest = {
+      tool: 'rank_whispers',
+      seat: 1,
+      day: 1,
+      round: 1,
+      rooms: [
+        { id: 7, members: [1, 2] },
+        { id: 9, members: [1, 3] },
+      ],
+    }
+    for (const value of [[1], [7, 7], ['7'], null, undefined])
+      expect(validateContestantChoice({ reasoning: '', ranking: value }, ranking)).toContainEqual({
+        code: 'invalid_whisper_ranking',
+      })
+    for (const value of [[], [9], [9, 7]])
+      expect(validateContestantChoice({ reasoning: '', ranking: value }, ranking)).toEqual([])
+    expect(
+      validateSpeechChoice(
+        { reasoning: '', speech: 'A private shot.', slayer_target: 2 },
+        { tool: 'speak', seat: 1, day: 1, kind: 'whisper' },
+      ),
+    ).toContainEqual({ code: 'invalid_slayer_target' })
+    expect(
+      validateSpeechChoice(
+        { reasoning: '', speech: null, slayer_target: null },
+        { tool: 'speak', seat: 1, day: 1, kind: 'whisper' },
+      ),
+    ).toEqual([])
+  })
+
+  it('ends without another proposal batch when everyone exhausts their allowance', async () => {
+    const { events, requests } = await whispers((request) => {
+      if (request.tool === 'propose_whisper')
+        return { reasoning: '', members: request.seat === 1 ? [2, 3, 4, 5] : null }
+      if (request.tool === 'rank_whispers') return { reasoning: '', ranking: [1] }
+      return { reasoning: '', speech: null, slayer_target: null }
+    })
+    expect(events.filter((event) => event.type === 'whisper.room.opened')).toHaveLength(1)
+    expect(requests.filter((request) => request.tool === 'propose_whisper')).toHaveLength(5)
   })
 })
