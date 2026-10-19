@@ -2,7 +2,7 @@ import type { GameEvent, GameEventInput } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { useDb } from './db'
 
-export const LOG_VERSION = 1
+export const LOG_VERSION = 2
 
 type Listener = (event: GameEvent) => void
 const listeners = new Map<string, Set<Listener>>()

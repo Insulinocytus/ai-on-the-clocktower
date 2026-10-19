@@ -60,16 +60,62 @@ export interface GameConfig {
   promptVersion: number
 }
 export interface NightRequest {
+  tool: 'night_choice'
   seat: number
   role: RoleId
   day: number
   targets: number[]
 }
-export interface NightChoice {
+interface NightChoice {
   reasoning: string
   targets: number[]
   memo?: string
 }
+export interface SpeechRequest {
+  tool: 'speak'
+  seat: number
+  day: number
+  kind: 'free' | 'nomination' | 'defense'
+  remaining?: number
+  nominator?: number
+  nominee?: number
+}
+interface SpeechChoice {
+  reasoning: string
+  speech: string | null
+  slayer_target: number | null
+  memo?: string
+  decision?: number
+}
+interface NominationRequest {
+  tool: 'nominate'
+  seat: number
+  day: number
+  nominees: number[]
+}
+interface NominationChoice {
+  reasoning: string
+  nominee: number | null
+  memo?: string
+}
+interface VoteRequest {
+  tool: 'vote'
+  seat: number
+  day: number
+  nominator: number
+  nominee: number
+  votes: { seat: number; raiseHand: boolean }[]
+  threshold: number
+  highestVoteCount: number
+  canRaiseHand: boolean
+}
+interface VoteChoice {
+  reasoning: string
+  raise_hand: boolean
+  memo?: string
+}
+export type ContestantRequest = NightRequest | SpeechRequest | NominationRequest | VoteRequest
+export type ContestantChoice = NightChoice | SpeechChoice | NominationChoice | VoteChoice
 type ValidationCode =
   | 'invalid_seat_count'
   | 'duplicate_role'
@@ -79,6 +125,10 @@ type ValidationCode =
   | 'invalid_targets'
   | 'invalid_reasoning'
   | 'invalid_memo'
+  | 'invalid_nominee'
+  | 'invalid_vote'
+  | 'invalid_speech'
+  | 'invalid_slayer_target'
   | 'invalid_response'
   | 'no_tool_call'
   | 'multiple_tool_calls'
@@ -149,7 +199,7 @@ export type GameEvent =
       'contestant.decision',
       {
         seat: number
-        request: NightRequest
+        request: ContestantRequest
         raw: unknown
         model: string
         usage: unknown
@@ -265,7 +315,7 @@ export interface Ports {
   config: GameConfig
   log: readonly GameEvent[]
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
-  askContestants(batch: NightRequest[]): Promise<NightChoice[]>
+  askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
     id: 'D1' | 'D14',
     candidates: { type: 'setup'; sample: RoleId[] } | number[],

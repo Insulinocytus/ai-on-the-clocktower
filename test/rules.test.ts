@@ -14,6 +14,8 @@ import {
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
 import type {
+  ContestantChoice,
+  ContestantRequest,
   GameConfig,
   GameEvent,
   GameEventInput,
@@ -174,7 +176,13 @@ describe('setup and metadata boundaries', () => {
     })
   })
   it('rejects malformed night choices with structured codes, but allows self and dead targets', () => {
-    const request: NightRequest = { seat: 5, role: 'imp', day: 2, targets: [1, 2, 3, 4, 5] }
+    const request: NightRequest = {
+      tool: 'night_choice',
+      seat: 5,
+      role: 'imp',
+      day: 2,
+      targets: [1, 2, 3, 4, 5],
+    }
     for (const targets of [[], [1, 2], [0], [6], [1.5], ['1'], null]) {
       expect(validateNightChoice({ reasoning: 'choose', targets }, request)).toContainEqual({
         code: 'invalid_targets',
@@ -216,8 +224,8 @@ const CONFIG: GameConfig = {
   whisperLimit: 3,
   language: 'en',
   seed: 18,
-  logVersion: 1,
-  promptVersion: 1,
+  logVersion: 2,
+  promptVersion: 2,
 }
 const ORDER: RoleId[] = ['soldier', 'chef', 'empath', 'scarletwoman', 'imp']
 
@@ -235,7 +243,14 @@ function seatsFor(roles = ORDER): SeatState[] {
   }))
 }
 
-async function game(targets: number[], options: { seats?: SeatState[]; d14?: number } = {}) {
+async function game(
+  targets: number[],
+  options: {
+    seats?: SeatState[]
+    d14?: number
+    choose?: (request: ContestantRequest) => ContestantChoice
+  } = {},
+) {
   const events: GameEvent[] = [{ seq: 1, type: 'game.created', ...CONFIG }]
   if (options.seats) events.push({ seq: 2, type: 'grimoire.set', seats: options.seats })
   let memory = fold(events)
@@ -266,30 +281,47 @@ async function game(targets: number[], options: { seats?: SeatState[]; d14?: num
       return Promise.resolve(options.d14 ?? 4)
     },
     askContestants: (batch) => {
-      expect(batch).toHaveLength(1)
-      const request = batch[0]
-      if (!request) throw new Error('No request')
-      requests.push(structuredClone(request))
-      const target = targets[calls++]
-      if (target === undefined) throw new Error('Script exhausted')
-      const choice = {
-        reasoning: `Choose ${String(target)}`,
-        targets: [target],
-        memo: `Day ${String(request.day)}`,
-      }
-      commit({
-        type: 'contestant.decision',
-        seat: request.seat,
-        request,
-        raw: choice,
-        model: 'test',
-        usage: null,
-        durationMs: 0,
-        attempt: 1,
-        validation: [],
+      const choices = batch.map((request) => {
+        let choice: ContestantChoice
+        if (request.tool === 'nominate') {
+          choice = options.choose?.(request) ?? { reasoning: 'Pass', nominee: null }
+        } else if (request.tool === 'speak') {
+          choice = options.choose?.(request) ?? {
+            reasoning: 'Explain',
+            speech: 'My argument.',
+            slayer_target: null,
+          }
+        } else if (request.tool === 'vote') {
+          choice = options.choose?.(request) ?? { reasoning: 'Vote', raise_hand: false }
+        } else {
+          requests.push(structuredClone(request))
+          const target = targets[calls++]
+          if (target === undefined) throw new Error('Script exhausted')
+          choice = {
+            reasoning: `Choose ${String(target)}`,
+            targets: [target],
+            memo: `Day ${String(request.day)}`,
+          }
+        }
+        commit({
+          type: 'contestant.decision',
+          seat: request.seat,
+          request,
+          raw: choice,
+          model: 'test',
+          usage: null,
+          durationMs: 0,
+          attempt: 1,
+          validation: [],
+        })
+        return choice
       })
-      commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
-      return Promise.resolve([choice])
+      for (const [index, choice] of choices.entries()) {
+        const request = batch[index]
+        if (request && choice.memo !== undefined)
+          commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
+      }
+      return Promise.resolve(choices)
     },
   }
   const result = await runGame(ports)
@@ -300,8 +332,227 @@ async function game(targets: number[], options: { seats?: SeatState[]; d14?: num
   return { events, state: memory, requests, discretionCalls }
 }
 
+describe('nominations through the rules seam', () => {
+  it('asks a simultaneous batch, runs reason and defense, votes clockwise, and cancels tied leaders', async () => {
+    const seen: ContestantRequest[] = []
+    const { events } = await game([4, 5], {
+      choose: (request) => {
+        seen.push(structuredClone(request))
+        if (request.tool === 'nominate') {
+          return {
+            reasoning: 'Nominate',
+            nominee:
+              request.day === 1 && request.seat === 1 && request.nominees.includes(2)
+                ? 2
+                : request.day === 1 && request.seat === 3 && request.nominees.includes(4)
+                  ? 4
+                  : null,
+          }
+        }
+        if (request.tool === 'vote') return { reasoning: 'Vote', raise_hand: request.seat <= 3 }
+        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+      },
+    })
+    const nominations = events.filter((event) => event.type === 'nomination')
+    expect(nominations).toHaveLength(2)
+    expect(new Set(nominations.map((event) => event.nominee))).toEqual(new Set([2, 4]))
+    expect(events.filter((event) => event.type === 'execution')).toEqual([])
+    const tallies = events.filter((event) => event.type === 'vote.tallied')
+    expect(tallies).toEqual([
+      expect.objectContaining({ votes: 3, threshold: 3, aboutToBeExecuted: true }),
+      expect.objectContaining({ votes: 3, threshold: 3, aboutToBeExecuted: false }),
+    ])
+    const first = nominations[0]
+    if (!first) throw new Error('Missing nomination')
+    expect(
+      events.filter((event) => event.seq > first.seq && event.type === 'public.speech').slice(0, 2),
+    ).toEqual([
+      expect.objectContaining({
+        type: 'public.speech',
+        seat: first.nominator,
+        kind: 'nomination',
+        speech: 'My argument.',
+      }),
+      expect.objectContaining({
+        type: 'public.speech',
+        seat: first.nominee,
+        kind: 'defense',
+        speech: 'My argument.',
+      }),
+    ])
+    const votes = seen.filter((request) => request.tool === 'vote')
+    expect(votes.slice(0, 5).map((request) => request.seat)).toEqual(
+      Array.from({ length: 5 }, (_, offset) => ((first.nominee + offset) % 5) + 1),
+    )
+    expect(votes[2]?.threshold).toBe(3)
+    expect(votes[2]?.highestVoteCount).toBe(0)
+    expect(votes[2]?.votes).toHaveLength(2)
+    const afterTie = events.findIndex((event) => event === tallies[1])
+    const publicState = foldPublic(events.slice(0, afterTie + 1))
+    expect([...publicState.nominators].sort()).toEqual([1, 3])
+    expect([...publicState.nominees].sort()).toEqual([2, 4])
+    expect(publicState).toMatchObject({
+      aboutToBeExecuted: null,
+      highestVoteCount: 3,
+    })
+    const firstBatch = events
+      .slice(0, first.seq - 1)
+      .flatMap((event) =>
+        event.type === 'contestant.decision' && event.request.tool === 'nominate' ? [event] : [],
+      )
+    expect(firstBatch.map((event) => event.seat)).toEqual([1, 2, 3, 4, 5])
+  })
+  it('executes the Imp after nominations close and Scarlet Woman kills on the following night', async () => {
+    const { events, requests } = await game([2, 3], {
+      choose: (request) => {
+        if (request.tool === 'nominate')
+          return {
+            reasoning: 'Execute the demon',
+            nominee:
+              request.day === 1 && request.seat === 1 && request.nominees.includes(5) ? 5 : null,
+          }
+        if (request.tool === 'vote') return { reasoning: 'Execute', raise_hand: true }
+        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+      },
+    })
+    const execution = events.findIndex((event) => event.type === 'execution')
+    expect(events.slice(execution, execution + 4)).toEqual([
+      expect.objectContaining({ type: 'execution', seat: 5 }),
+      expect.objectContaining({ type: 'role.changed', seat: 4, from: 'scarletwoman', to: 'imp' }),
+      expect.objectContaining({ type: 'told', seat: 4, kind: 'imp' }),
+      expect.objectContaining({ type: 'phase.started', day: 2, phase: 'night' }),
+    ])
+    expect(requests[0]).toMatchObject({ seat: 4, day: 2 })
+    expect(events.at(-1)).toMatchObject({ type: 'game.ended', winner: 'evil' })
+  })
+  it('allows dead nominees and self nomination, spending a dead vote only once without calling again', async () => {
+    const seen: ContestantRequest[] = []
+    const { events } = await game([2, 4, 5], {
+      choose: (request) => {
+        seen.push(structuredClone(request))
+        if (request.tool === 'nominate')
+          return {
+            reasoning: 'Nominate',
+            nominee:
+              request.day === 2 && request.seat === 1 && request.nominees.includes(2)
+                ? 2
+                : request.day === 2 && request.seat === 3 && request.nominees.includes(3)
+                  ? 3
+                  : null,
+          }
+        if (request.tool === 'vote')
+          return { reasoning: 'Use my vote', raise_hand: request.seat === 2 }
+        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+      },
+    })
+    expect(
+      seen.filter(
+        (request) => request.tool === 'nominate' && request.day >= 2 && request.seat === 2,
+      ),
+    ).toEqual([])
+    expect(seen.filter((request) => request.tool === 'vote' && request.seat === 2)).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'vote' && event.seat === 2)).toEqual([
+      expect.objectContaining({ raiseHand: true, voteUsed: true }),
+      expect.objectContaining({ raiseHand: false, voteUsed: false }),
+    ])
+    expect(events.filter((event) => event.type === 'vote.tallied')).toEqual([
+      expect.objectContaining({ votes: 1, threshold: 2, aboutToBeExecuted: false }),
+      expect.objectContaining({ votes: 0, threshold: 2, aboutToBeExecuted: false }),
+    ])
+    expect(foldPublic(events).seats[1]).toMatchObject({ alive: false, voteUsed: true })
+    expect(fold(events).seats[1]).toMatchObject({ alive: false, voteUsed: true })
+  })
+  it('reports the highest earlier tally even when it was below the execution threshold', async () => {
+    let round = 0
+    const seen: ContestantRequest[] = []
+    await game([4, 5], {
+      choose: (request) => {
+        seen.push(structuredClone(request))
+        if (request.tool === 'nominate')
+          return {
+            reasoning: 'Nominate',
+            nominee:
+              request.day === 1 && request.seat === 1 && request.nominees.includes(2)
+                ? 2
+                : request.day === 1 && request.seat === 3 && request.nominees.includes(4)
+                  ? 4
+                  : null,
+          }
+        if (request.tool === 'speak' && request.kind === 'nomination') round++
+        if (request.tool === 'vote')
+          return { reasoning: 'Vote', raise_hand: request.seat <= (round === 1 ? 2 : 3) }
+        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+      },
+    })
+    const votes = seen.filter((request) => request.tool === 'vote')
+    expect(votes[5]).toMatchObject({ highestVoteCount: 2, threshold: 3 })
+  })
+  it('rejects a second nomination of the same seat in one day', async () => {
+    const seen: ContestantRequest[] = []
+    await expect(
+      game([], {
+        choose: (request) => {
+          seen.push(structuredClone(request))
+          if (request.tool === 'nominate')
+            return {
+              reasoning: 'Repeat target',
+              nominee: request.seat === 1 || request.seat === 3 ? 2 : null,
+            }
+          if (request.tool === 'vote') return { reasoning: 'Abstain', raise_hand: false }
+          return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+        },
+      }),
+    ).rejects.toThrow('Invalid nomination from ports')
+    const nominationRequests = seen.filter((request) => request.tool === 'nominate')
+    expect(nominationRequests[0]?.nominees).toContain(2)
+    expect(nominationRequests.at(-1)?.nominees).not.toContain(2)
+    expect(nominationRequests).toHaveLength(9)
+  })
+  it.each([
+    ['nomination', null],
+    ['nomination', ''],
+    ['nomination', '   '],
+    ['defense', null],
+    ['defense', ''],
+    ['defense', '   '],
+  ] as const)('rejects an empty %s speech (%s)', async (kind, speech) => {
+    await expect(
+      game([], {
+        choose: (request) =>
+          request.tool === 'nominate'
+            ? { reasoning: 'Nominate', nominee: request.seat === 1 ? 2 : null }
+            : {
+                reasoning: 'Explain',
+                speech:
+                  request.tool === 'speak' && request.kind === kind ? speech : 'A valid argument.',
+                slayer_target: null,
+              },
+      }),
+    ).rejects.toThrow('Invalid nomination speech from ports')
+  })
+  it('ends immediately after executing the Imp below five alive without succession or another night', async () => {
+    const { events } = await game([2], {
+      choose: (request) => {
+        if (request.tool === 'nominate')
+          return {
+            reasoning: 'Nominate',
+            nominee:
+              request.day === 2 && request.seat === 1 && request.nominees.includes(5) ? 5 : null,
+          }
+        if (request.tool === 'vote') return { reasoning: 'Execute', raise_hand: true }
+        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+      },
+    })
+    expect(events.slice(-2)).toEqual([
+      expect.objectContaining({ type: 'execution', seat: 5 }),
+      expect.objectContaining({ type: 'game.ended', winner: 'good' }),
+    ])
+    expect(events.filter((event) => event.type === 'role.changed')).toEqual([])
+  })
+})
+
 describe('scripted pure rules seam', () => {
-  it('creates the grimoire and private roles, resolves Chef then Empath without model calls, and skips day actions', async () => {
+  it('creates the grimoire, resolves Chef then Empath without model calls, and passes daily nominations', async () => {
     const { events, requests } = await game([5, 2, 3])
     expect(events.filter((event) => event.type === 'told' && event.kind === 'role')).toEqual(
       ORDER.map(
@@ -338,7 +589,10 @@ describe('scripted pure rules seam', () => {
         .filter((event) => event.type === 'phase.started')
         .every(
           (event) =>
-            event.phase === 'first-night' || event.phase === 'night' || event.phase === 'dawn',
+            event.phase === 'first-night' ||
+            event.phase === 'night' ||
+            event.phase === 'dawn' ||
+            event.phase === 'nomination',
         ),
     ).toBe(true)
     expect(events.filter((event) => event.type === 'dawn.announced')).toEqual([

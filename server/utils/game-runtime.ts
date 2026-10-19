@@ -5,11 +5,11 @@ import type {
   GameConfig,
   GameEvent,
   GameEventInput,
-  NightChoice,
-  NightRequest,
+  ContestantChoice,
+  ContestantRequest,
   Ports,
 } from '#shared/types/game'
-import { createRng, runGame, validateNightChoice } from '#shared/game/rules'
+import { createRng, runGame, validateContestantChoice } from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { getPreset, getProvider } from './models'
@@ -128,7 +128,10 @@ export function createGame(input: z.infer<typeof gameInput>) {
   const rng = createRng(config.seed)
   const tools = contestantTools(config.language, config.seatCount)
 
-  async function ask(request: NightRequest, events: readonly GameEvent[]): Promise<NightChoice> {
+  async function ask(
+    request: ContestantRequest,
+    events: readonly GameEvent[],
+  ): Promise<ContestantChoice> {
     const seat = config.seats[request.seat - 1]
     if (!seat) throw new Error('Unknown contestant seat')
     const provider = getProvider(seat.providerId)
@@ -139,6 +142,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       language: config.language,
       request,
     })
+    const tool = request.tool
     for (let attempt = 1; ; attempt++) {
       const start = performance.now()
       let raw: unknown
@@ -149,7 +153,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
             ...seat,
             extraBody: JSON.parse(seat.extraBody) as Record<string, unknown>,
           },
-          { ...prompt, tools, tool: 'night_choice' },
+          { ...prompt, tools, tool },
           runner.controller.signal,
         )
       } catch (error) {
@@ -175,13 +179,13 @@ export function createGame(input: z.infer<typeof gameInput>) {
         await delay(retryDelay(error, attempt), undefined, { signal: runner.controller.signal })
         continue
       }
-      const toolCheck = checkToolCall(raw, tools, 'night_choice')
+      const toolCheck = checkToolCall(raw, tools, tool)
       const errors = toolCheck.ok
-        ? validateNightChoice(toolCheck.arguments, request)
+        ? validateContestantChoice(toolCheck.arguments, request)
         : [{ code: toolCheck.code }]
       const valid = errors.length === 0
       const usage = usageShape.safeParse(raw)
-      commit({
+      const decision = commit({
         type: 'contestant.decision',
         seat: request.seat,
         request,
@@ -192,7 +196,10 @@ export function createGame(input: z.infer<typeof gameInput>) {
         attempt,
         validation: { ok: valid, errors },
       })
-      if (valid && toolCheck.ok) return toolCheck.arguments as NightChoice
+      if (valid && toolCheck.ok) {
+        const choice = toolCheck.arguments as ContestantChoice
+        return { ...choice, decision: decision.seq }
+      }
       if (attempt === MAX_ATTEMPTS)
         throw new ContestantFailure(request.seat, JSON.stringify(errors))
       const calls = toolCheck.ok

@@ -1,10 +1,10 @@
 import { renderEvent } from '../event-templates'
 import { ROLES } from '../game/roles'
 import { foldPublic, project } from '../game/rules'
-import type { GameEvent, Language, NightRequest, Observer } from '../types/game'
+import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
 import { contestantSystem } from './rules'
 
-export const PROMPT_VERSION = 1
+export const PROMPT_VERSION = 2
 const SPEECH_DAYS = 2
 
 export function buildContestantPrompt({
@@ -16,7 +16,7 @@ export function buildContestantPrompt({
   events: readonly GameEvent[]
   seat: number
   language: Language
-  request: NightRequest
+  request: ContestantRequest
 }): { messages: [{ role: 'system'; content: string }, { role: 'user'; content: string }] } {
   const zh = language === 'zh'
   const observer = `seat:${String(seat)}` as Observer
@@ -72,13 +72,40 @@ export function buildContestantPrompt({
   const currentState = zh
     ? `# 当前公共局面\n第 ${String(state.day)} 天；阶段：${state.phase ? phases[state.phase].zh : '尚未开始'}。存活 ${String(alive)} 人；投票门槛 ${String(Math.ceil(alive / 2))} 票；今日最高票 ${String(state.highestVoteCount)} 票。\n${publicSeats}\n今日已提名者：${state.nominators.join('、') || '无'}。今日已被提名者：${state.nominees.join('、') || '无'}。即将被处决：${state.aboutToBeExecuted === null ? '无' : `${String(state.aboutToBeExecuted)} 号`}。`
     : `# Current public state\nDay ${String(state.day)}; phase: ${state.phase ? phases[state.phase].en : 'not started'}. ${String(alive)} alive; voting threshold ${String(Math.ceil(alive / 2))}; today's highest tally ${String(state.highestVoteCount)}.\n${publicSeats}\nNominated today: ${state.nominators.join(', ') || 'none'}. Nominees today: ${state.nominees.join(', ') || 'none'}. About to be executed: ${state.aboutToBeExecuted === null ? 'nobody' : `Seat ${String(state.aboutToBeExecuted)}`}.`
-  const targetCount = request.role === 'fortuneteller' ? 2 : 1
-  const legalTargets = request.targets
-    .map((target) => (zh ? `${String(target)} 号` : `Seat ${String(target)}`))
-    .join(zh ? '、' : ', ')
-  const requestText = zh
-    ? `# 本次请求\n第 ${String(request.day)} 夜，作为${ROLES[request.role].name.zh}选择 ${String(targetCount)} 名${targetCount === 2 ? '不同的' : ''}玩家。合法目标：${legalTargets}。${request.targets.includes(seat) ? '可以选择自己。' : '不能选择自己。'}可以选择列表中的死者，不得因目标已死而重选。\ntargets 填 ${String(targetCount)} 个合法座位号；reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 night_choice。`
-    : `# This request\nNight ${String(request.day)}: acting as ${ROLES[request.role].name.en}, choose ${String(targetCount)} ${targetCount === 2 ? 'distinct players' : 'player'}. Legal targets: ${legalTargets}. ${request.targets.includes(seat) ? 'You may choose yourself.' : 'You may not choose yourself.'} Listed dead players are legal; a dead target does not grant a new choice.\nPut ${String(targetCount)} legal seat number${targetCount === 2 ? 's' : ''} in targets and private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall night_choice.`
+  const requestText = (() => {
+    switch (request.tool) {
+      case 'nominate':
+        return zh
+          ? `# 本次请求\n请选择今天尚未被提名的座位：${request.nominees.join('、')}。可以提名自己或死者；nominee 填合法座位号或 null（pass）。只有本轮被选中执行的提名才消耗今天的提名次数，落选后下一轮重新选择。\n请调用 nominate。`
+          : `# This request\nLegal nominees not nominated today: ${request.nominees.join(', ')}. You may nominate yourself or a dead seat. Put a legal seat number in nominee, or null to pass. Only the nomination selected this round spends your daily nomination; unselected proposals are asked again next round.\nCall nominate.`
+      case 'speak':
+        return zh
+          ? `# 本次请求\n${String(request.nominator)} 号提名 ${String(request.nominee)} 号。现在请作${request.kind === 'nomination' ? '提名理由' : '辩护'}，speech 必须为非空发言，不能 pass；slayer_target 必须为 null。\n请调用 speak。`
+          : `# This request\nSeat ${String(request.nominator)} nominated Seat ${String(request.nominee)}. Give your ${request.kind === 'nomination' ? 'nomination reason' : 'defense'} now. speech must be nonempty; passing is not allowed. slayer_target must be null.\nCall speak.`
+      case 'vote': {
+        const votes = request.votes
+          .map((vote) =>
+            zh
+              ? `${String(vote.seat)} 号：${vote.raiseHand ? '举手' : '未举手'}`
+              : `Seat ${String(vote.seat)}: ${vote.raiseHand ? 'raised' : 'not raised'}`,
+          )
+          .join(zh ? '；' : '; ')
+        const count = request.votes.filter((vote) => vote.raiseHand).length
+        return zh
+          ? `# 本次请求\n${String(request.nominator)} 号提名 ${String(request.nominee)} 号，顺时针投票轮到你。前面的票：${votes || '无'}。当前 ${String(count)} 票；门槛 ${String(request.threshold)} 票；今天此前最高 ${String(request.highestVoteCount)} 票。达到门槛且严格超过此前最高票才能成为即将被处决者；与最高票平票则无人处决。${request.canRaiseHand ? 'raise_hand 填 true 或 false；死者举手将永久消耗唯一的投票标记。' : '你的死者投票标记已用，只能填 false。'}\n请调用 vote。`
+          : `# This request\nSeat ${String(request.nominator)} nominated Seat ${String(request.nominee)}. It is your clockwise voting turn. Previous individual votes: ${votes || 'none'}. Current tally: ${String(count)}; threshold: ${String(request.threshold)}; previous highest today: ${String(request.highestVoteCount)}. Meeting the threshold and strictly exceeding the previous high makes the nominee about to be executed; tying the high cancels the execution leader. ${request.canRaiseHand ? 'Set raise_hand to true or false; a dead voter raising permanently spends their only vote token.' : 'Your dead vote token is spent; only false is legal.'}\nCall vote.`
+      }
+      case 'night_choice': {
+        const targetCount = request.role === 'fortuneteller' ? 2 : 1
+        const legalTargets = request.targets
+          .map((target) => (zh ? `${String(target)} 号` : `Seat ${String(target)}`))
+          .join(zh ? '、' : ', ')
+        return zh
+          ? `# 本次请求\n第 ${String(request.day)} 夜，作为${ROLES[request.role].name.zh}选择 ${String(targetCount)} 名${targetCount === 2 ? '不同的' : ''}玩家。合法目标：${legalTargets}。${request.targets.includes(seat) ? '可以选择自己。' : '不能选择自己。'}可以选择列表中的死者，不得因目标已死而重选。\ntargets 填 ${String(targetCount)} 个合法座位号；reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 night_choice。`
+          : `# This request\nNight ${String(request.day)}: acting as ${ROLES[request.role].name.en}, choose ${String(targetCount)} ${targetCount === 2 ? 'distinct players' : 'player'}. Legal targets: ${legalTargets}. ${request.targets.includes(seat) ? 'You may choose yourself.' : 'You may not choose yourself.'} Listed dead players are legal; a dead target does not grant a new choice.\nPut ${String(targetCount)} legal seat number${targetCount === 2 ? 's' : ''} in targets and private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall night_choice.`
+      }
+    }
+  })()
 
   return {
     messages: [

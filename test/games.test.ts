@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup, startServer, stopServer } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
 import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
@@ -19,6 +20,25 @@ await setup({
   },
 })
 
+const toolChoice = z.object({ function: z.object({ name: z.string() }) })
+
+async function nightProvider() {
+  const fake = await startFakeProvider((request) => {
+    const name = toolChoice.parse(request.body.tool_choice).function.name
+    if (name === 'nominate')
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Pass","nominee":null}' }
+    return undefined
+  })
+  return {
+    ...fake,
+    get requests() {
+      return fake.requests.filter(
+        (request) => toolChoice.parse(request.body.tool_choice).function.name === 'night_choice',
+      )
+    },
+  }
+}
+
 async function preset(
   apiKeyEnv: string,
   baseUrl = 'http://127.0.0.1:1/v1',
@@ -31,7 +51,12 @@ async function preset(
   })
   return $fetch<{ id: number; providerId: number }>('/api/presets', {
     method: 'POST',
-    body: { name: 'Game preset', providerId: provider.id, model: 'fake-model' },
+    body: {
+      name: 'Game preset',
+      providerId: provider.id,
+      model: 'fake-model',
+      forceToolChoice: true,
+    },
   })
 }
 
@@ -52,18 +77,32 @@ describe('games HTTP seam', () => {
   })
 
   it('runs an actual game through the provider to game.ended and replays projected events', async () => {
-    const fake = await startFakeProvider()
+    let nightTurn = 0
+    const fake = await startFakeProvider((request) => {
+      const choice = toolChoice.parse(request.body.tool_choice)
+      const name = choice.function.name
+      const messages = request.body.messages as { role: string; content: string }[]
+      const user = messages[1]?.content ?? ''
+      const args =
+        name === 'night_choice'
+          ? { targets: [(nightTurn++ % 5) + 1] }
+          : name === 'nominate'
+            ? {
+                nominee:
+                  user.includes('You are Seat 1.') && user.includes('Nominees today: none.')
+                    ? 1
+                    : null,
+              }
+            : name === 'vote'
+              ? { raise_hand: true }
+              : { speech: 'My nomination argument.', slayer_target: null }
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning: 'Choose a legal action.', ...args }),
+      }
+    })
     try {
-      for (let turn = 0; turn < 20; turn++)
-        fake.script({
-          kind: 'toolCall',
-          name: 'night_choice',
-          arguments: JSON.stringify({
-            reasoning: 'Choose the next seat.',
-            targets: [(turn % 5) + 1],
-            memo: 'Remember my previous choice.',
-          }),
-        })
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
@@ -83,8 +122,8 @@ describe('games HTTP seam', () => {
         type: 'game.created',
         seatCount: 5,
         language: 'en',
-        logVersion: 1,
-        promptVersion: 1,
+        logVersion: 2,
+        promptVersion: 2,
         storyteller: null,
       })
       expect(Object.values(opened.config.discretions)).toEqual(
@@ -137,7 +176,8 @@ describe('games HTTP seam', () => {
         expect(messages[0]?.content).toContain('Saint')
         expect(messages[1]?.content).not.toContain('Game preset')
         expect(messages[1]?.content).not.toContain('fake-model')
-        expect(messages[1]?.content).toContain('Call night_choice.')
+        const choice = toolChoice.parse(request.body.tool_choice)
+        expect(messages[1]?.content).toContain(`Call ${choice.function.name}.`)
         expect(request.body).not.toHaveProperty('temperature')
         expect(request.body.tools).toEqual(first?.tools)
       }
@@ -146,10 +186,22 @@ describe('games HTTP seam', () => {
       })
       expect(
         publicEvents.every((event) =>
-          ['phase.started', 'dawn.announced', 'game.ended'].includes(event.type),
+          [
+            'phase.started',
+            'dawn.announced',
+            'game.ended',
+            'nomination',
+            'public.speech',
+            'vote',
+            'vote.tallied',
+            'execution',
+          ].includes(event.type),
         ),
       ).toBe(true)
       expect(publicEvents.at(-1)?.type).toBe('game.ended')
+      expect(publicEvents.some((event) => event.type === 'nomination')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'vote')).toBe(true)
+      expect(publicEvents.some((event) => event.type === 'execution')).toBe(true)
       const after = events.at(-3)?.seq ?? 0
       expect(await $fetch(`/api/games/${opened.id}/events`, { query: { after } })).toEqual(
         events.filter((event) => event.seq > after),
@@ -160,7 +212,7 @@ describe('games HTTP seam', () => {
   })
 
   it('recovers from invalid arguments without changing the original prompt prefix or applying memo', async () => {
-    const fake = await startFakeProvider()
+    const fake = await nightProvider()
     const invalid = '{ "reasoning": "retry", "targets": [], "memo": "INVALID MEMO" }'
     try {
       fake.script({ kind: 'toolCall', name: 'night_choice', arguments: invalid })
@@ -179,7 +231,9 @@ describe('games HTTP seam', () => {
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
         .toBe('ended')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
-      const decisions = events.filter((event) => event.type === 'contestant.decision')
+      const decisions = events.filter(
+        (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+      )
       expect(decisions.slice(0, 2)).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
         { attempt: 2, validation: { ok: true } },
@@ -252,7 +306,7 @@ describe('games HTTP seam', () => {
       'exactly one',
     ],
   ] as const)('recovers from %s with an English error suffix', async (_name, step, explanation) => {
-    const fake = await startFakeProvider()
+    const fake = await nightProvider()
     try {
       fake.script(step)
       for (let turn = 0; turn < 20; turn++)
@@ -281,7 +335,12 @@ describe('games HTTP seam', () => {
       if (step.kind === 'toolCall') expect(suffix).toContain(step.arguments)
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
-        events.filter((event) => event.type === 'contestant.decision').slice(0, 2),
+        events
+          .filter(
+            (event) =>
+              event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+          )
+          .slice(0, 2),
       ).toMatchObject([
         { attempt: 1, validation: { ok: false } },
         { attempt: 2, validation: { ok: true } },
@@ -301,7 +360,7 @@ describe('games HTTP seam', () => {
   ] as const)(
     'recovers from %s by waiting and resending identical bytes',
     async (_name, step, errorType, minimumDelay) => {
-      const fake = await startFakeProvider()
+      const fake = await nightProvider()
       try {
         fake.script(step)
         for (let turn = 0; turn < 20; turn++)
@@ -326,7 +385,12 @@ describe('games HTTP seam', () => {
         ).toBeGreaterThanOrEqual(minimumDelay - 30)
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
-          events.filter((event) => event.type === 'contestant.decision').slice(0, 2),
+          events
+            .filter(
+              (event) =>
+                event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+            )
+            .slice(0, 2),
         ).toMatchObject([
           { attempt: 1, validation: { ok: false, code: 'call_failed', errorType } },
           { attempt: 2, validation: { ok: true } },
@@ -340,7 +404,7 @@ describe('games HTTP seam', () => {
   it.each(['zh', 'en'] as const)(
     'replaces only accepted seat memos, keeps them out of the timeline, and projects them privately (%s)',
     async (language) => {
-      const fake = await startFakeProvider()
+      const fake = await nightProvider()
       const original = '记'.repeat(2000)
       try {
         for (const memo of [undefined, original, undefined, 'Keep only this claim.', ''])
@@ -408,7 +472,7 @@ describe('games HTTP seam', () => {
   )
 
   it('shares the attempt limit across invalid output and transport failures', async () => {
-    const fake = await startFakeProvider()
+    const fake = await nightProvider()
     try {
       fake.script(
         {
@@ -428,7 +492,11 @@ describe('games HTTP seam', () => {
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
         .toBe('aborted')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
-      expect(events.filter((event) => event.type === 'contestant.decision')).toMatchObject([
+      expect(
+        events.filter(
+          (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+        ),
+      ).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
         { attempt: 2, validation: { ok: false, code: 'call_failed', errorType: 'http' } },
         { attempt: 3, validation: { ok: false, errors: [{ code: 'invalid_arguments_json' }] } },
@@ -449,7 +517,7 @@ describe('games HTTP seam', () => {
   })
 
   it('honors an HTTP-date Retry-After before resending the same request', async () => {
-    const fake = await startFakeProvider()
+    const fake = await nightProvider()
     const retryAt = new Date(Date.now() + 2000).toUTCString()
     try {
       fake.script({ kind: 'rateLimit', retryAfterSec: 0, retryAfter: retryAt })
@@ -486,7 +554,7 @@ describe('games HTTP seam', () => {
   ] as const)(
     'aborts after three %s attempts, preserving the failing seat and error',
     async (_name, step) => {
-      const fake = await startFakeProvider()
+      const fake = await nightProvider()
       try {
         fake.script(step, step, step)
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
@@ -499,9 +567,11 @@ describe('games HTTP seam', () => {
           .toBe('aborted')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
-          events
-            .filter((event) => event.type === 'contestant.decision')
-            .map((event) => event.attempt),
+          events.flatMap((event) =>
+            event.type === 'contestant.decision' && event.request.tool === 'night_choice'
+              ? [event.attempt]
+              : [],
+          ),
         ).toEqual([1, 2, 3])
         expect(events.at(-1)).toMatchObject({
           type: 'game.aborted',
@@ -555,7 +625,7 @@ describe('games HTTP seam', () => {
     const fake = await startFakeProvider()
     try {
       fake.script({ kind: 'hang' })
-      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
@@ -772,7 +842,7 @@ describe('games HTTP seam', () => {
     const fake = await startFakeProvider()
     try {
       fake.script({ kind: 'hang' }, { kind: 'hang' })
-      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
       const open = () =>
         $fetch<GameSummary>('/api/games', {
           method: 'POST',
