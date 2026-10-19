@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from 'zod'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { GameEvent } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { renderEvent } from '#shared/event-templates'
@@ -91,6 +92,11 @@ onUnmounted(() => source?.close())
       <div class="flex items-center justify-between gap-4">
         <h1 class="text-xl font-semibold">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
         <div class="flex gap-2">
+          <Button v-if="game.replayable" variant="outline" size="sm" as-child>
+            <NuxtLink :to="{ path: '/games/new', query: { template: id } }">
+              {{ t('games.template') }}
+            </NuxtLink>
+          </Button>
           <Badge variant="outline">{{ replay ? t('games.replay') : t('games.live') }}</Badge
           ><Badge variant="secondary">{{ t(`games.${game.status}`) }}</Badge>
         </div>

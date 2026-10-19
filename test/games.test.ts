@@ -332,6 +332,76 @@ describe('games HTTP seam', () => {
     },
   )
 
+  it.each(['zh', 'en'] as const)(
+    'replaces only accepted seat memos, keeps them out of the timeline, and projects them privately (%s)',
+    async (language) => {
+      const fake = await startFakeProvider()
+      const original = '记'.repeat(2000)
+      try {
+        for (const memo of [undefined, original, undefined, 'Keep only this claim.', ''])
+          fake.script({
+            kind: 'toolCall',
+            name: 'night_choice',
+            arguments: JSON.stringify({ reasoning: 'Keep choosing Seat 1.', targets: [1], memo }),
+          })
+        for (let attempt = 0; attempt < 3; attempt++)
+          fake.script({
+            kind: 'toolCall',
+            name: 'night_choice',
+            arguments: JSON.stringify({
+              reasoning: 'Invalid targets.',
+              targets: [],
+              memo: 'Rejected',
+            }),
+          })
+        const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+        const opened = await $fetch<GameSummary>('/api/games', {
+          method: 'POST',
+          body: { presets: Array.from({ length: 5 }, () => model.id), language },
+        })
+        await expect
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+          .toBe('aborted')
+        const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+        const memos = events.filter((event) => event.type === 'seat.memo.updated')
+        expect(memos.map((event) => event.memo)).toEqual([original, 'Keep only this claim.', ''])
+        const seat = memos[0]?.seat
+        expect(seat).toBeTypeOf('number')
+        expect(memos.every((event) => event.seat === seat)).toBe(true)
+        for (const observer of [
+          'spectator',
+          'storyteller',
+          `seat:${String(seat)}`,
+          'public',
+          ...[1, 2, 3, 4, 5]
+            .filter((other) => other !== seat)
+            .map((other) => `seat:${String(other)}`),
+        ]) {
+          const projected = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`, {
+            query: { observer },
+          })
+          expect(projected.filter((event) => event.type === 'seat.memo.updated')).toEqual(
+            ['spectator', 'storyteller', `seat:${String(seat)}`].includes(observer) ? memos : [],
+          )
+        }
+        const memoHeading = language === 'zh' ? '# 你的备忘录\n' : '# Your memo\n'
+        const stateHeading = language === 'zh' ? '# 当前公共局面' : '# Current public state'
+        const contents = fake.requests.map((request) => {
+          const messages = request.body.messages as { role: string; content: string }[]
+          const user = messages[1]?.content ?? ''
+          const [prefix, suffix] = user.split(memoHeading)
+          expect(prefix).not.toContain(original)
+          expect(prefix).not.toContain('Keep only this claim.')
+          expect(prefix).not.toContain('Rejected')
+          return suffix?.split(stateHeading)[0]?.trim()
+        })
+        expect(contents.slice(2, 6)).toEqual([original, original, 'Keep only this claim.', ''])
+      } finally {
+        await fake.close()
+      }
+    },
+  )
+
   it('shares the attempt limit across invalid output and transport failures', async () => {
     const fake = await startFakeProvider()
     try {

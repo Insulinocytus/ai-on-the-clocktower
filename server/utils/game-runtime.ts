@@ -192,9 +192,15 @@ export function createGame(input: z.infer<typeof gameInput>) {
     log: runner.log,
     commit,
     rng,
-    askContestants: (batch) => {
+    askContestants: async (batch) => {
       const events = runner.log.slice()
-      return Promise.all(batch.map((request) => ask(request, events)))
+      const choices = await Promise.all(batch.map((request) => ask(request, events)))
+      for (const [index, choice] of choices.entries()) {
+        const request = batch[index]
+        if (request && choice.memo !== undefined)
+          commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
+      }
+      return choices
     },
     discretion: (_discretion, candidates) => {
       const choice = Array.isArray(candidates)

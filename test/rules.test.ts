@@ -288,6 +288,7 @@ async function game(targets: number[], options: { seats?: SeatState[]; d14?: num
         attempt: 1,
         validation: [],
       })
+      commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
       return Promise.resolve([choice])
     },
   }
