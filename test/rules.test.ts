@@ -15,6 +15,7 @@ import {
   winner,
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
+import { channelBlocks } from '../shared/game/channels'
 import { renderEvent } from '../shared/event-templates'
 import type {
   ContestantChoice,
@@ -31,6 +32,140 @@ import type {
   SpeechChoice,
   SpeechRequest,
 } from '../shared/types/game'
+
+describe('spectator channel blocks', () => {
+  it('keeps interleaved room instances separate, announcements first, and folds at each end', () => {
+    const events: GameEvent[] = [
+      { seq: 1, type: 'phase.started', day: 1, phase: 'first-night' },
+      { seq: 2, type: 'phase.started', day: 1, phase: 'dawn' },
+      { seq: 3, type: 'dawn.announced', day: 1, deaths: [] },
+      { seq: 4, type: 'phase.started', day: 1, phase: 'whisper' },
+      { seq: 5, type: 'whisper.proposed', seat: 1, round: 1, members: [2] },
+      { seq: 6, type: 'whisper.room.opened', round: 1, roomId: 'a', members: [1, 2] },
+      { seq: 7, type: 'whisper.room.opened', round: 1, roomId: 'b', members: [3, 4] },
+      {
+        seq: 8,
+        type: 'whisper.speech',
+        round: 1,
+        roomId: 'b',
+        members: [3, 4],
+        seat: 3,
+        speech: 'B',
+        decision: 0,
+      },
+      {
+        seq: 9,
+        type: 'whisper.speech',
+        round: 1,
+        roomId: 'a',
+        members: [1, 2],
+        seat: 1,
+        speech: 'A',
+        decision: 0,
+      },
+      { seq: 10, type: 'whisper.room.closed', round: 1, roomId: 'a', members: [1, 2] },
+      { seq: 11, type: 'whisper.room.closed', round: 1, roomId: 'b', members: [3, 4] },
+      { seq: 12, type: 'whisper.proposed', seat: 2, round: 2, members: [1] },
+      { seq: 13, type: 'whisper.room.opened', round: 2, roomId: 'c', members: [2, 1] },
+      { seq: 14, type: 'phase.started', day: 1, phase: 'public' },
+      { seq: 15, type: 'public.speech', kind: 'free', seat: 1, speech: 'Public', decision: 0 },
+      { seq: 16, type: 'phase.started', day: 1, phase: 'nomination' },
+      { seq: 17, type: 'nomination', nominator: 1, nominee: 2 },
+      {
+        seq: 18,
+        type: 'vote.tallied',
+        nominee: 2,
+        votes: 3,
+        threshold: 3,
+        aboutToBeExecuted: true,
+      },
+      { seq: 19, type: 'execution', seat: 2 },
+    ]
+    const blocks = channelBlocks(events)
+    expect(blocks.map((block) => block.kind)).toEqual([
+      'first-night',
+      'dawn',
+      'allocation',
+      'room',
+      'room',
+      'allocation',
+      'room',
+      'public',
+      'nomination',
+    ])
+    const rooms = blocks.filter((block) => block.kind === 'room')
+    expect(rooms.map((block) => block.events.map((event) => event.seq))).toEqual([
+      [6, 9, 10],
+      [7, 8, 11],
+      [13],
+    ])
+    expect(rooms.map((block) => block.occurrence)).toEqual([1, 1, 2])
+    expect(rooms[0]?.end).toBe(10)
+    expect(
+      foldPublic(events.filter((event) => event.seq <= (rooms[0]?.end ?? 0))).seats[1]?.alive,
+    ).toBe(true)
+    expect(
+      foldPublic(events.filter((event) => event.seq <= (blocks.at(-1)?.end ?? 0))).seats[1]?.alive,
+    ).toBe(false)
+    expect(channelBlocks(events.slice(0, 9)).map((block) => block.key)).toEqual(
+      blocks.slice(0, 5).map((block) => block.key),
+    )
+  })
+  it('routes parallel room decisions and memos by their request, not the last active room', () => {
+    const decision = (seq: number, request: ContestantRequest): GameEvent => ({
+      seq,
+      type: 'contestant.decision',
+      seat: request.seat,
+      request,
+      raw: {},
+      model: 'fake',
+      usage: {},
+      durationMs: 0,
+      attempt: 1,
+      validation: { ok: true },
+    })
+    const events: GameEvent[] = [
+      { seq: 1, type: 'phase.started', day: 1, phase: 'whisper' },
+      { seq: 2, type: 'whisper.room.opened', round: 1, roomId: 'a', members: [1, 2] },
+      { seq: 3, type: 'whisper.room.opened', round: 1, roomId: 'b', members: [3, 4] },
+      decision(4, {
+        tool: 'speak',
+        kind: 'whisper',
+        day: 1,
+        seat: 1,
+        room: { id: 'a', round: 1, members: [1, 2] },
+      }),
+      { seq: 5, type: 'seat.memo.updated', seat: 1, memo: 'Keep this in room A.' },
+      decision(6, {
+        tool: 'speak',
+        kind: 'whisper',
+        day: 1,
+        seat: 3,
+        room: { id: 'b', round: 1, members: [3, 4] },
+      }),
+      decision(7, {
+        tool: 'propose_whisper',
+        day: 1,
+        seat: 1,
+        round: 2,
+        remaining: 1,
+        eligible: [2],
+      }),
+      { seq: 8, type: 'seat.memo.updated', seat: 1, memo: 'Next round.' },
+      { seq: 9, type: 'whisper.proposed', seat: 1, round: 2, members: null },
+      { seq: 10, type: 'phase.started', day: 1, phase: 'public' },
+      { seq: 11, type: 'phase.started', day: 1, phase: 'nomination' },
+    ]
+    expect(channelBlocks(events).map((block) => block.events.map((event) => event.seq))).toEqual([
+      [1],
+      [2, 4, 5],
+      [3, 6],
+      [7, 8, 9],
+      [10],
+      [11],
+    ])
+  })
+})
 
 describe('five-seat setup', () => {
   it('samples three distinct implemented Townsfolk, one Minion and Imp from a reproducible seed', () => {
