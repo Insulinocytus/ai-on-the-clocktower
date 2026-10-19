@@ -254,15 +254,8 @@ export function buildStorytellerPrompt(
   const zh = language === 'zh'
   const projected = project(events, 'storyteller')
   const lines: string[] = []
-  let day = 0
   for (const event of projected) {
-    if (event.type === 'phase.started') day = event.day
     if (event.type === 'seat.memo.updated' || event.type === 'discretion.requested') continue
-    if (
-      (event.type === 'public.speech' || event.type === 'whisper.speech') &&
-      day < context.day - 1
-    )
-      continue
     lines.push(renderEvent(event, language, 'storyteller'))
     if (event.type === 'storyteller.decision') {
       const raw = event.raw as {
