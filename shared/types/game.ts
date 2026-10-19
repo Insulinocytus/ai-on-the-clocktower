@@ -28,7 +28,7 @@ export type RoleId =
   | 'imp'
 export type Observer = 'spectator' | 'storyteller' | 'public' | `seat:${number}`
 type Phase = 'first-night' | 'night' | 'dawn' | 'whisper' | 'public' | 'nomination'
-type DiscretionId =
+export type DiscretionId =
   | 'D1'
   | 'seating'
   | 'D2'
@@ -43,7 +43,7 @@ type DiscretionId =
   | 'D12'
   | 'D13'
   | 'D14'
-type DiscretionSource = 'random' | 'storyteller' | 'manual'
+export type DiscretionSource = 'random' | 'storyteller' | 'manual'
 interface ModelSnapshot extends Preset {
   seat?: number
 }
@@ -182,6 +182,7 @@ type ValidationCode =
   | 'wrong_tool'
   | 'invalid_arguments_json'
   | 'invalid_arguments'
+  | 'invalid_discretion'
 export interface ValidationError {
   code: ValidationCode
 }
@@ -280,7 +281,12 @@ export type GameEvent =
     >
   | Event<
       'discretion.requested',
-      { discretion: DiscretionId; candidates: unknown; source: DiscretionSource }
+      {
+        discretion: DiscretionId
+        candidates: DiscretionCandidates
+        source: DiscretionSource
+        context?: DiscretionDetails
+      }
     >
   | Event<
       'discretion.resolved',
@@ -383,18 +389,30 @@ export interface Registration {
   alignment: Alignment
   role: RoleId
 }
+export type DiscretionChoice = RoleId[] | RoleId | InformationResult | Registration
+export type DiscretionCandidates =
+  | { type: 'setup'; sample: RoleId[] }
+  | { type: 'seating'; roles: RoleId[]; sample: RoleId[] }
+  | DiscretionChoice[]
+export interface DiscretionDetails {
+  seat?: number
+  role?: RoleId
+  truth?: InformationResult[]
+  reason?: 'drunk' | 'poisoned'
+}
+export interface DiscretionContext extends Grimoire {
+  discretion?: DiscretionDetails
+}
 export interface Ports {
   config: GameConfig
   log: readonly GameEvent[]
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id:
-      'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D7' | 'D8' | 'D10' | 'D11' | 'D12' | 'D13' | 'D14',
-    candidates:
-      | { type: 'setup'; sample: RoleId[] }
-      | (InformationResult | RoleId | RoleId[] | Registration)[],
-    context: Grimoire,
-  ): Promise<RoleId[] | RoleId | InformationResult | Registration>
+    id: DiscretionId,
+    candidates: DiscretionCandidates,
+    context: DiscretionContext,
+    requestSeq: number,
+  ): Promise<{ choice: DiscretionChoice; decision?: number }>
   rng(): number
 }

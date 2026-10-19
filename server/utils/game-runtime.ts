@@ -9,7 +9,7 @@ import type {
   ContestantRequest,
   Ports,
 } from '#shared/types/game'
-import { createRng, runGame, validateContestantChoice } from '#shared/game/rules'
+import { createRng, DISCRETION_IDS, runGame, validateContestantChoice } from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { getPreset, getProvider } from './models'
@@ -22,6 +22,10 @@ export const gameInput = z.object({
   language: z.enum(['zh', 'en']),
   speechLimit: z.int().min(1).default(10),
   whisperLimit: z.int().min(0).default(3),
+  discretions: z
+    .partialRecord(z.enum(DISCRETION_IDS), z.enum(['random', 'storyteller', 'manual']))
+    .default({}),
+  storyteller: z.int().nullable().optional(),
 })
 
 interface Runner {
@@ -64,7 +68,14 @@ export function abortGame(id: string) {
 
 export function createGame(input: z.infer<typeof gameInput>) {
   const seats = input.presets.map((id, index) => ({ ...getPreset(id), seat: index + 1 }))
-  const providers = seats.map((seat) => {
+  const discretions = Object.fromEntries(
+    DISCRETION_IDS.map((id) => [id, input.discretions[id] ?? 'random']),
+  ) as GameConfig['discretions']
+  const needsStoryteller = Object.values(discretions).includes('storyteller')
+  if (needsStoryteller && !input.storyteller)
+    throw createError({ statusCode: 400, statusMessage: 'Storyteller preset is required' })
+  const storyteller = needsStoryteller && input.storyteller ? getPreset(input.storyteller) : null
+  const providers = [...seats, ...(storyteller ? [storyteller] : [])].map((seat) => {
     const provider = getProvider(seat.providerId)
     if (!provider) throw createError({ statusCode: 400, statusMessage: 'Provider not found' })
     return provider
@@ -82,27 +93,11 @@ export function createGame(input: z.infer<typeof gameInput>) {
       statusMessage: 'Provider credentials are missing',
       data: { missing },
     })
-  // shortcut: random-only discretion; replace the dispatcher when manual/model discretion is added.
   const config: GameConfig = {
     seatCount: seats.length,
     seats,
-    storyteller: null,
-    discretions: {
-      D1: 'random',
-      seating: 'random',
-      D2: 'random',
-      D3: 'random',
-      D4: 'random',
-      D5: 'random',
-      D6: 'random',
-      D7: 'random',
-      D8: 'random',
-      D10: 'random',
-      D11: 'random',
-      D12: 'random',
-      D13: 'random',
-      D14: 'random',
-    },
+    storyteller,
+    discretions,
     speechLimit: input.speechLimit,
     whisperLimit: input.whisperLimit,
     language: input.language,
@@ -225,12 +220,19 @@ export function createGame(input: z.infer<typeof gameInput>) {
       }
       return choices
     },
-    discretion: (_discretion, candidates) => {
-      const choice = Array.isArray(candidates)
-        ? candidates[Math.floor(rng() * candidates.length)]
-        : candidates.sample
-      if (choice === undefined) throw new Error('Discretion has no candidates')
-      return Promise.resolve(choice)
+    discretion: (id, candidates) => {
+      switch (config.discretions[id]) {
+        case 'random': {
+          const choice = Array.isArray(candidates)
+            ? candidates[Math.floor(rng() * candidates.length)]
+            : candidates.sample
+          if (choice === undefined) throw new Error('Discretion has no candidates')
+          return Promise.resolve({ choice })
+        }
+        case 'storyteller':
+        case 'manual':
+          throw new Error(`Discretion source ${config.discretions[id]} is not available`)
+      }
     },
   }
   void runGame(ports)

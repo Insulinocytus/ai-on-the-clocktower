@@ -80,6 +80,10 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     zh: '工具字段不符合 schema：请检查必填字段、类型、合法座位号和 memo 的 2000 字限制，不得添加额外字段。',
     en: 'Tool fields violate the schema: check required fields, types, legal seat numbers and the 2000-character memo limit; do not add extra fields.',
   },
+  invalid_discretion: {
+    zh: '裁量必须符合本次请求的字段与合法候选，不能添加无关字段。',
+    en: 'The discretion must match the requested fields and a legal candidate, without unrelated fields.',
+  },
 }
 
 export function invalidAttemptSuffix(

@@ -1,6 +1,10 @@
 import type {
   Alignment,
   ContestantRequest,
+  DiscretionCandidates,
+  DiscretionChoice,
+  DiscretionDetails,
+  DiscretionId,
   GameEvent,
   GameEventInput,
   Grimoire,
@@ -19,6 +23,44 @@ import type {
 import { ROLES } from './roles'
 
 const ROLE_POOL = Object.values(ROLES).map((role) => role.id)
+export const DISCRETION_IDS = [
+  'D1',
+  'seating',
+  'D2',
+  'D3',
+  'D4',
+  'D5',
+  'D6',
+  'D7',
+  'D8',
+  'D10',
+  'D11',
+  'D12',
+  'D13',
+  'D14',
+] as const
+
+export function validateDiscretionChoice(
+  choice: unknown,
+  candidates: DiscretionCandidates,
+  seatCount: number,
+): ValidationError[] {
+  if (Array.isArray(candidates))
+    return candidates.some((candidate) => JSON.stringify(candidate) === JSON.stringify(choice))
+      ? []
+      : [{ code: 'invalid_discretion' }]
+  if (!Array.isArray(choice) || !choice.every((role: unknown) => typeof role === 'string'))
+    return [{ code: 'invalid_discretion' }]
+  if (choice.length !== seatCount) return [{ code: 'invalid_seat_count' }]
+  const errors = validate(choice)
+  if (
+    candidates.type === 'seating' &&
+    (choice.length !== candidates.roles.length ||
+      !candidates.roles.every((role) => choice.includes(role)))
+  )
+    errors.push({ code: 'invalid_discretion' })
+  return errors
+}
 
 export function setupCounts(seatCount: number) {
   if (!Number.isInteger(seatCount) || seatCount < 5 || seatCount > 15)
@@ -520,6 +562,33 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     const event = await ports.commit(input)
     state = apply(state, event)
   }
+  const discretion = async (
+    id: DiscretionId,
+    candidates: DiscretionCandidates,
+    context?: DiscretionDetails,
+  ): Promise<DiscretionChoice> => {
+    if (Array.isArray(candidates) && candidates.length === 1 && candidates[0] !== undefined)
+      return candidates[0]
+    const source = ports.config.discretions[id]
+    const requested = await ports.commit({
+      type: 'discretion.requested',
+      discretion: id,
+      candidates,
+      source,
+      ...(context && { context }),
+    })
+    state = apply(state, requested)
+    const result = await ports.discretion(
+      id,
+      candidates,
+      { ...state, discretion: context },
+      requested.seq,
+    )
+    if (validateDiscretionChoice(result.choice, candidates, ports.config.seatCount).length)
+      throw new Error(`Invalid ${id} choice`)
+    await commit({ type: 'discretion.resolved', discretion: id, ...result, source })
+    return result.choice
+  }
   if (stopped()) return state
   const newSetup = state.seats.length === 0
   if (state.seats.length === 0) {
@@ -527,15 +596,34 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       type: 'setup' as const,
       sample: sample(() => ports.rng(), ports.config.seatCount),
     }
-    await commit({ type: 'discretion.requested', discretion: 'D1', candidates, source: 'random' })
-    const choice = await ports.discretion('D1', candidates, state)
+    let choice = await discretion('D1', candidates)
     if (
       !Array.isArray(choice) ||
+      !choice.every((role): role is RoleId => typeof role === 'string') ||
       choice.length !== ports.config.seatCount ||
       validate(choice).length !== 0
     )
       throw new Error('Invalid D1 setup')
-    await commit({ type: 'discretion.resolved', discretion: 'D1', choice, source: 'random' })
+    if (ports.config.discretions.seating !== ports.config.discretions.D1) {
+      const roles = choice
+      const shuffled = roles.slice()
+      for (let index = shuffled.length - 1; index > 0; index--) {
+        const other = Math.floor(ports.rng() * (index + 1))
+        const role = shuffled[index]
+        const replacement = shuffled[other]
+        if (role !== undefined && replacement !== undefined) {
+          shuffled[index] = replacement
+          shuffled[other] = role
+        }
+      }
+      const seated = await discretion('seating', { type: 'seating', roles, sample: shuffled })
+      if (
+        !Array.isArray(seated) ||
+        !seated.every((role): role is RoleId => typeof role === 'string')
+      )
+        throw new Error('Invalid seating')
+      choice = seated
+    }
     await commit({
       type: 'grimoire.set',
       seats: choice.map((role, index) => ({
@@ -560,12 +648,10 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     let choice = candidates[0]
     if (!choice) throw new Error('No absent Townsfolk for Drunk')
     if (candidates.length > 1) {
-      await commit({ type: 'discretion.requested', discretion: 'D2', candidates, source: 'random' })
-      const selected = await ports.discretion('D2', candidates, state)
+      const selected = await discretion('D2', candidates)
       if (typeof selected !== 'string' || !candidates.includes(selected))
         throw new Error('Invalid D2 identity')
       choice = selected
-      await commit({ type: 'discretion.resolved', discretion: 'D2', choice, source: 'random' })
     }
     await commit({
       type: 'grimoire.set',
@@ -593,12 +679,10 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     let choice = candidates[0]
     if (choice === undefined) throw new Error('No good Fortune Teller red herring')
     if (candidates.length > 1) {
-      await commit({ type: 'discretion.requested', discretion: 'D3', candidates, source: 'random' })
-      const selected = await ports.discretion('D3', candidates, state)
+      const selected = await discretion('D3', candidates)
       if (typeof selected !== 'number' || !candidates.includes(selected))
         throw new Error('Invalid D3 red herring')
       choice = selected
-      await commit({ type: 'discretion.resolved', discretion: 'D3', choice, source: 'random' })
     }
     await commit({ type: 'grimoire.set', seats: state.seats, redHerring: choice })
   }
@@ -620,14 +704,12 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     let choice = candidates[0]
     if (!choice) throw new Error('No legal Demon bluffs')
     if (candidates.length > 1) {
-      await commit({ type: 'discretion.requested', discretion: 'D7', candidates, source: 'random' })
-      const selected = await ports.discretion('D7', candidates, state)
+      const selected = await discretion('D7', candidates)
       const legal = candidates.find(
         (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
       )
       if (!legal) throw new Error('Invalid D7 bluffs')
       choice = legal
-      await commit({ type: 'discretion.resolved', discretion: 'D7', choice, source: 'random' })
     }
     await commit({
       type: 'grimoire.set',
@@ -639,20 +721,18 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
   for (const role of ['spy', 'recluse'] as const) {
     const seat = state.seats.find((player) => player.role === role)
     if (!seat || (seat.registeredRole && seat.registeredAlignment)) continue
-    const discretion = role === 'spy' ? 'D10' : 'D11'
+    const id = role === 'spy' ? 'D10' : 'D11'
     const roles = Object.values(ROLES).filter(
       (candidate) => candidate.id === role || candidate.alignment !== ROLES[role].alignment,
     )
     const candidates = (['good', 'evil'] as const).flatMap((alignment) =>
       roles.map((candidate) => ({ alignment, role: candidate.id })),
     )
-    await commit({ type: 'discretion.requested', discretion, candidates, source: 'random' })
-    const selected = await ports.discretion(discretion, candidates, state)
+    const selected = await discretion(id, candidates, { seat: seat.seat, role })
     const choice = candidates.find(
       (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
     )
-    if (!choice) throw new Error(`Invalid ${discretion} registration`)
-    await commit({ type: 'discretion.resolved', discretion, choice, source: 'random' })
+    if (!choice) throw new Error(`Invalid ${id} registration`)
     await commit({
       type: 'grimoire.set',
       seats: state.seats.map((player) =>
@@ -707,24 +787,17 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       if (first === undefined) throw new Error('Information has no D8 candidates')
       told = first
       if (candidates.length > 1) {
-        await commit({
-          type: 'discretion.requested',
-          discretion: 'D8',
-          candidates,
-          source: 'random',
+        const choice = await discretion('D8', candidates, {
+          seat: seat.seat,
+          role: seat.believedRole ?? seat.role,
+          truth: truths,
+          reason: seat.role === 'drunk' ? 'drunk' : 'poisoned',
         })
-        const choice = await ports.discretion('D8', candidates, state)
         const selected = candidates.find(
           (candidate) => JSON.stringify(candidate) === JSON.stringify(choice),
         )
         if (selected === undefined) throw new Error('Invalid D8 information')
         told = selected
-        await commit({
-          type: 'discretion.resolved',
-          discretion: 'D8',
-          choice: told,
-          source: 'random',
-        })
       }
     }
     await commit({
@@ -780,17 +853,13 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           .map((seat) => seat.seat)
         let selected = candidates[0]
         if (candidates.length > 1) {
-          await commit({
-            type: 'discretion.requested',
-            discretion: 'D14',
-            candidates,
-            source: 'random',
+          const choice = await discretion('D14', candidates, {
+            seat: target.seat,
+            role: target.role,
           })
-          const choice = await ports.discretion('D14', candidates, state)
           if (typeof choice !== 'number' || !candidates.includes(choice))
             throw new Error('Invalid D14 successor')
           selected = choice
-          await commit({ type: 'discretion.resolved', discretion: 'D14', choice, source: 'random' })
         }
         successor = state.seats.find((seat) => seat.seat === selected)
       }
@@ -834,7 +903,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
 
   const firstInformation = async (
     seat: SeatState,
-    discretion: 'D4' | 'D5' | 'D6',
+    id: 'D4' | 'D5' | 'D6',
     type: 'townsfolk' | 'outsider' | 'minion',
   ) => {
     const others = state.seats.filter((player) => player.seat !== seat.seat)
@@ -853,11 +922,13 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     let result = candidates[0]
     if (result === undefined) throw new Error('Information has no legal candidates')
     if (functioning(seat) && candidates.length > 1) {
-      await commit({ type: 'discretion.requested', discretion, candidates, source: 'random' })
-      const choice = await ports.discretion(discretion, candidates, state)
+      const choice = await discretion(id, candidates, {
+        seat: seat.seat,
+        role: seat.believedRole ?? seat.role,
+        truth: candidates,
+      })
       result = candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(choice))
-      if (result === undefined) throw new Error(`Invalid ${discretion} information`)
-      await commit({ type: 'discretion.resolved', discretion, choice: result, source: 'random' })
+      if (result === undefined) throw new Error(`Invalid ${id} information`)
     }
     const impaired: InformationResult[] = []
     if (!functioning(seat)) {
@@ -998,34 +1069,19 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         !target.protected
       ) {
         const candidates = [false, true]
-        await commit({
-          type: 'discretion.requested',
-          discretion: 'D12',
-          candidates,
-          source: 'random',
+        const redirect = await discretion('D12', candidates, {
+          seat: mayorSeat,
+          role: 'mayor',
+          truth: [false],
         })
-        const redirect = await ports.discretion('D12', candidates, state)
         if (typeof redirect !== 'boolean') throw new Error('Invalid D12 redirect')
-        await commit({
-          type: 'discretion.resolved',
-          discretion: 'D12',
-          choice: redirect,
-          source: 'random',
-        })
         if (redirect) {
           const candidates = state.seats
             .filter((player) => player.seat !== mayorSeat)
             .map((player) => player.seat)
-          await commit({
-            type: 'discretion.requested',
-            discretion: 'D13',
-            candidates,
-            source: 'random',
-          })
-          const choice = await ports.discretion('D13', candidates, state)
+          const choice = await discretion('D13', candidates, { seat: mayorSeat, role: 'mayor' })
           if (typeof choice !== 'number' || !candidates.includes(choice))
             throw new Error('Invalid D13 substitute')
-          await commit({ type: 'discretion.resolved', discretion: 'D13', choice, source: 'random' })
           target = state.seats.find((player) => player.seat === choice)
           if (!target) throw new Error('Missing Mayor substitute')
         }

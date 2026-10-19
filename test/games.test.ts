@@ -175,6 +175,31 @@ describe('games HTTP seam', () => {
     expect(await $fetch('/api/games')).toEqual([])
   })
 
+  it('requires a storyteller preset only when a discretion uses it and checks its credentials', async () => {
+    const seat = await preset('CLOCKTOWER_GAME_KEY')
+    const storyteller = await preset('CLOCKTOWER_MISSING_STORYTELLER')
+    const body = {
+      presets: Array.from({ length: 5 }, () => seat.id),
+      language: 'en',
+      discretions: { D1: 'storyteller' },
+    }
+    const missing = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    expect(missing.status).toBe(400)
+    const credentials = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...body, storyteller: storyteller.id }),
+    })
+    expect(credentials.status).toBe(400)
+    expect(await credentials.json()).toMatchObject({
+      data: { missing: ['CLOCKTOWER_MISSING_STORYTELLER'] },
+    })
+  })
+
   it.each([4, 16])('rejects a game with %i seats before opening it', async (seatCount) => {
     const model = await preset('CLOCKTOWER_GAME_KEY')
     const before = await $fetch<GameSummary[]>('/api/games')

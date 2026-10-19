@@ -12,6 +12,7 @@ import {
 import type { Preset } from '#shared/types/models'
 import type { GameSummary } from '#shared/types/game-view'
 import type { GameConfig } from '#shared/types/game'
+import { DISCRETION_IDS } from '#shared/game/rules'
 
 const { t, locale } = useI18n()
 const { data: presets } = await useFetch<Preset[]>('/api/presets', { default: () => [] })
@@ -33,6 +34,9 @@ const form = reactive({
   presets:
     templateConfig?.seats.map((seat) => String(seat.id)) ?? Array.from({ length: 5 }, () => ''),
   storyteller: templateConfig?.storyteller ? String(templateConfig.storyteller.id) : '',
+  discretions: Object.fromEntries(
+    DISCRETION_IDS.map((id) => [id, templateConfig?.discretions[id] ?? 'random']),
+  ) as GameConfig['discretions'],
   language: templateConfig?.language ?? (locale.value === 'zh' ? 'zh' : 'en'),
   speechLimit: templateConfig?.speechLimit ?? 10,
   whisperLimit: templateConfig?.whisperLimit ?? 3,
@@ -45,8 +49,11 @@ const seatCount = computed({
 })
 const missingPreset = (id: string) =>
   !!id && !presets.value.some((preset) => String(preset.id) === id)
+const needsStoryteller = computed(() => Object.values(form.discretions).includes('storyteller'))
 const invalidPresets = computed(
-  () => form.presets.some((id) => !id || missingPreset(id)) || missingPreset(form.storyteller),
+  () =>
+    form.presets.some((id) => !id || missingPreset(id)) ||
+    (needsStoryteller.value && (!form.storyteller || missingPreset(form.storyteller))),
 )
 const busy = ref(false)
 const error = ref('')
@@ -128,7 +135,24 @@ async function create() {
           {{ t('games.deletedPreset', { name: templateConfig?.seats[index]?.name ?? choice }) }}
         </p>
       </div>
-      <div v-if="templateConfig?.storyteller" class="grid grid-cols-[7rem_1fr] items-center gap-4">
+      <fieldset class="grid gap-4">
+        <legend class="mb-3 font-medium">{{ t('games.discretions') }}</legend>
+        <div
+          v-for="id in DISCRETION_IDS"
+          :key="id"
+          class="grid grid-cols-[7rem_1fr] items-center gap-4"
+        >
+          <Label :for="`source-${id}`">{{ id === 'seating' ? t('games.seating') : id }}</Label>
+          <Select v-model="form.discretions[id]">
+            <SelectTrigger :id="`source-${id}`"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="random">{{ t('games.sources.random') }}</SelectItem>
+              <SelectItem value="storyteller">{{ t('games.sources.storyteller') }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </fieldset>
+      <div v-if="needsStoryteller" class="grid grid-cols-[7rem_1fr] items-center gap-4">
         <Label for="storyteller">{{ t('games.storyteller') }}</Label>
         <Select v-model="form.storyteller">
           <SelectTrigger
@@ -150,7 +174,11 @@ async function create() {
           role="alert"
           class="col-start-2 text-sm text-destructive"
         >
-          {{ t('games.deletedPreset', { name: templateConfig.storyteller.name }) }}
+          {{
+            t('games.deletedPreset', {
+              name: templateConfig?.storyteller?.name ?? form.storyteller,
+            })
+          }}
         </p>
       </div>
       <div class="grid grid-cols-[7rem_1fr] items-center gap-4">

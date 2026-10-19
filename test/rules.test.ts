@@ -12,6 +12,7 @@ import {
   visibleTo,
   validateSpeechChoice,
   validateContestantChoice,
+  validateDiscretionChoice,
   winner,
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
@@ -22,6 +23,9 @@ import { buildContestantPrompt } from '../shared/prompts/contestant'
 import type {
   ContestantChoice,
   ContestantRequest,
+  DiscretionChoice,
+  DiscretionContext,
+  DiscretionSource,
   GameConfig,
   GameEvent,
   GameEventInput,
@@ -398,6 +402,23 @@ describe('whole-event audience matrix', () => {
 })
 
 describe('setup and metadata boundaries', () => {
+  it('checks setup composition and seating against the chosen role set', () => {
+    const roles: RoleId[] = ['soldier', 'chef', 'empath', 'scarletwoman', 'imp']
+    expect(validateDiscretionChoice(roles, { type: 'setup', sample: roles }, 5)).toEqual([])
+    expect(validateDiscretionChoice(['imp'], { type: 'setup', sample: roles }, 5)).toEqual([
+      { code: 'invalid_seat_count' },
+    ])
+    expect(
+      validateDiscretionChoice(roles.toReversed(), { type: 'seating', roles, sample: roles }, 5),
+    ).toEqual([])
+    expect(
+      validateDiscretionChoice(
+        ['monk', ...roles.slice(1)],
+        { type: 'seating', roles, sample: roles },
+        5,
+      ),
+    ).toEqual([{ code: 'invalid_discretion' }])
+  })
   it('records all 22 official bilingual roles and full night positions', () => {
     const roles = Object.values(ROLES)
     expect(roles).toHaveLength(22)
@@ -584,7 +605,7 @@ async function game(
     roles?: RoleId[]
     d14?: number
     choose?: (request: ContestantRequest) => ContestantChoice
-    discretion?: Ports['discretion']
+    discretion?: (...args: Parameters<Ports['discretion']>) => Promise<DiscretionChoice>
     act?: (request: ContestantRequest) => ContestantChoice
   } = {},
 ) {
@@ -609,21 +630,29 @@ async function game(
     log: events,
     rng: createRng(CONFIG.seed),
     commit,
-    discretion: (id, candidates) => {
+    discretion: async (id, candidates, context: DiscretionContext, requestSeq) => {
       discretionCalls.push(id)
-      if (options.discretion) return options.discretion(id, candidates, memory)
+      const source: DiscretionSource = config.discretions[id]
+      expect(events.find((event) => event.seq === requestSeq)).toMatchObject({
+        type: 'discretion.requested',
+        source,
+      })
+      if (options.discretion)
+        return { choice: await options.discretion(id, candidates, context, requestSeq) }
       if (id === 'D1') {
         expect(candidates).toEqual({
           type: 'setup',
           sample: sample(createRng(CONFIG.seed), config.seatCount),
         })
-        return Promise.resolve(options.roles ?? ORDER)
+        return { choice: options.roles ?? ORDER }
       }
       if ((id === 'D10' || id === 'D11') && Array.isArray(candidates)) {
-        return Promise.resolve({
-          alignment: id === 'D10' ? 'evil' : 'good',
-          role: id === 'D10' ? 'spy' : 'recluse',
-        })
+        return {
+          choice: {
+            alignment: id === 'D10' ? 'evil' : 'good',
+            role: id === 'D10' ? 'spy' : 'recluse',
+          },
+        }
       }
       if (id === 'D2' && Array.isArray(candidates)) {
         const role = candidates.find(
@@ -631,12 +660,12 @@ async function game(
             candidate === 'slayer' || candidate === 'soldier' || candidate === 'virgin',
         )
         if (typeof role !== 'string') throw new Error('Missing passive Drunk fixture identity')
-        return Promise.resolve(role)
+        return { choice: role }
       }
       if (id === 'D8' && Array.isArray(candidates) && candidates[0] !== undefined)
-        return Promise.resolve(candidates[0])
+        return { choice: candidates[0] }
       expect(candidates).toEqual([3, 4])
-      return Promise.resolve(options.d14 ?? 4)
+      return { choice: options.d14 ?? 4 }
     },
     askContestants: (batch) => {
       const choices = batch.map((request) => {
@@ -3500,7 +3529,7 @@ describe('registration never changes real roles or setup', () => {
         seats: seatsFor([role, 'soldier', 'slayer', 'virgin', 'imp']),
         discretion: () => Promise.resolve(choice as Registration),
       }),
-    ).rejects.toThrow(/Invalid D1[01] registration/)
+    ).rejects.toThrow(/Invalid D1[01] choice/)
   })
 })
 

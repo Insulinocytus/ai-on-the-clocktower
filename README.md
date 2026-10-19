@@ -87,6 +87,8 @@ pnpm start             # 读取 .env，默认只监听 127.0.0.1:3000
 
 HTTP：`POST /api/games` 接受 `{ presets: [id, id, id, id, id], language: "zh" | "en", speechLimit?: number, whisperLimit?: number }`（`speechLimit` 为至少 1 的整数，默认 10；`whisperLimit` 为至少 0 的整数，默认 3）；`GET /api/games` 与 `GET /api/games/:id` 返回日志派生摘要；`GET /api/games/:id/events?after=seq&observer=spectator` 返回事件；`GET /api/games/:id/stream` 为 SSE，参数相同，另支持 `Last-Event-ID`。观察者为 `spectator`、`storyteller`、`seat:1`–`seat:5` 或 `public`。
 
+开局配置还接受 `discretions?: Partial<Record<DiscretionId, "random" | "storyteller" | "manual">>` 与 `storyteller?: presetId | null`，逐项保存到 `game.created`。只有使用说书人模型来源时才要求其预设，并一并检查提供商凭据；否则保存为 null。D1 与分座来源相同时合并决定，来源不同时先选角色集合、再排列到座位。合法候选只有一个时不写裁量事件，也不调用外部来源。
+
 > [!WARNING]
 > 本应用没有任何鉴权，默认只监听 `127.0.0.1`。如需暴露到外网，请自行在反向代理上加鉴权，再放宽 `HOST`。
 
