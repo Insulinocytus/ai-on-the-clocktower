@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { LOCALE_KEY } from '@/plugins/locale'
 
 const { t, locale, setLocale } = useI18n()
+const route = useRoute()
 
 async function toggleLocale() {
   const next = locale.value === 'zh' ? 'en' : 'zh'
@@ -26,7 +27,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
         {{ t('app.language') }}
       </Button>
     </header>
-    <main class="mx-auto max-w-6xl p-6">
+    <main :class="route.meta.spectator ? '' : 'mx-auto max-w-6xl p-6'">
       <NuxtPage />
     </main>
     <Toaster rich-colors />

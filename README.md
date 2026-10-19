@@ -48,7 +48,9 @@ pnpm start             # 读取 .env，默认只监听 127.0.0.1:3000
 
 同一提供商的请求跨局共享进程级 FIFO 队列（试调用也使用同一上限），每次发放槽位时读取当前最大并发。排队不计入调用超时，也不额外消耗尝试次数；每次重试重新排队，退避等待期间不占槽位。
 
-对局列表的状态由事件日志推出。打开运行中的对局进入直播，结束或终止的对局进入回放；事件按 seq 排列，使用界面语言渲染，决策可展开内心推理和原始响应。直播先订阅 SSE 再补齐历史，重连按 `Last-Event-ID` 续传并按 seq 去重。日志版本不兼容时禁止回放。
+对局列表的状态由事件日志推出。打开运行中的对局进入直播，结束或终止的对局进入回放。桌面宽屏观战页采用三栏：左侧按事件切分频道块，中间座位环显示所选块最后一条事件时的魔典，右侧显示该块内容。夜晚、黎明、公聊、提名和每个私聊房间分别成块；私聊分配块默认隐藏，同一天相同成员再次私聊会标注轮次，房间成立公告位于该房间块开头。座位环始终显示模型预设名、角色和状态，标出即将被处决者，并显示存活人数和过半门槛。
+
+直播自动跟随最近收到事件的频道块，点击旧块停止跟随，点“● 回到直播”恢复；回放使用“上一块 / 下一块”或直接点击导航，不提供播放、倍速或时间轴。终止和模板按钮位于观战顶栏，界面语言在应用顶栏切换；模板文案和角色名跟随界面语言，AI 原话和内心推理不翻译。决策可展开内心推理和原始响应。直播先订阅 SSE 再补齐历史，重连按 `Last-Event-ID` 续传并按 seq 去重。日志版本不兼容时禁止回放。
 
 观战页的“终止对局”按钮在运行中（包括等待手动裁量时）可用；`POST /api/games/:id/abort` 返回更新后的摘要，重复终止或对已结束的对局调用不改变日志。人类终止会取消本局所有在途和排队调用，被取消的调用不写决策事件；正常获胜也会取消尚未完成的调用，但不会补写终止事件。
 
@@ -73,7 +75,7 @@ pnpm start             # 读取 .env，默认只监听 127.0.0.1:3000
 - `server/utils/game-runtime.ts`：每局异步任务、逐次决策日志、有限重试、随机裁量和失败终止。
 - `server/utils/game-store.ts`：SQLite 只追加日志、日志状态与 SSE 订阅。
 - `server/api/games/`：开局、列表、详情、投影事件与可续传 SSE。
-- `app/pages/games/`：新建对局、列表、极简直播与回放。
+- `app/pages/games/` 与 `app/components/Spectator*.vue`：新建对局、列表、三栏直播与回放；`shared/game/channels.ts` 按事件切分频道块。
 
 HTTP：`POST /api/games` 接受 `{ presets: [id, id, id, id, id], language: "zh" | "en", speechLimit?: number, whisperLimit?: number }`（`speechLimit` 为至少 1 的整数，默认 10；`whisperLimit` 为至少 0 的整数，默认 3）；`GET /api/games` 与 `GET /api/games/:id` 返回日志派生摘要；`GET /api/games/:id/events?after=seq&observer=spectator` 返回事件；`GET /api/games/:id/stream` 为 SSE，参数相同，另支持 `Last-Event-ID`。观察者为 `spectator`、`storyteller`、`seat:1`–`seat:5` 或 `public`。
 
