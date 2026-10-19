@@ -40,13 +40,33 @@ export const DISCRETION_IDS = [
   'D14',
 ] as const
 
+function sameChoice(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null)
+    return false
+  if (Array.isArray(left))
+    return (
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value: unknown, index) => sameChoice(value, right[index]))
+    )
+  if (Array.isArray(right)) return false
+  const a = left as Record<string, unknown>
+  const b = right as Record<string, unknown>
+  const keys = Object.keys(a)
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && sameChoice(a[key], b[key]))
+  )
+}
+
 export function validateDiscretionChoice(
   choice: unknown,
   candidates: DiscretionCandidates,
   seatCount: number,
 ): ValidationError[] {
   if (Array.isArray(candidates))
-    return candidates.some((candidate) => JSON.stringify(candidate) === JSON.stringify(choice))
+    return candidates.some((candidate) => sameChoice(candidate, choice))
       ? []
       : [{ code: 'invalid_discretion' }]
   if (!Array.isArray(choice) || !choice.every((role: unknown) => typeof role === 'string'))
@@ -706,9 +726,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     if (!choice) throw new Error('No legal Demon bluffs')
     if (candidates.length > 1) {
       const selected = await discretion('D7', candidates)
-      const legal = candidates.find(
-        (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
-      )
+      const legal = candidates.find((candidate) => sameChoice(candidate, selected))
       if (!legal) throw new Error('Invalid D7 bluffs')
       choice = legal
     }
@@ -730,9 +748,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       roles.map((candidate) => ({ alignment, role: candidate.id })),
     )
     const selected = await discretion(id, candidates, { seat: seat.seat, role })
-    const choice = candidates.find(
-      (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
-    )
+    const choice = candidates.find((candidate) => sameChoice(candidate, selected))
     if (!choice) throw new Error(`Invalid ${id} registration`)
     await commit({
       type: 'grimoire.set',
@@ -794,9 +810,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           truth: truths,
           reason: seat.role === 'drunk' ? 'drunk' : 'poisoned',
         })
-        const selected = candidates.find(
-          (candidate) => JSON.stringify(candidate) === JSON.stringify(choice),
-        )
+        const selected = candidates.find((candidate) => sameChoice(candidate, choice))
         if (selected === undefined) throw new Error('Invalid D8 information')
         told = selected
       }
@@ -806,7 +820,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       seat: seat.seat,
       role: seat.role,
       result,
-      deviated: !truths.some((truth) => JSON.stringify(truth) === JSON.stringify(told)),
+      deviated: !truths.some((truth) => sameChoice(truth, told)),
       ...(!functioning(seat) && { reason: seat.role === 'drunk' ? 'drunk' : 'poisoned' }),
     })
     await commit({
@@ -929,7 +943,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         role: seat.believedRole ?? seat.role,
         truth: candidates,
       })
-      result = candidates.find((candidate) => JSON.stringify(candidate) === JSON.stringify(choice))
+      result = candidates.find((candidate) => sameChoice(candidate, choice))
       if (result === undefined) throw new Error(`Invalid ${id} information`)
     }
     const impaired: InformationResult[] = []

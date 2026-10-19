@@ -772,6 +772,40 @@ async function game(
 }
 
 describe('storyteller context at the rules seam', () => {
+  it.each([false, true])(
+    'accepts reordered registration and information object keys when poisoned=%s',
+    async (poisoned) => {
+      const seats = seatsFor(['washerwoman', 'chef', 'soldier', 'spy', 'imp'])
+      if (seats[0]) seats[0].poisoned = poisoned
+      const { events } = await game([4, 5], {
+        seats,
+        discretion: (id) =>
+          Promise.resolve(
+            id === 'D10'
+              ? { role: 'spy', alignment: 'evil' }
+              : { role: 'soldier', seats: [2, 3] },
+          ),
+      })
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'ability.resolved',
+          role: 'washerwoman',
+          deviated: false,
+          result: poisoned
+            ? { seats: [2, 3], role: 'chef' }
+            : { seats: [2, 3], role: 'soldier' },
+        }),
+      )
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'told',
+          seat: 1,
+          kind: 'ability',
+          content: { role: 'washerwoman', result: { seats: [2, 3], role: 'soldier' } },
+        }),
+      )
+    },
+  )
   it('combines matching D1/seating sources and separates a mixed-source permutation', async () => {
     const combined = await game([5, 4])
     expect(combined.discretionCalls).not.toContain('seating')
