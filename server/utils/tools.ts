@@ -1,6 +1,7 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
 import type { ValidationError } from '#shared/types/game'
+import { MEMO_MAX_LENGTH } from '#shared/types/game'
 import { ROLES } from '#shared/game/roles'
 
 export type Lang = 'zh' | 'en'
@@ -80,7 +81,7 @@ export function contestantTools(lang: Lang, seatCount: number): Tool[] {
         properties: {
           reasoning: { type: 'string', description: t.reasoning },
           ...props,
-          memo: { type: 'string', maxLength: 2000, description: t.memo },
+          memo: { type: 'string', maxLength: MEMO_MAX_LENGTH, description: t.memo },
         },
         required: ['reasoning', ...required],
         additionalProperties: false,

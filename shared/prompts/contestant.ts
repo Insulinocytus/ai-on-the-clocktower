@@ -1,4 +1,5 @@
 import { renderEvent } from '../event-templates'
+import { PHASE_LABELS } from '../game/phases'
 import { ROLES } from '../game/roles'
 import { foldPublic, project } from '../game/rules'
 import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
@@ -55,14 +56,6 @@ export function buildContestantPrompt({
   )
   const memo = `${zh ? '# 你的备忘录' : '# Your memo'}\n${memoEvent?.type === 'seat.memo.updated' ? memoEvent.memo : zh ? '（空）' : '(empty)'}`
   const alive = state.seats.filter((player) => player.alive).length
-  const phases = {
-    'first-night': { zh: '首夜', en: 'first night' },
-    night: { zh: '夜晚', en: 'night' },
-    dawn: { zh: '黎明', en: 'dawn' },
-    whisper: { zh: '私聊', en: 'whispers' },
-    public: { zh: '公聊', en: 'public discussion' },
-    nomination: { zh: '提名', en: 'nominations' },
-  }
   const publicSeats = state.seats
     .map((player) =>
       zh
@@ -71,8 +64,8 @@ export function buildContestantPrompt({
     )
     .join('\n')
   const currentState = zh
-    ? `# 当前公共局面\n第 ${String(state.day)} 天；阶段：${state.phase ? phases[state.phase].zh : '尚未开始'}。存活 ${String(alive)} 人；投票门槛 ${String(Math.ceil(alive / 2))} 票；今日最高票 ${String(state.highestVoteCount)} 票。\n${publicSeats}\n今日已提名者：${state.nominators.join('、') || '无'}。今日已被提名者：${state.nominees.join('、') || '无'}。即将被处决：${state.aboutToBeExecuted === null ? '无' : `${String(state.aboutToBeExecuted)} 号`}。`
-    : `# Current public state\nDay ${String(state.day)}; phase: ${state.phase ? phases[state.phase].en : 'not started'}. ${String(alive)} alive; voting threshold ${String(Math.ceil(alive / 2))}; today's highest tally ${String(state.highestVoteCount)}.\n${publicSeats}\nNominated today: ${state.nominators.join(', ') || 'none'}. Nominees today: ${state.nominees.join(', ') || 'none'}. About to be executed: ${state.aboutToBeExecuted === null ? 'nobody' : `Seat ${String(state.aboutToBeExecuted)}`}.`
+    ? `# 当前公共局面\n第 ${String(state.day)} 天；阶段：${state.phase ? PHASE_LABELS[state.phase].zh : '尚未开始'}。存活 ${String(alive)} 人；投票门槛 ${String(Math.ceil(alive / 2))} 票；今日最高票 ${String(state.highestVoteCount)} 票。\n${publicSeats}\n今日已提名者：${state.nominators.join('、') || '无'}。今日已被提名者：${state.nominees.join('、') || '无'}。即将被处决：${state.aboutToBeExecuted === null ? '无' : `${String(state.aboutToBeExecuted)} 号`}。`
+    : `# Current public state\nDay ${String(state.day)}; phase: ${state.phase ? PHASE_LABELS[state.phase].en : 'not started'}. ${String(alive)} alive; voting threshold ${String(Math.ceil(alive / 2))}; today's highest tally ${String(state.highestVoteCount)}.\n${publicSeats}\nNominated today: ${state.nominators.join(', ') || 'none'}. Nominees today: ${state.nominees.join(', ') || 'none'}. About to be executed: ${state.aboutToBeExecuted === null ? 'nobody' : `Seat ${String(state.aboutToBeExecuted)}`}.`
   const requestText = (() => {
     switch (request.tool) {
       case 'propose_whisper': {

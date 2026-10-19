@@ -35,7 +35,7 @@ export function rulesBlock(
 
   if (zh)
     return `# 座位与本局配置
-本局 ${String(seatCount)} 名玩家围坐一圈，按 1 号至 ${String(seatCount)} 号顺时针排列，${String(seatCount)} 号之后是 1 号。“邻座”按此顺序计算。所有座位均为 AI 玩家，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
+本局 ${String(seatCount)} 名玩家围坐一圈，按 1 号至 ${String(seatCount)} 号顺时针排列，${String(seatCount)} 号之后是 1 号。“邻座”按此顺序计算。所有座位均由选手模型占据，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
 ${String(seatCount)} 人通常配置为 ${String(counts.townsfolk)} 名镇民、${String(counts.outsiders)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔；男爵在场则改为 ${String(counts.townsfolk - 2)} 名镇民、${String(counts.outsiders + 2)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔。每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识；7 人及以上首夜爪牙得知恶魔和其他爪牙，恶魔得知全部爪牙及三个不在场的善良角色作为伪装。
 本局角色池包括全部 22 个角色。洗衣妇不会是唯一镇民：她的首夜信息必须指向自己以外的两人且至少一人被当作所示镇民。
 
@@ -82,7 +82,7 @@ ${characters}
 
   return `# Seats and this game's setup
 
-Exactly ${String(seatCount)} AI players sit clockwise in Seats 1 through ${String(seatCount)}; Seat ${String(seatCount)} is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
+Exactly ${String(seatCount)} contestant models sit clockwise in Seats 1 through ${String(seatCount)}; Seat ${String(seatCount)} is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
 The usual setup is ${String(counts.townsfolk)} Townsfolk, ${String(counts.outsiders)} Outsiders, ${String(counts.minions)} Minions and 1 Demon; with the Baron it is ${String(counts.townsfolk - 2)} Townsfolk, ${String(counts.outsiders + 2)} Outsiders, ${String(counts.minions)} Minions and 1 Demon. No duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other. With 7+ players, first-night Minions learn the Demon and other Minions, and the Demon learns all Minions and three absent good characters as bluffs.
 All 22 characters are in this game's pool. The Washerwoman cannot be the sole Townsfolk: her first-night information must name two other seats, at least one registering as the shown Townsfolk.
 

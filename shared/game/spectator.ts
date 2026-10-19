@@ -1,17 +1,9 @@
 import { z } from 'zod'
 import type { GameEvent } from '../types/game'
 import type { ChannelBlock } from './channels'
+import { firstToolArguments } from './tool-calls'
 
 type Decision = Extract<GameEvent, { type: 'contestant.decision' | 'storyteller.decision' }>
-const completion = z.object({
-  choices: z.array(
-    z.object({
-      message: z.object({
-        tool_calls: z.array(z.object({ function: z.object({ arguments: z.string() }) })).optional(),
-      }),
-    }),
-  ),
-})
 const argumentsShape = z.object({
   reasoning: z.string(),
   speech: z.string().nullable().optional(),
@@ -20,10 +12,7 @@ const argumentsShape = z.object({
 const validation = z.object({ ok: z.literal(true) })
 
 function decisionArguments(event: Decision) {
-  const parsed = completion.safeParse(event.raw)
-  const text = parsed.success
-    ? parsed.data.choices[0]?.message.tool_calls?.[0]?.function.arguments
-    : undefined
+  const text = firstToolArguments(event.raw)
   if (!text) return undefined
   try {
     const args = argumentsShape.safeParse(JSON.parse(text) as unknown)
@@ -41,7 +30,7 @@ export interface SpectatorRow {
   nominee?: number | null
   losing: boolean
   falseInfo: boolean
-  falseReason?: string
+  falseReason?: Extract<GameEvent, { type: 'ability.resolved' }>['reason']
 }
 
 // Input is the observer's projected prefix, never the future or another audience's log.
@@ -51,7 +40,10 @@ export function spectatorRows(events: readonly GameEvent[], losing: boolean): Sp
   const adopted = new Map<number, Decision>()
   const used = new Set<number>()
   const resolutions = new Map<number, Extract<GameEvent, { type: 'ability.resolved' }>>()
-  const falseInformation = new Map<number, string | undefined>()
+  const falseInformation = new Map<
+    number,
+    Extract<GameEvent, { type: 'ability.resolved' }>['reason']
+  >()
 
   for (const event of events) {
     if (event.type === 'contestant.decision' || event.type === 'storyteller.decision') {

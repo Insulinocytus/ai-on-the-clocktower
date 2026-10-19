@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createRng, runGame } from '../shared/game/rules'
+import { spectatorRows } from '../shared/game/spectator'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
 import { buildStorytellerPrompt } from '../shared/prompts/storyteller'
 import type {
@@ -187,4 +188,49 @@ describe('prompts at the scripted game seam', () => {
       expect(contestant).toContain('DAY_2_PUBLIC')
     },
   )
+
+  it.each([
+    {
+      arguments: '{"reasoning":"FIRST_REASON","speech":"First","nominee":2}',
+      reasoning: 'FIRST_REASON',
+    },
+    { arguments: '{invalid JSON', reasoning: undefined },
+    { arguments: '{"reasoning":42}', reasoning: undefined },
+  ])('keeps spectator argument validation for $arguments', async ({ arguments: args, reasoning }) => {
+    let captured = false
+    const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+      ask(request, ports) {
+        if (request.tool === 'speak' && request.kind === 'free' && !captured) {
+          captured = true
+          void ports.commit({
+            type: 'contestant.decision',
+            seat: request.seat,
+            request,
+            raw: {
+              choices: [
+                {
+                  message: {
+                    tool_calls: [
+                      { function: { arguments: args } },
+                      { function: { arguments: '{"reasoning":"SECOND_REASON"}' } },
+                    ],
+                  },
+                },
+              ],
+            },
+            model: 'script',
+            usage: null,
+            durationMs: 0,
+            attempt: 1,
+            validation: { ok: false },
+          })
+          void ports.commit({ type: 'game.aborted', reason: 'human' })
+        }
+        return pass(request)
+      },
+    })
+    const row = spectatorRows(events, true).find((row) => row.losing)
+    expect(row).toBeDefined()
+    expect(row?.reasoning).toBe(reasoning)
+  })
 })

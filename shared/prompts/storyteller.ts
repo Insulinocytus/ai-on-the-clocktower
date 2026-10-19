@@ -1,5 +1,6 @@
 import { renderEvent } from '../event-templates'
 import { project, setupCounts, validateDiscretionChoice } from '../game/rules'
+import { firstToolArguments } from '../game/tool-calls'
 import type {
   DiscretionCandidates,
   DiscretionChoice,
@@ -218,7 +219,7 @@ export function discretionRequest(
     )
       lines.push(
         zh
-          ? 'seats 两人不同且不含接收者。正常信息须至少一人被当作 roles 中的角色；D8 不要求匹配真值。number=0 是单独的输出形式，只能在上面列出时用。'
+          ? 'seats 两人不同且不含接收者。能力有效时的信息须至少一人被当作 roles 中的角色；D8 不要求匹配真值。number=0 是单独的输出形式，只能在上面列出时用。'
           : 'The two seats must differ and exclude the recipient. Working information requires at least one to register as the character in roles; D8 need not match truth. number=0 is a separate output form, legal only when listed above.',
       )
     if (id === 'D12')
@@ -258,10 +259,7 @@ export function buildStorytellerPrompt(
     if (event.type === 'seat.memo.updated' || event.type === 'discretion.requested') continue
     lines.push(renderEvent(event, language, 'storyteller'))
     if (event.type === 'storyteller.decision') {
-      const raw = event.raw as {
-        choices?: { message?: { tool_calls?: { function?: { arguments?: string } }[] } }[]
-      } | null
-      const args = raw?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments
+      const args = firstToolArguments(event.raw)
       if (args) lines.push(args)
     }
   }
