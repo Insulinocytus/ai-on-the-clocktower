@@ -686,7 +686,11 @@ describe('games HTTP seam', () => {
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
-        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        body: {
+          presets: Array.from({ length: 5 }, () => model.id),
+          language: 'en',
+          whisperLimit: 0,
+        },
       })
       await expect.poll(() => fake.requests.length).toBe(1)
       expect(await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })).toMatchObject({
@@ -727,7 +731,11 @@ describe('games HTTP seam', () => {
         games.push(
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
-            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+            body: {
+              presets: Array.from({ length: 5 }, () => model.id),
+              language: 'en',
+              whisperLimit: 0,
+            },
           }),
         )
       }
@@ -851,7 +859,11 @@ describe('games HTTP seam', () => {
         games.push(
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
-            body: { presets: Array.from({ length: 5 }, () => contestant.id), language: 'en' },
+            body: {
+              presets: Array.from({ length: 5 }, () => contestant.id),
+              language: 'en',
+              whisperLimit: 0,
+            },
           }),
         )
       }
@@ -884,7 +896,11 @@ describe('games HTTP seam', () => {
         games.push(
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
-            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+            body: {
+              presets: Array.from({ length: 5 }, () => model.id),
+              language: 'en',
+              whisperLimit: 0,
+            },
           }),
         )
       }
@@ -904,7 +920,11 @@ describe('games HTTP seam', () => {
       const open = () =>
         $fetch<GameSummary>('/api/games', {
           method: 'POST',
-          body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          body: {
+            presets: Array.from({ length: 5 }, () => model.id),
+            language: 'en',
+            whisperLimit: 0,
+          },
         })
       const finished = await open()
       await $fetch(`/api/games/${finished.id}/abort`, { method: 'POST' })
