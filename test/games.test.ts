@@ -369,13 +369,12 @@ describe('games HTTP seam', () => {
       await expect.poll(async () => (await pending())?.discretion).toBe('D1')
       const setup = await pending()
       if (!setup) throw new Error('Missing setup request')
-      expect((await submit(setup.seq, ['chef', 'empath', 'soldier', 'spy', 'imp'])).status).toBe(200)
+      expect((await submit(setup.seq, ['chef', 'empath', 'soldier', 'spy', 'imp'])).status).toBe(
+        200,
+      )
       await expect.poll(async () => (await pending())?.discretion).toBe('D10')
       const registration = await pending()
-      if (
-        registration?.type !== 'discretion.requested' ||
-        !Array.isArray(registration.candidates)
-      )
+      if (registration?.type !== 'discretion.requested' || !Array.isArray(registration.candidates))
         throw new Error('Missing registration request')
       const candidate = z
         .object({ alignment: z.string(), role: z.string() })

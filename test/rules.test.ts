@@ -358,7 +358,9 @@ describe('uniform legal role-set sampling', () => {
       if (roles.includes('baron')) barons++
       if (roles.includes('drunk'))
         expect(
-          Object.values(ROLES).some((role) => role.type === 'townsfolk' && !roles.includes(role.id)),
+          Object.values(ROLES).some(
+            (role) => role.type === 'townsfolk' && !roles.includes(role.id),
+          ),
         ).toBe(true)
     }
     expect(sets.size).toBe(total)
@@ -844,9 +846,7 @@ describe('storyteller context at the rules seam', () => {
         seats,
         discretion: (id) =>
           Promise.resolve(
-            id === 'D10'
-              ? { role: 'spy', alignment: 'evil' }
-              : { role: 'soldier', seats: [2, 3] },
+            id === 'D10' ? { role: 'spy', alignment: 'evil' } : { role: 'soldier', seats: [2, 3] },
           ),
       })
       expect(events).toContainEqual(
@@ -854,9 +854,7 @@ describe('storyteller context at the rules seam', () => {
           type: 'ability.resolved',
           role: 'washerwoman',
           deviated: false,
-          result: poisoned
-            ? { seats: [2, 3], role: 'chef' }
-            : { seats: [2, 3], role: 'soldier' },
+          result: poisoned ? { seats: [2, 3], role: 'chef' } : { seats: [2, 3], role: 'soldier' },
         }),
       )
       expect(events).toContainEqual(
@@ -1308,9 +1306,7 @@ describe('information Townsfolk through the rules seam', () => {
           ? {
               reasoning: 'Execute the corpse once',
               nominee:
-                request.day === 1 && request.seat === 1 && request.nominees.length === 5
-                  ? 2
-                  : null,
+                request.day === 1 && request.seat === 1 && request.nominees.length === 5 ? 2 : null,
             }
           : request.tool === 'speak'
             ? { reasoning: '', speech: 'Execute this seat.', slayer_target: null }

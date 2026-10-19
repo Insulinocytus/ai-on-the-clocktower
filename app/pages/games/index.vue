@@ -61,9 +61,7 @@ onUnmounted(() => {
               game.replayable ? t(`games.${game.status}`) : t('games.incompatible')
             }}</Badge></TableCell
           >
-          <TableCell>{{
-            game.reason ? t(`games.reasons.${game.reason}`) : '—'
-          }}</TableCell>
+          <TableCell>{{ game.reason ? t(`games.reasons.${game.reason}`) : '—' }}</TableCell>
           <TableCell>
             <Button v-if="game.replayable" variant="outline" size="sm" as-child>
               <NuxtLink :to="{ path: '/games/new', query: { template: game.id } }">

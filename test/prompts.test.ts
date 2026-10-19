@@ -117,8 +117,12 @@ describe('prompts at the scripted game seam', () => {
         config: { language },
         ask(request, ports) {
           if (request.tool === 'speak' && request.kind === 'free' && !user) {
-            user = buildContestantPrompt({ events: ports.log, seat: request.seat, language, request })
-              .messages[1].content
+            user = buildContestantPrompt({
+              events: ports.log,
+              seat: request.seat,
+              language,
+              request,
+            }).messages[1].content
             void ports.commit({ type: 'game.aborted', reason: 'human' })
           }
           return pass(request)
@@ -173,7 +177,9 @@ describe('prompts at the scripted game seam', () => {
               return {
                 reasoning: 'Share',
                 speech:
-                  request.kind === 'whisper' ? 'DAY_ONE_WHISPER' : `DAY_${String(request.day)}_PUBLIC`,
+                  request.kind === 'whisper'
+                    ? 'DAY_ONE_WHISPER'
+                    : `DAY_${String(request.day)}_PUBLIC`,
                 slayer_target: null,
               }
           }
@@ -196,41 +202,44 @@ describe('prompts at the scripted game seam', () => {
     },
     { arguments: '{invalid JSON', reasoning: undefined },
     { arguments: '{"reasoning":42}', reasoning: undefined },
-  ])('keeps spectator argument validation for $arguments', async ({ arguments: args, reasoning }) => {
-    let captured = false
-    const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
-      ask(request, ports) {
-        if (request.tool === 'speak' && request.kind === 'free' && !captured) {
-          captured = true
-          void ports.commit({
-            type: 'contestant.decision',
-            seat: request.seat,
-            request,
-            raw: {
-              choices: [
-                {
-                  message: {
-                    tool_calls: [
-                      { function: { arguments: args } },
-                      { function: { arguments: '{"reasoning":"SECOND_REASON"}' } },
-                    ],
+  ])(
+    'keeps spectator argument validation for $arguments',
+    async ({ arguments: args, reasoning }) => {
+      let captured = false
+      const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+        ask(request, ports) {
+          if (request.tool === 'speak' && request.kind === 'free' && !captured) {
+            captured = true
+            void ports.commit({
+              type: 'contestant.decision',
+              seat: request.seat,
+              request,
+              raw: {
+                choices: [
+                  {
+                    message: {
+                      tool_calls: [
+                        { function: { arguments: args } },
+                        { function: { arguments: '{"reasoning":"SECOND_REASON"}' } },
+                      ],
+                    },
                   },
-                },
-              ],
-            },
-            model: 'script',
-            usage: null,
-            durationMs: 0,
-            attempt: 1,
-            validation: { ok: false },
-          })
-          void ports.commit({ type: 'game.aborted', reason: 'human' })
-        }
-        return pass(request)
-      },
-    })
-    const row = spectatorRows(events, true).find((row) => row.losing)
-    expect(row).toBeDefined()
-    expect(row?.reasoning).toBe(reasoning)
-  })
+                ],
+              },
+              model: 'script',
+              usage: null,
+              durationMs: 0,
+              attempt: 1,
+              validation: { ok: false },
+            })
+            void ports.commit({ type: 'game.aborted', reason: 'human' })
+          }
+          return pass(request)
+        },
+      })
+      const row = spectatorRows(events, true).find((row) => row.losing)
+      expect(row).toBeDefined()
+      expect(row?.reasoning).toBe(reasoning)
+    },
+  )
 })
