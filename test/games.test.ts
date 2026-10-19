@@ -200,6 +200,101 @@ describe('games HTTP seam', () => {
     })
   })
 
+  it.each(['zh', 'en'])(
+    'runs storyteller discretion with semantic retry in %s',
+    async (language) => {
+      const action = gameActions()
+      let attempts = 0
+      const fake = await startFakeProvider((request) => {
+        const input = gameRequest.parse(request.body)
+        const name = input.tool_choice.function.name
+        if (name === 'decide') {
+          attempts++
+          return {
+            kind: 'toolCall',
+            name,
+            arguments: JSON.stringify({
+              reasoning: 'Balance the game',
+              roles:
+                attempts === 1 ? ['imp'] : ['soldier', 'chef', 'empath', 'scarletwoman', 'imp'],
+            }),
+          }
+        }
+        return {
+          kind: 'toolCall',
+          name,
+          arguments: JSON.stringify({
+            reasoning: 'Private contestant thought',
+            ...action(name, input.messages[1].content),
+          }),
+        }
+      })
+      try {
+        const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+        const game = await $fetch<GameSummary>('/api/games', {
+          method: 'POST',
+          body: {
+            presets: Array.from({ length: 5 }, () => model.id),
+            storyteller: model.id,
+            language,
+            whisperLimit: 0,
+            discretions: { D1: 'storyteller', seating: 'storyteller' },
+          },
+        })
+        await expect
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${game.id}`)).status)
+          .toBe('ended')
+        const events = await $fetch<GameEvent[]>(`/api/games/${game.id}/events`)
+        const decisions = events.filter((event) => event.type === 'storyteller.decision')
+        expect(decisions).toMatchObject([
+          { attempt: 1, discretion: 'D1', validation: { ok: false } },
+          { attempt: 2, discretion: 'D1', validation: { ok: true } },
+        ])
+        expect(events.find((event) => event.type === 'discretion.resolved')).toMatchObject({
+          source: 'storyteller',
+          decision: decisions[1]?.seq,
+        })
+        expect(events[0]).toMatchObject({
+          storyteller: { id: model.id },
+          discretions: { D1: 'storyteller', seating: 'storyteller' },
+        })
+        const requests = fake.requests.filter(
+          (request) => toolChoice.parse(request.body.tool_choice).function.name === 'decide',
+        )
+        expect(requests).toHaveLength(2)
+        const first = gameRequest.parse(requests[0]?.body)
+        const second = gameRequest.parse(requests[1]?.body)
+        expect(second.messages[0]).toEqual(first.messages[0])
+        expect(second.messages[1].content.startsWith(first.messages[1].content)).toBe(true)
+        expect(second.messages[1].content).toContain(
+          language === 'zh' ? '上次提交无效' : 'Previous submission invalid',
+        )
+        expect(requests[1]?.body.tools).toEqual(requests[0]?.body.tools)
+        const tools = requests[0]?.body.tools as {
+          function: { parameters: { properties: Record<string, unknown>; required: string[] } }
+        }[]
+        expect(tools).toHaveLength(1)
+        expect(Object.keys(tools[0]?.function.parameters.properties ?? {})).toEqual([
+          'reasoning',
+          'seats',
+          'roles',
+          'number',
+          'answer',
+          'alignment',
+        ])
+        expect(tools[0]?.function.parameters.required).toEqual(['reasoning'])
+        for (const observer of ['public', 'seat:1'])
+          expect(
+            (await $fetch<GameEvent[]>(`/api/games/${game.id}/events?observer=${observer}`)).some(
+              (event) => event.type === 'storyteller.decision',
+            ),
+          ).toBe(false)
+      } finally {
+        await fake.close()
+      }
+    },
+  )
+
   it.each([4, 16])('rejects a game with %i seats before opening it', async (seatCount) => {
     const model = await preset('CLOCKTOWER_GAME_KEY')
     const before = await $fetch<GameSummary[]>('/api/games')

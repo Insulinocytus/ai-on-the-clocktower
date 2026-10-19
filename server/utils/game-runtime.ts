@@ -8,13 +8,17 @@ import type {
   ContestantChoice,
   ContestantRequest,
   Ports,
+  DiscretionId,
+  DiscretionChoice,
+  ValidationError,
 } from '#shared/types/game'
 import { createRng, DISCRETION_IDS, runGame, validateContestantChoice } from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
+import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
 import { getPreset, getProvider } from './models'
 import { chatCompletion, LlmCallError } from './llm'
-import { checkToolCall, contestantTools } from './tools'
+import { checkToolCall, contestantTools, storytellerTools, type Tool } from './tools'
 import { appendGameEvent, insertGame, getGame, LOG_VERSION } from './game-store'
 
 export const gameInput = z.object({
@@ -48,9 +52,9 @@ function retryDelay(error: unknown, attempt: number): number {
   return RETRY_BACKOFF_MS * 2 ** (attempt - 1)
 }
 
-class ContestantFailure extends Error {
+class ModelFailure extends Error {
   constructor(
-    readonly seat: number,
+    readonly actor: { seat?: number; discretion?: DiscretionId },
     message: string,
   ) {
     super(message)
@@ -124,21 +128,29 @@ export function createGame(input: z.infer<typeof gameInput>) {
   const rng = createRng(config.seed)
   const tools = contestantTools(config.language, config.seatCount)
 
-  async function ask(
-    request: ContestantRequest,
-    events: readonly GameEvent[],
-  ): Promise<ContestantChoice> {
-    const seat = config.seats[request.seat - 1]
-    if (!seat) throw new Error('Unknown contestant seat')
-    const provider = getProvider(seat.providerId)
-    if (!provider) throw new ContestantFailure(request.seat, 'Provider not found')
-    const prompt = buildContestantPrompt({
-      events,
-      seat: request.seat,
-      language: config.language,
-      request,
-    })
-    const tool = request.tool
+  async function decide(
+    model: NonNullable<GameConfig['storyteller']>,
+    metadata:
+      | Pick<Extract<GameEvent, { type: 'contestant.decision' }>, 'type' | 'seat' | 'request'>
+      | Pick<
+          Extract<GameEvent, { type: 'storyteller.decision' }>,
+          'type' | 'discretion' | 'request'
+        >,
+    prompt: { messages: [{ role: 'system'; content: string }, { role: 'user'; content: string }] },
+    tools: Tool[],
+    tool: string,
+    validateChoice: (
+      value: unknown,
+    ) =>
+      | { ok: true; choice: ContestantChoice | DiscretionChoice }
+      | { ok: false; errors: ValidationError[] },
+  ) {
+    const actor =
+      metadata.type === 'contestant.decision'
+        ? { seat: metadata.seat }
+        : { discretion: metadata.discretion }
+    const provider = getProvider(model.providerId)
+    if (!provider) throw new ModelFailure(actor, 'Provider not found')
     for (let attempt = 1; ; attempt++) {
       const start = performance.now()
       let raw: unknown
@@ -146,8 +158,8 @@ export function createGame(input: z.infer<typeof gameInput>) {
         raw = await chatCompletion(
           {
             ...provider,
-            ...seat,
-            extraBody: JSON.parse(seat.extraBody) as Record<string, unknown>,
+            ...model,
+            extraBody: JSON.parse(model.extraBody) as Record<string, unknown>,
           },
           { ...prompt, tools, tool },
           runner.controller.signal,
@@ -156,11 +168,9 @@ export function createGame(input: z.infer<typeof gameInput>) {
         runner.controller.signal.throwIfAborted()
         const message = error instanceof Error ? error.message : String(error)
         commit({
-          type: 'contestant.decision',
-          seat: request.seat,
-          request,
+          ...metadata,
           raw: error instanceof LlmCallError ? (error.body ?? null) : null,
-          model: seat.model,
+          model: model.model,
           usage: null,
           durationMs: performance.now() - start,
           attempt,
@@ -171,39 +181,58 @@ export function createGame(input: z.infer<typeof gameInput>) {
             error: message,
           },
         })
-        if (attempt === MAX_ATTEMPTS) throw new ContestantFailure(request.seat, message)
+        if (attempt === MAX_ATTEMPTS) throw new ModelFailure(actor, message)
         await delay(retryDelay(error, attempt), undefined, { signal: runner.controller.signal })
         continue
       }
       const toolCheck = checkToolCall(raw, tools, tool)
-      const errors = toolCheck.ok
-        ? validateContestantChoice(toolCheck.arguments, request, config.seatCount)
-        : [{ code: toolCheck.code }]
-      const valid = errors.length === 0
+      const parsed = toolCheck.ok
+        ? validateChoice(toolCheck.arguments)
+        : { ok: false as const, errors: [{ code: toolCheck.code }] }
+      const errors = parsed.ok ? [] : parsed.errors
+      const valid = parsed.ok
       const usage = usageShape.safeParse(raw)
       const decision = commit({
-        type: 'contestant.decision',
-        seat: request.seat,
-        request,
+        ...metadata,
         raw,
-        model: seat.model,
+        model: model.model,
         usage: usage.success ? (usage.data.usage ?? null) : null,
         durationMs: performance.now() - start,
         attempt,
         validation: { ok: valid, errors },
       })
-      if (valid && toolCheck.ok) {
-        const choice = toolCheck.arguments as ContestantChoice
-        return { ...choice, decision: decision.seq }
-      }
-      if (attempt === MAX_ATTEMPTS)
-        throw new ContestantFailure(request.seat, JSON.stringify(errors))
+      if (parsed.ok) return { choice: parsed.choice, decision: decision.seq }
+      if (attempt === MAX_ATTEMPTS) throw new ModelFailure(actor, JSON.stringify(errors))
       const calls = toolCheck.ok
         ? [{ name: toolCheck.name, arguments: toolCheck.rawArguments }]
         : toolCheck.calls
       prompt.messages[1].content += `\n\n${invalidAttemptSuffix(config.language, attempt, MAX_ATTEMPTS, calls, errors)}`
     }
   }
+
+  async function ask(
+    request: ContestantRequest,
+    events: readonly GameEvent[],
+  ): Promise<ContestantChoice> {
+    const model = config.seats[request.seat - 1]
+    if (!model) throw new Error('Unknown contestant seat')
+    const result = await decide(
+      model,
+      { type: 'contestant.decision', seat: request.seat, request },
+      buildContestantPrompt({ events, seat: request.seat, language: config.language, request }),
+      tools,
+      request.tool,
+      (value) => {
+        const errors = validateContestantChoice(value, request, config.seatCount)
+        return errors.length
+          ? { ok: false, errors }
+          : { ok: true, choice: value as ContestantChoice }
+      },
+    )
+    return { ...(result.choice as ContestantChoice), decision: result.decision }
+  }
+
+  const discretionTools = storytellerTools(config.language, config.seatCount)
 
   const ports: Ports = {
     config,
@@ -220,7 +249,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       }
       return choices
     },
-    discretion: (id, candidates) => {
+    discretion: (id, candidates, context) => {
       switch (config.discretions[id]) {
         case 'random': {
           const choice = Array.isArray(candidates)
@@ -230,6 +259,18 @@ export function createGame(input: z.infer<typeof gameInput>) {
           return Promise.resolve({ choice })
         }
         case 'storyteller':
+          if (!config.storyteller) throw new Error('Storyteller preset is required')
+          return decide(
+            config.storyteller,
+            { type: 'storyteller.decision', discretion: id, request: { id, candidates, context } },
+            buildStorytellerPrompt(config, runner.log, id, candidates, context),
+            discretionTools,
+            'decide',
+            (value) => parseStorytellerChoice(value, id, candidates, config.seatCount),
+          ).then((result) => ({
+            choice: result.choice as DiscretionChoice,
+            decision: result.decision,
+          }))
         case 'manual':
           throw new Error(`Discretion source ${config.discretions[id]} is not available`)
       }
@@ -240,8 +281,8 @@ export function createGame(input: z.infer<typeof gameInput>) {
       if (runner.controller.signal.aborted) return
       commit({
         type: 'game.aborted',
-        reason: error instanceof ContestantFailure ? 'model_call_failed' : 'engine_error',
-        ...(error instanceof ContestantFailure && { seat: error.seat }),
+        reason: error instanceof ModelFailure ? 'model_call_failed' : 'engine_error',
+        ...(error instanceof ModelFailure && error.actor),
         error: error instanceof Error ? error.message : String(error),
       })
     })

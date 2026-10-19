@@ -20,6 +20,11 @@ import { channelBlocks } from '../shared/game/channels'
 import { seatFootprint, spectatorRows } from '../shared/game/spectator'
 import { renderEvent } from '../shared/event-templates'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
+import {
+  buildStorytellerPrompt,
+  discretionRequest,
+  parseStorytellerChoice,
+} from '../shared/prompts/storyteller'
 import type {
   ContestantChoice,
   ContestantRequest,
@@ -603,13 +608,18 @@ async function game(
   options: {
     seats?: SeatState[]
     roles?: RoleId[]
+    discretions?: Partial<GameConfig['discretions']>
     d14?: number
     choose?: (request: ContestantRequest) => ContestantChoice
     discretion?: (...args: Parameters<Ports['discretion']>) => Promise<DiscretionChoice>
     act?: (request: ContestantRequest) => ContestantChoice
   } = {},
 ) {
-  const config = { ...CONFIG, seatCount: options.roles?.length ?? options.seats?.length ?? 5 }
+  const config = {
+    ...CONFIG,
+    discretions: { ...CONFIG.discretions, ...options.discretions },
+    seatCount: options.roles?.length ?? options.seats?.length ?? 5,
+  }
   const events: GameEvent[] = [{ seq: 1, type: 'game.created', ...config }]
   if (options.seats) events.push({ seq: 2, type: 'grimoire.set', seats: options.seats })
   let memory = fold(events)
@@ -760,6 +770,182 @@ async function game(
   for (const prefix of prefixes) expect(prefix.memory).toEqual(fold(events.slice(0, prefix.length)))
   return { events, state: memory, requests, discretionCalls }
 }
+
+describe('storyteller context at the rules seam', () => {
+  it('combines matching D1/seating sources and separates a mixed-source permutation', async () => {
+    const combined = await game([5, 4])
+    expect(combined.discretionCalls).not.toContain('seating')
+    const roles = ORDER.toReversed()
+    const split = await game([], {
+      discretions: { D1: 'storyteller', seating: 'manual' },
+      discretion: (id, candidates) => {
+        if (id === 'D1') return Promise.resolve(ORDER)
+        expect(id).toBe('seating')
+        expect(candidates).toMatchObject({ type: 'seating', roles: ORDER })
+        return Promise.resolve(roles)
+      },
+      act: (request) =>
+        request.tool === 'night_choice'
+          ? { reasoning: 'Self', targets: [request.seat] }
+          : passAction(request),
+    })
+    expect(
+      split.events
+        .filter((event) => event.type === 'discretion.requested')
+        .map((event) => ({ id: event.discretion, source: event.source })),
+    ).toEqual([
+      { id: 'D1', source: 'storyteller' },
+      { id: 'seating', source: 'manual' },
+    ])
+    expect(split.events.find((event) => event.type === 'grimoire.set')).toMatchObject({
+      seats: roles.map((role) => ({ role })),
+    })
+    expect(
+      discretionRequest(
+        'en',
+        'seating',
+        { type: 'seating', roles: ORDER, sample: roles },
+        fold([]),
+        5,
+      ),
+    ).toContain('do not replace any character')
+  })
+
+  it.each(['zh', 'en'] as const)(
+    'projects only spoken content, latest memos and storyteller decisions in %s',
+    async (language) => {
+      const { events } = await game([5, 4])
+      const append = (event: GameEventInput) => events.push({ ...event, seq: events.length + 1 })
+      append({
+        type: 'contestant.decision',
+        seat: 1,
+        request: { tool: 'speak', seat: 1, kind: 'free', day: 1 },
+        raw: { reasoning: 'HIDDEN_THOUGHT', speech: 'HIDDEN_UNSELECTED' },
+        model: 'HIDDEN_MODEL',
+        usage: null,
+        durationMs: 1,
+        attempt: 1,
+        validation: { ok: true },
+      })
+      append({ type: 'whisper.proposed', seat: 1, round: 1, members: [123456] })
+      append({ type: 'whisper.ranked', seat: 1, round: 1, ranking: [987654] })
+      append({
+        type: 'whisper.speech',
+        seat: 1,
+        members: [1, 2],
+        round: 1,
+        roomId: 'actual',
+        speech: 'ACTUAL_WHISPER',
+        decision: 0,
+      })
+      append({ type: 'public.speech', seat: 2, kind: 'free', speech: 'ACTUAL_PUBLIC', decision: 0 })
+      append({ type: 'seat.memo.updated', seat: 1, memo: 'OLD_MEMO' })
+      append({ type: 'seat.memo.updated', seat: 1, memo: 'LATEST_MEMO' })
+      append({
+        type: 'storyteller.decision',
+        discretion: 'D12',
+        request: {},
+        raw: {
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  { function: { arguments: '{"reasoning":"PRIOR_REASON","answer":true}' } },
+                ],
+              },
+            },
+          ],
+        },
+        model: 'HIDDEN_STORYTELLER_MODEL',
+        usage: null,
+        durationMs: 1,
+        attempt: 1,
+        validation: { ok: true },
+      })
+      const context = {
+        ...fold(events),
+        discretion: { seat: 1, role: 'mayor' as const, truth: [false] },
+      }
+      const prompt = buildStorytellerPrompt(
+        { ...CONFIG, language },
+        events,
+        'D12',
+        [false, true],
+        context,
+      )
+      const user = prompt.messages[1].content
+      for (const visible of ['ACTUAL_WHISPER', 'ACTUAL_PUBLIC', 'LATEST_MEMO', 'PRIOR_REASON'])
+        expect(user).toContain(visible)
+      for (const hidden of [
+        'HIDDEN_THOUGHT',
+        'HIDDEN_UNSELECTED',
+        'HIDDEN_MODEL',
+        'HIDDEN_STORYTELLER_MODEL',
+        '123456',
+        '987654',
+        'OLD_MEMO',
+      ])
+        expect(user).not.toContain(hidden)
+      const headings =
+        language === 'zh'
+          ? ['# 时间线', '# 各座位备忘录', '# 当前魔典', '# 本次裁量']
+          : ['# Timeline', '# Seat memos', '# Current Grimoire', '# This decision']
+      expect(headings.map((heading) => user.indexOf(heading))).toEqual(
+        headings.map((heading) => user.indexOf(heading)).toSorted((a, b) => a - b),
+      )
+      expect(prompt.messages[0].content).not.toContain(
+        language === 'zh' ? '官方建议（不是硬约束）' : 'Official advice (not hard constraints)',
+      )
+      expect(user).toContain(
+        language === 'zh' ? '官方建议（不是硬约束）' : 'Official advice (not hard constraints)',
+      )
+    },
+  )
+
+  it('maps each decide output form to a canonical legal candidate and rejects extra fields', () => {
+    const cases: {
+      id: Parameters<Ports['discretion']>[0]
+      choice: DiscretionChoice
+      args: Record<string, unknown>
+    }[] = [
+      { id: 'D2', choice: 'chef', args: { roles: ['chef'] } },
+      { id: 'D3', choice: 3, args: { seats: [3] } },
+      {
+        id: 'D4',
+        choice: { seats: [2, 3], role: 'chef' },
+        args: { seats: [3, 2], roles: ['chef'] },
+      },
+      { id: 'D5', choice: 0, args: { number: 0 } },
+      { id: 'D6', choice: { seats: [2, 3], role: 'spy' }, args: { seats: [2, 3], roles: ['spy'] } },
+      { id: 'D7', choice: ['chef', 'monk', 'butler'], args: { roles: ['butler', 'monk', 'chef'] } },
+      { id: 'D8', choice: { target: 2, role: 'drunk' }, args: { seats: [2], roles: ['drunk'] } },
+      { id: 'D8', choice: true, args: { answer: true } },
+      { id: 'D8', choice: 2, args: { number: 2 } },
+      {
+        id: 'D10',
+        choice: { alignment: 'good', role: 'chef' },
+        args: { alignment: 'good', roles: ['chef'] },
+      },
+      {
+        id: 'D11',
+        choice: { alignment: 'evil', role: 'imp' },
+        args: { alignment: 'evil', roles: ['imp'] },
+      },
+      { id: 'D12', choice: false, args: { answer: false } },
+      { id: 'D13', choice: 3, args: { seats: [3] } },
+      { id: 'D14', choice: 4, args: { seats: [4] } },
+    ]
+    for (const { id, choice, args } of cases) {
+      expect(parseStorytellerChoice({ reasoning: 'Legal', ...args }, id, [choice], 5)).toEqual({
+        ok: true,
+        choice,
+      })
+      expect(
+        parseStorytellerChoice({ reasoning: 'Illegal', ...args, number: 99 }, id, [choice], 5),
+      ).toMatchObject({ ok: false })
+    }
+  })
+})
 
 describe('evil team setup through the rules seam', () => {
   it.each([5, 6, 7, 10, 15])(

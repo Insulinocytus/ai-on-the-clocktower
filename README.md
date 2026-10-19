@@ -89,6 +89,8 @@ HTTP：`POST /api/games` 接受 `{ presets: [id, id, id, id, id], language: "zh"
 
 开局配置还接受 `discretions?: Partial<Record<DiscretionId, "random" | "storyteller" | "manual">>` 与 `storyteller?: presetId | null`，逐项保存到 `game.created`。只有使用说书人模型来源时才要求其预设，并一并检查提供商凭据；否则保存为 null。D1 与分座来源相同时合并决定，来源不同时先选角色集合、再排列到座位。合法候选只有一个时不写裁量事件，也不调用外部来源。
 
+说书人模型使用整局固定的 `decide` 工具（必填 `reasoning`，可选 `seats`、`roles`、`number`、`answer`、`alignment`）。提示词按“共用完整规则 + 说书人原则 → 说书人时间线 → 各座位最新备忘录 → 当前真实魔典与本次裁量”排列，中英随对局语言；合法范围用结构描述，不堆砌候选组合。官方建议仅放在对应请求，不缩小硬约束候选。时间线包含实际公聊、私聊、夜间行动及此前说书人决定与理由，不包含选手推理、落选发言、私聊原始提议或排序。输出按裁量编号匹配引擎合法候选，选角与分座使用配置校验；重试、提供商 FIFO 队列、取消与选手调用共用。每次尝试记录 `storyteller.decision`，成功结算关联其 seq；说书人以下视角看不到这些事件。
+
 > [!WARNING]
 > 本应用没有任何鉴权，默认只监听 `127.0.0.1`。如需暴露到外网，请自行在反向代理上加鉴权，再放宽 `HOST`。
 

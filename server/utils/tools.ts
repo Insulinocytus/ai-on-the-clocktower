@@ -1,6 +1,7 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
 import type { ValidationError } from '#shared/types/game'
+import { ROLES } from '#shared/game/roles'
 
 export type Lang = 'zh' | 'en'
 
@@ -118,6 +119,46 @@ export function contestantTools(lang: Lang, seatCount: number): Tool[] {
       { targets: { type: 'array', items: seat, description: t.targets } },
       ['targets'],
     ),
+  ]
+}
+
+export function storytellerTools(lang: Lang, seatCount: number): Tool[] {
+  const zh = lang === 'zh'
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'decide',
+        description: zh
+          ? '作出本次说书人裁量，只填请求要求的字段。'
+          : 'Make this Storyteller decision; fill only requested fields.',
+        parameters: {
+          type: 'object',
+          properties: {
+            reasoning: { type: 'string', description: zh ? '你的理由。' : 'Your reasons.' },
+            seats: {
+              type: 'array',
+              items: { type: 'integer', enum: Array.from({ length: seatCount }, (_, i) => i + 1) },
+              description: zh ? '座位。' : 'Seats.',
+            },
+            roles: {
+              type: 'array',
+              items: { type: 'string', enum: Object.keys(ROLES) },
+              description: zh ? '角色。' : 'Characters.',
+            },
+            number: { type: 'integer', minimum: 0, description: zh ? '数字。' : 'A number.' },
+            answer: { type: 'boolean', description: zh ? '是或否。' : 'Yes or no.' },
+            alignment: {
+              type: 'string',
+              enum: ['good', 'evil'],
+              description: zh ? '阵营。' : 'Team.',
+            },
+          },
+          required: ['reasoning'],
+          additionalProperties: false,
+        },
+      },
+    },
   ]
 }
 

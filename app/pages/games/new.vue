@@ -144,7 +144,11 @@ async function create() {
         >
           <Label :for="`source-${id}`">{{ id === 'seating' ? t('games.seating') : id }}</Label>
           <Select v-model="form.discretions[id]">
-            <SelectTrigger :id="`source-${id}`"><SelectValue /></SelectTrigger>
+            <SelectTrigger :id="`source-${id}`"
+              ><SelectValue>{{
+                t(`games.sources.${form.discretions[id]}`)
+              }}</SelectValue></SelectTrigger
+            >
             <SelectContent>
               <SelectItem value="random">{{ t('games.sources.random') }}</SelectItem>
               <SelectItem value="storyteller">{{ t('games.sources.storyteller') }}</SelectItem>

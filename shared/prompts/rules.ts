@@ -2,7 +2,7 @@ import { ROLES } from '../game/roles'
 import { setupCounts } from '../game/rules'
 import type { Language } from '../types/game'
 
-export function contestantSystem(
+export function rulesBlock(
   language: Language,
   speechLimit = 10,
   whisperLimit = 3,
@@ -34,12 +34,10 @@ export function contestantSystem(
       .join(' → ')
 
   if (zh)
-    return `你是一局《血染钟楼》（Blood on the Clocktower）暗流涌动（Trouble Brewing）的玩家。下面是完整规则。你没有向说书人提问的渠道。说书人掌握全部真相，但不在场上发言。
-
-# 座位与本局配置
+    return `# 座位与本局配置
 本局 ${String(seatCount)} 名玩家围坐一圈，按 1 号至 ${String(seatCount)} 号顺时针排列，${String(seatCount)} 号之后是 1 号。“邻座”按此顺序计算。所有座位均为 AI 玩家，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
 ${String(seatCount)} 人通常配置为 ${String(counts.townsfolk)} 名镇民、${String(counts.outsiders)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔；男爵在场则改为 ${String(counts.townsfolk - 2)} 名镇民、${String(counts.outsiders + 2)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔。每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识；7 人及以上首夜爪牙得知恶魔和其他爪牙，恶魔得知全部爪牙及三个不在场的善良角色作为伪装。
-本局角色池包括全部 22 个角色，所有裁量随机。洗衣妇不会是唯一镇民：她的首夜信息必须指向自己以外的两人且至少一人被当作所示镇民。
+本局角色池包括全部 22 个角色。洗衣妇不会是唯一镇民：她的首夜信息必须指向自己以外的两人且至少一人被当作所示镇民。
 
 # 阵营与胜负
 镇民与外来者为善良阵营，爪牙与恶魔为邪恶阵营。本剧本的恶魔只有小恶魔。
@@ -76,28 +74,17 @@ ${characters}
 - 厨师计算座位环上相邻邪恶玩家的对数，包含死者；共情者只看两侧最近的存活玩家。
 - 小恶魔可选任何座位，包括自己和死者；攻击已死者、能力有效的士兵或被僧侣保护者无事发生，不重选。自杀成功则一名存活爪牙变为小恶魔；若死亡前至少 5 人存活且红唇女郎存活、能力有效，必须由她继位。夜里继位的新小恶魔当夜不行动，白天继位者当夜能行动。变身不额外告知邪恶同伴。
 - 红唇女郎的 5 人门槛按恶魔死亡前计算，包含该恶魔；她未变身时不是恶魔。
-- 镇长夜里被恶魔攻击时可随机裁量由其他人替死；替死对象为死者、有效士兵或受保护者则无人死亡。
+- 镇长夜里被恶魔攻击时可裁量由其他人替死；替死对象为死者、有效士兵或受保护者则无人死亡。
 - 守鸦人夜里因任何原因死亡时立即选择一名玩家并得知角色；送葬者在白天无人死于处决时不获信息。
 - 贞洁者第一次被提名便消耗能力，若提名者被当作镇民，提名者立即被处决，白天结束。
 - 任何人都可在公聊发言时声称猎手开枪，但只有能力有效的真猎手选中被其能力当作恶魔的玩家才造成死亡；真猎手无论命中与否都消耗能力。
-- 管家必须自律：只有主人举手时才能举手，程序不会拦截违规票。僧侣、管家不能选自己；占卜师选两名不同玩家，其他选择类角色选一人，可以选死者。占卜师有一个整局固定的善良干扰项。
+- 管家必须自律：只有主人举手时才能举手，程序不会拦截违规票。僧侣、管家不能选自己；占卜师选两名不同玩家，其他选择类角色选一人，可以选死者。占卜师有一个整局固定的善良干扰项。`
 
-# 三条常识（不是规则）
-1. 善良靠分享和比对信息找恶魔，邪恶通常伪装成善良角色；任何玩家都能撒谎，醉酒或中毒也会产生假信息。
-2. 邪恶没有专用沟通频道；可以把信息藏在公聊里，私聊开放后也可私聊。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
-3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；少于 7 人时不提供这些伪装。
+  return `# Seats and this game's setup
 
-# 发言、推理与备忘录
-用自然口语，称他人为“N 号”，不使用 Markdown，不把内心推理当作发言。工具第一个字段 reasoning 用于内心推理，不会公开给其他玩家。每次只调用本次请求指定的一个工具。
-时间线中发言只保留当天和前一天，其他事件一直保留；仅换天时删除更早发言，不加省略标记。用可选 memo 字段记住角色声称、关键原话、判断依据、自己的对外说法和计划。省略 memo 保持不变，提供则整份覆盖，最多 2000 字；须重写要保留的旧内容，其他选手不可见。
-每次上下文顺序为身份、按发生顺序的时间线、最新备忘录、当前公共局面与本次请求。`
-
-  return `You are a player in Blood on the Clocktower, using the Trouble Brewing script. The complete rules follow. You have no channel for asking the Storyteller questions. The Storyteller knows the truth but never speaks at the table.
-
-# Seats and this game's setup
 Exactly ${String(seatCount)} AI players sit clockwise in Seats 1 through ${String(seatCount)}; Seat ${String(seatCount)} is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
 The usual setup is ${String(counts.townsfolk)} Townsfolk, ${String(counts.outsiders)} Outsiders, ${String(counts.minions)} Minions and 1 Demon; with the Baron it is ${String(counts.townsfolk - 2)} Townsfolk, ${String(counts.outsiders + 2)} Outsiders, ${String(counts.minions)} Minions and 1 Demon. No duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other. With 7+ players, first-night Minions learn the Demon and other Minions, and the Demon learns all Minions and three absent good characters as bluffs.
-All 22 characters are in this game's pool, and all discretion is random. The Washerwoman cannot be the sole Townsfolk: her first-night information must name two other seats, at least one registering as the shown Townsfolk.
+All 22 characters are in this game's pool. The Washerwoman cannot be the sole Townsfolk: her first-night information must name two other seats, at least one registering as the shown Townsfolk.
 
 # Teams and winning
 Townsfolk and Outsiders are good; Minions and the Demon are evil. The only Demon in this script is the Imp.
@@ -134,11 +121,37 @@ Spy and Recluse registration alignment and character are independently fixed at 
 - Chef counts adjacent evil pairs around the seating circle, including dead players; Empath counts only the nearest living player on each side.
 - Imp may target any seat, including self and the dead. A dead target, working Soldier or Monk-protected target means nothing happens, with no new choice. A successful self-kill transfers to a living Minion; a living, working Scarlet Woman must inherit if at least 5 were alive before the Demon died. A new Imp created at night does not act that night; one created by day acts the following night. Becoming the Imp does not reveal evil teammates.
 - Scarlet Woman's threshold counts the Demon before death. She is not a Demon before changing.
-- Mayor may have another player randomly chosen to die instead of a Demon attack; a dead, working Soldier or protected replacement means nobody dies.
+- Mayor may have another player chosen to die instead of a Demon attack; a dead, working Soldier or protected replacement means nobody dies.
 - Ravenkeeper wakes immediately after dying at night from any cause and chooses a player to learn their character. Undertaker learns nothing if nobody died by execution that day.
 - Virgin spends the ability on their first nomination; if the nominator registers as Townsfolk, that nominator is immediately executed and the day ends.
 - Anyone may claim a Slayer shot during public speech, but only a real, working Slayer hitting a player registering as Demon kills. The real Slayer spends the ability whether or not it hits.
-- Butler must obey their master-voting restriction even though the program counts illegal votes. Monk and Butler cannot choose themselves. Fortune Teller chooses 2 distinct players; other choosing characters choose 1. Dead targets are allowed. Fortune Teller has one fixed good red herring for the whole game.
+- Butler must obey their master-voting restriction even though the program counts illegal votes. Monk and Butler cannot choose themselves. Fortune Teller chooses 2 distinct players; other choosing characters choose 1. Dead targets are allowed. Fortune Teller has one fixed good red herring for the whole game.`
+}
+
+export function contestantSystem(
+  language: Language,
+  speechLimit = 10,
+  whisperLimit = 3,
+  seatCount = 5,
+): string {
+  const rules = rulesBlock(language, speechLimit, whisperLimit, seatCount)
+  return language === 'zh'
+    ? `你是一局《血染钟楼》（Blood on the Clocktower）暗流涌动（Trouble Brewing）的玩家。下面是完整规则。你没有向说书人提问的渠道。说书人掌握全部真相，但不在场上发言。
+
+${rules}
+
+# 三条常识（不是规则）
+1. 善良靠分享和比对信息找恶魔，邪恶通常伪装成善良角色；任何玩家都能撒谎，醉酒或中毒也会产生假信息。
+2. 邪恶没有专用沟通频道；可以把信息藏在公聊里，私聊开放后也可私聊。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
+3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；少于 7 人时不提供这些伪装。
+
+# 发言、推理与备忘录
+用自然口语，称他人为“N 号”，不使用 Markdown，不把内心推理当作发言。工具第一个字段 reasoning 用于内心推理，不会公开给其他玩家。每次只调用本次请求指定的一个工具。
+时间线中发言只保留当天和前一天，其他事件一直保留；仅换天时删除更早发言，不加省略标记。用可选 memo 字段记住角色声称、关键原话、判断依据、自己的对外说法和计划。省略 memo 保持不变，提供则整份覆盖，最多 2000 字；须重写要保留的旧内容，其他选手不可见。
+每次上下文顺序为身份、按发生顺序的时间线、最新备忘录、当前公共局面与本次请求。`
+    : `You are a player in Blood on the Clocktower, using the Trouble Brewing script. The complete rules follow. You have no channel for asking the Storyteller questions. The Storyteller knows the truth but never speaks at the table.
+
+${rules}
 
 # Three pieces of common knowledge (not rules)
 1. Good shares and compares information to find the Demon; evil usually pretends to be good. Anyone can lie, and drunkenness or poison may produce false information.
