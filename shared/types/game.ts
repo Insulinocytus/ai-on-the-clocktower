@@ -60,16 +60,35 @@ export interface GameConfig {
   promptVersion: number
 }
 export interface NightRequest {
+  tool?: 'night_choice'
   seat: number
   role: RoleId
   day: number
   targets: number[]
 }
-export interface NightChoice {
+interface NightChoice {
   reasoning: string
   targets: number[]
   memo?: string
 }
+export interface SpeechRequest {
+  tool: 'speak'
+  seat: number
+  day: number
+  kind: 'free' | 'nomination' | 'defense'
+  remaining?: number
+  nominator?: number
+  nominee?: number
+}
+export interface SpeechChoice {
+  reasoning: string
+  speech: string | null
+  slayer_target: number | null
+  memo?: string
+  decision?: number
+}
+export type ContestantRequest = NightRequest | SpeechRequest
+export type ContestantChoice = NightChoice | SpeechChoice
 type ValidationCode =
   | 'invalid_seat_count'
   | 'duplicate_role'
@@ -79,6 +98,8 @@ type ValidationCode =
   | 'invalid_targets'
   | 'invalid_reasoning'
   | 'invalid_memo'
+  | 'invalid_speech'
+  | 'invalid_slayer_target'
 export interface ValidationError {
   code: ValidationCode
 }
@@ -142,7 +163,7 @@ export type GameEvent =
       'contestant.decision',
       {
         seat: number
-        request: NightRequest
+        request: ContestantRequest
         raw: unknown
         model: string
         usage: unknown
@@ -258,7 +279,7 @@ export interface Ports {
   config: GameConfig
   log: readonly GameEvent[]
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
-  askContestants(batch: NightRequest[]): Promise<NightChoice[]>
+  askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
     id: 'D1' | 'D14',
     candidates: { type: 'setup'; sample: RoleId[] } | number[],

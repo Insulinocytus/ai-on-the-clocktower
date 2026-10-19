@@ -10,6 +10,7 @@ import {
   validate,
   validateNightChoice,
   visibleTo,
+  validateSpeechChoice,
   winner,
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
@@ -22,6 +23,8 @@ import type {
   Ports,
   RoleId,
   SeatState,
+  SpeechChoice,
+  SpeechRequest,
 } from '../shared/types/game'
 
 describe('five-seat setup', () => {
@@ -266,9 +269,14 @@ async function game(targets: number[], options: { seats?: SeatState[]; d14?: num
       return Promise.resolve(options.d14 ?? 4)
     },
     askContestants: (batch) => {
+      if (batch.every((request) => request.tool === 'speak'))
+        return Promise.resolve(
+          batch.map(() => ({ reasoning: 'Pass', speech: null, slayer_target: null })),
+        )
       expect(batch).toHaveLength(1)
       const request = batch[0]
       if (!request) throw new Error('No request')
+      if (request.tool === 'speak') throw new Error('Expected night request')
       requests.push(structuredClone(request))
       const target = targets[calls++]
       if (target === undefined) throw new Error('Script exhausted')
@@ -300,7 +308,7 @@ async function game(targets: number[], options: { seats?: SeatState[]; d14?: num
 }
 
 describe('scripted pure rules seam', () => {
-  it('creates the grimoire and private roles, resolves Chef then Empath without model calls, and skips day actions', async () => {
+  it('creates the grimoire and private roles, resolves Chef then Empath without model calls, and opens public discussion', async () => {
     const { events, requests } = await game([5, 2, 3])
     expect(events.filter((event) => event.type === 'told' && event.kind === 'role')).toEqual(
       ORDER.map(
@@ -337,7 +345,10 @@ describe('scripted pure rules seam', () => {
         .filter((event) => event.type === 'phase.started')
         .every(
           (event) =>
-            event.phase === 'first-night' || event.phase === 'night' || event.phase === 'dawn',
+            event.phase === 'first-night' ||
+            event.phase === 'night' ||
+            event.phase === 'dawn' ||
+            event.phase === 'public',
         ),
     ).toBe(true)
     expect(events.filter((event) => event.type === 'dawn.announced')).toEqual([
@@ -518,5 +529,204 @@ describe('folds at arbitrary log prefixes and winner precedence', () => {
       reason: 'two_alive',
     })
     expect(winner(fold([{ seq: 1, type: 'grimoire.set', seats: seatsFor() }]))).toBe(null)
+  })
+})
+
+describe('public conversation', () => {
+  it('batches every eligible seat, prioritizes remaining speeches and never repeats a speaker', async () => {
+    const config = { ...CONFIG, speechLimit: 2 }
+    const events: GameEvent[] = [
+      { seq: 1, type: 'game.created', ...config },
+      { seq: 2, type: 'grimoire.set', seats: seatsFor() },
+    ]
+    const batches: number[][] = []
+    await expect(
+      runGame({
+        config,
+        log: events,
+        rng: () => 0,
+        commit: (input) => {
+          if (input.type === 'phase.started' && input.day === 2) throw new Error('script_complete')
+          const event: GameEvent = { ...input, seq: events.length + 1 }
+          events.push(event)
+          return event
+        },
+        discretion: () => Promise.reject(new Error('Unexpected discretion')),
+        askContestants: (batch) => {
+          batches.push(batch.map((request) => request.seat))
+          return Promise.resolve(
+            batch.map((request) => ({
+              reasoning: 'Join the discussion',
+              speech: `Speech from ${String(request.seat)}`,
+              slayer_target: null,
+            })),
+          )
+        },
+      }),
+    ).rejects.toThrow('script_complete')
+    expect(batches[0]).toEqual([1, 2, 3, 4, 5])
+    expect(
+      events.filter((event) => event.type === 'public.speech').map((event) => event.seat),
+    ).toEqual([1, 2, 3, 4, 5, 1, 2, 3, 4, 5])
+    expect(batches[1]).toEqual([2, 3, 4, 5])
+    expect(batches.at(-1)).toEqual([5])
+  })
+})
+
+async function conversation(
+  respond: (batch: SpeechRequest[], events: readonly GameEvent[]) => SpeechChoice[],
+  seats = seatsFor(),
+  rng = createRng(20),
+) {
+  const events: GameEvent[] = [
+    { seq: 1, type: 'game.created', ...CONFIG },
+    { seq: 2, type: 'grimoire.set', seats },
+  ]
+  await expect(
+    runGame({
+      config: CONFIG,
+      log: events,
+      rng,
+      discretion: () => Promise.reject(new Error('Unexpected discretion')),
+      commit: (input) => {
+        if (input.type === 'phase.started' && input.day === 2) throw new Error('script_complete')
+        const event = { ...input, seq: events.length + 1 }
+        events.push(event)
+        return event
+      },
+      askContestants: (batch) => {
+        const speeches = batch.filter((request) => request.tool === 'speak')
+        if (speeches.length !== batch.length) throw new Error('Unexpected non-speech request')
+        const choices = respond(speeches, events)
+        return Promise.resolve(
+          choices.map((choice, index) => {
+            const request = batch[index]
+            if (!request) throw new Error('Missing request')
+            const decision: GameEvent = {
+              seq: events.length + 1,
+              type: 'contestant.decision',
+              seat: request.seat,
+              request,
+              raw: choice,
+              model: 'script',
+              usage: null,
+              durationMs: 0,
+              attempt: 1,
+              validation: { ok: true },
+            }
+            events.push(decision)
+            return { ...choice, decision: decision.seq }
+          }),
+        )
+      },
+    }),
+  ).rejects.toThrow('script_complete')
+  return events
+}
+
+describe('public conversation edge cases', () => {
+  it('lets dead seats speak and ends on eligible passes even if the last speaker has allowance', async () => {
+    const seats = seatsFor()
+    const dead = seats[0]
+    if (!dead) throw new Error('Missing seat')
+    dead.alive = false
+    const batches: number[][] = []
+    const events = await conversation((batch) => {
+      batches.push(batch.map((request) => request.seat))
+      return batch.map((request) => ({
+        reasoning: 'Can still contribute after death',
+        speech: batches.length === 1 && request.seat === 1 ? 'My information still matters.' : null,
+        slayer_target: null,
+      }))
+    }, seats)
+    expect(batches).toEqual([
+      [1, 2, 3, 4, 5],
+      [2, 3, 4, 5],
+    ])
+    expect(events.filter((event) => event.type === 'public.speech')).toMatchObject([
+      { seat: 1, speech: 'My information still matters.' },
+    ])
+  })
+
+  it.each(['soldier', 'slayer'] as const)(
+    'publicly resolves a %s fake or spent shot as nothing happening',
+    async (role) => {
+      const seats = seatsFor()
+      const shooter = seats[0]
+      if (!shooter) throw new Error('Missing seat')
+      shooter.role = role
+      shooter.abilityUsed = true
+      let round = 0
+      const events = await conversation((batch) => {
+        round++
+        return batch.map((request) => ({
+          reasoning: 'Claim a shot',
+          speech: round === 1 && request.seat === 1 ? 'I shoot Seat 5.' : null,
+          slayer_target: round === 1 && request.seat === 1 ? 5 : null,
+        }))
+      }, seats)
+      const speech = events.find((event) => event.type === 'public.speech')
+      expect(speech).toMatchObject({ seat: 1, slayerTarget: 5 })
+      expect(events.find((event) => event.seq === (speech?.seq ?? 0) + 1)).toMatchObject({
+        type: 'slayer.resolved',
+        seat: 1,
+        target: 5,
+        died: false,
+      })
+      expect(fold(events).seats.find((seat) => seat.seat === 5)?.alive).toBe(true)
+      expect(project(events, 'public').some((event) => event.type === 'slayer.resolved')).toBe(true)
+    },
+  )
+
+  it('uses seeded randomness among tied offers and keeps losing offers only in decisions', async () => {
+    const play = () => {
+      let round = 0
+      return conversation((batch) => {
+        round++
+        return batch.map((request) => ({
+          reasoning: 'A private proposal',
+          speech: round === 1 ? `Offer ${String(request.seat)}` : null,
+          slayer_target: null,
+        }))
+      })
+    }
+    const events = await play()
+    expect(events.filter((event) => event.type === 'public.speech')).toEqual(
+      (await play()).filter((event) => event.type === 'public.speech'),
+    )
+    const spoken = events.filter((event) => event.type === 'public.speech')
+    expect(spoken).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'contestant.decision')).toHaveLength(9)
+    expect(spoken[0]?.decision).toBeGreaterThan(0)
+    expect(
+      project(events, 'public').filter((event) => event.type === 'contestant.decision'),
+    ).toEqual([])
+  })
+
+  it('restricts claimed shots to nonempty public speech without restricting fake shooters', () => {
+    const request: SpeechRequest = { tool: 'speak', seat: 1, day: 1, kind: 'free', remaining: 10 }
+    const choice = { reasoning: '', speech: 'I shoot.', slayer_target: 5 }
+    expect(validateSpeechChoice(choice, request)).toEqual([])
+    expect(validateSpeechChoice({ ...choice, speech: null }, request)).toContainEqual({
+      code: 'invalid_slayer_target',
+    })
+    expect(validateSpeechChoice({ ...choice, speech: '' }, request)).toContainEqual({
+      code: 'invalid_slayer_target',
+    })
+    expect(validateSpeechChoice({ ...choice, slayer_target: 6 }, request)).toContainEqual({
+      code: 'invalid_slayer_target',
+    })
+    expect(validateSpeechChoice(choice, { ...request, kind: 'nomination' })).toContainEqual({
+      code: 'invalid_slayer_target',
+    })
+    expect(
+      validateSpeechChoice(
+        { ...choice, speech: null, slayer_target: null },
+        { ...request, kind: 'defense' },
+      ),
+    ).toContainEqual({ code: 'invalid_speech' })
+    expect(validateSpeechChoice({ ...choice, speech: '', slayer_target: null }, request)).toEqual(
+      [],
+    )
   })
 })

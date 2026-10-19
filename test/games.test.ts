@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
 import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
@@ -19,6 +20,14 @@ await setup({
   },
 })
 
+const gameRequest = z.object({
+  messages: z.tuple([
+    z.object({ role: z.literal('system'), content: z.string() }),
+    z.object({ role: z.literal('user'), content: z.string() }),
+  ]),
+  tool_choice: z.object({ function: z.object({ name: z.string() }) }),
+})
+
 async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1') {
   const provider = await $fetch<{ id: number }>('/api/providers', {
     method: 'POST',
@@ -26,7 +35,12 @@ async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1') {
   })
   return $fetch<{ id: number }>('/api/presets', {
     method: 'POST',
-    body: { name: 'Game preset', providerId: provider.id, model: 'fake-model' },
+    body: {
+      name: 'Game preset',
+      providerId: provider.id,
+      model: 'fake-model',
+      forceToolChoice: true,
+    },
   })
 }
 
@@ -47,18 +61,25 @@ describe('games HTTP seam', () => {
   })
 
   it('runs an actual game through the provider to game.ended and replays projected events', async () => {
-    const fake = await startFakeProvider()
+    let turn = 0
+    const fake = await startFakeProvider((request) => {
+      const input = gameRequest.parse(request.body)
+      const tool = input.tool_choice.function.name
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify(
+          tool === 'speak'
+            ? { reasoning: 'Pass', speech: null, slayer_target: null }
+            : {
+                reasoning: 'Choose the next seat.',
+                targets: [(turn++ % 5) + 1],
+                memo: 'Remember my previous choice.',
+              },
+        ),
+      }
+    })
     try {
-      for (let turn = 0; turn < 20; turn++)
-        fake.script({
-          kind: 'toolCall',
-          name: 'night_choice',
-          arguments: JSON.stringify({
-            reasoning: 'Choose the next seat.',
-            targets: [(turn % 5) + 1],
-            memo: 'Remember my previous choice.',
-          }),
-        })
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
@@ -79,7 +100,8 @@ describe('games HTTP seam', () => {
         seatCount: 5,
         language: 'en',
         logVersion: 1,
-        promptVersion: 1,
+        promptVersion: 2,
+        speechLimit: 10,
         storyteller: null,
       })
       expect(Object.values(opened.config.discretions)).toEqual(
@@ -132,7 +154,7 @@ describe('games HTTP seam', () => {
         expect(messages[0]?.content).toContain('Saint')
         expect(messages[1]?.content).not.toContain('Game preset')
         expect(messages[1]?.content).not.toContain('fake-model')
-        expect(messages[1]?.content).toContain('Call night_choice.')
+        expect(messages[1]?.content).toMatch(/Call (night_choice|speak)\./)
         expect(request.body).not.toHaveProperty('temperature')
         expect(request.body.tools).toEqual(first?.tools)
       }
@@ -183,7 +205,7 @@ describe('games HTTP seam', () => {
           seat: expect.any(Number) as unknown,
           error: expect.any(String) as unknown,
         })
-        expect(fake.requests).toHaveLength(1)
+        expect(fake.requests).toHaveLength(5)
         const after = events.at(-3)?.seq ?? 0
         const response = await fetch(`/api/games/${opened.id}/stream?after=0`, {
           headers: { 'Last-Event-ID': String(after) },
@@ -210,4 +232,122 @@ describe('games HTTP seam', () => {
       }
     },
   )
+})
+
+it.each([0, -1, 1.5, '2', null])(
+  'rejects invalid per-conversation speech limit %s',
+  async (speechLimit) => {
+    const response = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ presets: [1, 1, 1, 1, 1], language: 'en', speechLimit }),
+    })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('speechLimit')
+  },
+)
+
+it('isolates public batches, logs decisions immediately, and trims old speech only at day boundaries', async () => {
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const roles = new Map<string, number>()
+  const offers = new Map<string, number>()
+  const captured: { seat: number; day: number; tool: string; prefix: string; system: string }[] = []
+  const fake = await startFakeProvider(async (request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    const day = Number(/# Current public state\nDay (\d+);/.exec(user)?.[1])
+    const role = /Your character: ([^;]+);/.exec(user)?.[1] ?? ''
+    const tool = input.tool_choice.function.name
+    roles.set(role, seat)
+    captured.push({
+      seat,
+      day,
+      tool,
+      prefix: user.split('# Your memo')[0] ?? '',
+      system: input.messages[0].content,
+    })
+    const key = `${String(day)}:${String(seat)}`
+    const offer = (offers.get(key) ?? 0) + 1
+    offers.set(key, offer)
+    if (day === 1 && seat === 5 && offer === 1) await pending
+    const args =
+      tool === 'speak'
+        ? {
+            reasoning: 'Private offer, not spoken.',
+            speech: `SPEECH-D${String(day)}-S${String(seat)}-O${String(offer)}`,
+            slayer_target: null,
+          }
+        : {
+            reasoning: 'Move to the next day.',
+            targets: [day === 2 ? roles.get('Chef') : day === 3 ? roles.get('Empath') : seat],
+          }
+    return { kind: 'toolCall', name: tool, arguments: JSON.stringify(args) }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    await expect.poll(() => fake.requests.length).toBe(5)
+    await expect
+      .poll(
+        async () => (await log()).filter((event) => event.type === 'contestant.decision').length,
+      )
+      .toBe(4)
+    expect((await log()).some((event) => event.type === 'public.speech')).toBe(false)
+    expect(captured.every((request) => !request.prefix.includes('SPEECH-'))).toBe(true)
+    release?.()
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await log()
+    expect(events[0]).toMatchObject({ type: 'game.created', speechLimit: 1 })
+    const speeches = events.filter((event) => event.type === 'public.speech')
+    expect(speeches).toHaveLength(15)
+    expect(new Set(speeches.map((event) => event.speech)).size).toBe(15)
+    for (const speech of speeches)
+      expect(events.find((event) => event.seq === speech.decision)).toMatchObject({
+        type: 'contestant.decision',
+        seat: speech.seat,
+      })
+    const decisions = events.filter((event) => event.type === 'contestant.decision')
+    expect(decisions).toHaveLength(fake.requests.length)
+    const bySeat = new Map<number, typeof captured>()
+    for (const request of captured) {
+      expect(request.system).toBe(captured[0]?.system)
+      const prior = bySeat.get(request.seat) ?? []
+      const previous = prior.at(-1)
+      if (previous?.day === request.day)
+        expect(request.prefix.startsWith(previous.prefix.trimEnd())).toBe(true)
+      if (request.day === 2) expect(request.prefix).toContain('SPEECH-D1-')
+      if (request.day === 3) {
+        expect(request.prefix).not.toContain('SPEECH-D1-')
+        expect(request.prefix).toContain('SPEECH-D2-')
+        expect(request.prefix).toContain('Public discussion')
+      }
+      expect(request.prefix).not.toContain('Private offer, not spoken.')
+      expect(request.prefix).not.toContain('omitted')
+      prior.push(request)
+      bySeat.set(request.seat, prior)
+    }
+    const chef = roles.get('Chef')
+    expect(
+      captured.some(
+        (request) => request.seat === chef && request.day === 2 && request.tool === 'speak',
+      ),
+    ).toBe(true)
+    for (const request of fake.requests)
+      expect(request.body.tools).toEqual(fake.requests[0]?.body.tools)
+  } finally {
+    release?.()
+    await fake.close()
+  }
 })

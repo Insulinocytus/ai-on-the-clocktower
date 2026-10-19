@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -15,6 +16,7 @@ const { t, locale } = useI18n()
 const { data: presets } = await useFetch<Preset[]>('/api/presets', { default: () => [] })
 const choices = ref<string[]>(Array.from({ length: 5 }, () => ''))
 const language = ref(locale.value === 'zh' ? 'zh' : 'en')
+const speechLimit = ref(10)
 const busy = ref(false)
 const error = ref('')
 
@@ -24,7 +26,11 @@ async function create() {
   try {
     const game = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
-      body: { presets: choices.value.map(Number), language: language.value },
+      body: {
+        presets: choices.value.map(Number),
+        language: language.value,
+        speechLimit: speechLimit.value,
+      },
     })
     await navigateTo(`/games/${game.id}`)
   } catch (cause) {
@@ -67,6 +73,17 @@ async function create() {
             ><SelectItem value="en">English</SelectItem></SelectContent
           ></Select
         >
+      </div>
+      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
+        <Label for="speech-limit">{{ t('games.speechLimit') }}</Label>
+        <Input
+          id="speech-limit"
+          v-model.number="speechLimit"
+          type="number"
+          min="1"
+          step="1"
+          required
+        />
       </div>
       <p v-if="error" role="alert" class="text-destructive">{{ error }}</p>
       <Button
