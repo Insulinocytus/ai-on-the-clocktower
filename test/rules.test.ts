@@ -16,6 +16,7 @@ import {
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
 import { channelBlocks } from '../shared/game/channels'
+import { renderEvent } from '../shared/event-templates'
 import type {
   ContestantChoice,
   ContestantRequest,
@@ -166,11 +167,26 @@ describe('spectator channel blocks', () => {
 })
 
 describe('five-seat setup', () => {
-  it('samples all five implemented roles without replacement from a reproducible seed', () => {
+  it('samples three distinct implemented Townsfolk, Scarlet Woman and Imp from a reproducible seed', () => {
     const roles = sample(createRng(18))
-    expect([...roles].sort()).toEqual(['chef', 'empath', 'imp', 'scarletwoman', 'soldier'])
+    expect(roles).toHaveLength(5)
+    expect(roles.filter((role) => ROLES[role].type === 'townsfolk')).toHaveLength(3)
+    expect(roles).toContain('scarletwoman')
+    expect(roles).toContain('imp')
     expect(sample(createRng(18))).toEqual(roles)
     expect(validate(roles)).toEqual([])
+    const sampled = new Set(
+      Array.from({ length: 100 }, (_, seed) => sample(createRng(seed))).flat(),
+    )
+    for (const role of [
+      'washerwoman',
+      'librarian',
+      'investigator',
+      'fortuneteller',
+      'undertaker',
+      'ravenkeeper',
+    ])
+      expect(sampled.has(role as RoleId)).toBe(true)
   })
 })
 
@@ -388,6 +404,7 @@ async function game(
     seats?: SeatState[]
     d14?: number
     choose?: (request: ContestantRequest) => ContestantChoice
+    discretion?: Ports['discretion']
   } = {},
 ) {
   const events: GameEvent[] = [{ seq: 1, type: 'game.created', ...CONFIG }]
@@ -412,6 +429,7 @@ async function game(
     commit,
     discretion: (id, candidates) => {
       discretionCalls.push(id)
+      if (options.discretion) return options.discretion(id, candidates, memory)
       if (id === 'D1') {
         expect(candidates).toEqual({ type: 'setup', sample: sample(createRng(CONFIG.seed)) })
         return Promise.resolve(ORDER)
@@ -437,12 +455,15 @@ async function game(
           choice = options.choose?.(request) ?? { reasoning: 'Vote', raise_hand: false }
         } else if (request.tool === 'night_choice') {
           requests.push(structuredClone(request))
-          const target = targets[calls++]
-          if (target === undefined) throw new Error('Script exhausted')
-          choice = {
-            reasoning: `Choose ${String(target)}`,
-            targets: [target],
-            memo: `Day ${String(request.day)}`,
+          if (request.role !== 'imp' && options.choose) choice = options.choose(request)
+          else {
+            const target = targets[calls++]
+            if (target === undefined) throw new Error('Script exhausted')
+            choice = {
+              reasoning: `Choose ${String(target)}`,
+              targets: [target],
+              memo: `Day ${String(request.day)}`,
+            }
           }
         } else {
           throw new Error('Unexpected whisper request')
@@ -472,9 +493,313 @@ async function game(
   expect(result).toEqual(memory)
   expect(result).toEqual(fold(events))
   expect(before).toEqual(fold(options.seats ? events.slice(0, 2) : events.slice(0, 1)))
+  for (const event of events) {
+    if (event.type !== 'ability.resolved' && !(event.type === 'told' && event.kind === 'ability'))
+      continue
+    const observers: Observer[] = [
+      `seat:${String(event.seat)}` as Observer,
+      'storyteller',
+      'spectator',
+    ]
+    for (const language of ['zh', 'en'] as const) {
+      for (const observer of observers) {
+        const text = renderEvent(event, language, observer)
+        expect(text).not.toContain('[object Object]')
+        if (event.type === 'told') {
+          expect(text).not.toBe('')
+          if (typeof event.content.result === 'boolean')
+            expect(text).toContain(
+              language === 'zh'
+                ? event.content.result
+                  ? '是'
+                  : '否'
+                : event.content.result
+                  ? 'Yes'
+                  : 'No',
+            )
+          if (typeof event.content.result === 'object')
+            expect(text).toContain(ROLES[event.content.result.role].name[language])
+        }
+      }
+    }
+  }
   for (const prefix of prefixes) expect(prefix.memory).toEqual(fold(events.slice(0, prefix.length)))
   return { events, state: memory, requests, discretionCalls }
 }
+
+describe('information Townsfolk through the rules seam', () => {
+  it('enumerates first-night pairs without the recipient and skips the zero-outsider singleton', async () => {
+    const { events, requests, discretionCalls } = await game([4, 5], {
+      seats: seatsFor(['washerwoman', 'librarian', 'investigator', 'scarletwoman', 'imp']),
+      discretion: (_id, candidates) => {
+        if (!Array.isArray(candidates)) throw new Error('Expected information candidates')
+        const choice = candidates[0]
+        if (choice === undefined) throw new Error('Missing information candidate')
+        return Promise.resolve(choice)
+      },
+    })
+    expect(discretionCalls).toEqual(['D4', 'D6'])
+    const d4 = events.find(
+      (event) => event.type === 'discretion.requested' && event.discretion === 'D4',
+    )
+    expect(d4).toMatchObject({
+      candidates: [
+        { seats: [2, 3], role: 'librarian' },
+        { seats: [2, 3], role: 'investigator' },
+        { seats: [2, 4], role: 'librarian' },
+        { seats: [2, 5], role: 'librarian' },
+        { seats: [3, 4], role: 'investigator' },
+        { seats: [3, 5], role: 'investigator' },
+      ],
+    })
+    expect(events.filter((event) => event.type === 'told' && event.kind === 'ability')).toEqual([
+      expect.objectContaining({
+        seat: 1,
+        content: { role: 'washerwoman', result: { seats: [2, 3], role: 'librarian' } },
+      }),
+      expect.objectContaining({ seat: 2, content: { role: 'librarian', result: 0 } }),
+      expect.objectContaining({
+        seat: 3,
+        content: { role: 'investigator', result: { seats: [1, 4], role: 'scarletwoman' } },
+      }),
+    ])
+    expect(requests.map((request) => request.role)).toEqual(['imp', 'imp'])
+    const told = events.find(
+      (event) => event.type === 'told' && event.kind === 'ability' && event.seat === 1,
+    )
+    if (!told) throw new Error('Missing Washerwoman information')
+    for (const language of ['zh', 'en'] as const) {
+      for (const observer of ['seat:1', 'storyteller', 'spectator'] as const) {
+        const text = renderEvent(told, language, observer)
+        expect(text).toContain(language === 'zh' ? '图书管理员' : 'Librarian')
+        expect(text).toContain(language === 'zh' ? '2 号' : 'Seat 2')
+        expect(text).toContain(language === 'zh' ? '3 号' : 'Seat 3')
+        expect(text).toContain(
+          observer === 'seat:1'
+            ? language === 'zh'
+              ? '你'
+              : 'you'
+            : language === 'zh'
+              ? '1 号'
+              : 'Seat 1',
+        )
+      }
+    }
+  })
+  it.each([
+    [[1, 2], true],
+    [[3, 4], false],
+    [[4, 5], true],
+  ] as const)(
+    'fixes a good red herring including self and answers for %j',
+    async (targets, answer) => {
+      const { events, state } = await game([4, 5], {
+        seats: seatsFor(['fortuneteller', 'chef', 'soldier', 'scarletwoman', 'imp']),
+        discretion: (id, candidates) => {
+          expect(id).toBe('D3')
+          expect(candidates).toEqual([1, 2, 3])
+          return Promise.resolve(1)
+        },
+        choose: (request) =>
+          request.tool === 'night_choice'
+            ? { reasoning: 'Probe', targets: [...targets] }
+            : request.tool === 'nominate'
+              ? { reasoning: 'Pass', nominee: null }
+              : { reasoning: 'Vote', raise_hand: false },
+      })
+      expect(state.redHerring).toBe(1)
+      expect(
+        events.filter(
+          (event) => event.type === 'discretion.requested' && event.discretion === 'D3',
+        ),
+      ).toHaveLength(1)
+      expect(
+        events.filter(
+          (event) => event.type === 'ability.resolved' && event.role === 'fortuneteller',
+        ),
+      ).toEqual([
+        expect.objectContaining({ result: answer }),
+        expect.objectContaining({ result: answer }),
+      ])
+      const setup = events.findIndex((event) => event.type === 'phase.started')
+      expect(
+        events
+          .slice(0, setup)
+          .some((event) => event.type === 'grimoire.set' && event.redHerring === 1),
+      ).toBe(true)
+    },
+  )
+  it.each(['chef', 'drunk', 'spy', 'recluse'] as const)(
+    'Undertaker learns the executed %s, not a night death',
+    async (role) => {
+      const { events } = await game([4, 5], {
+        seats: seatsFor(['undertaker', role, 'soldier', 'scarletwoman', 'imp']),
+        choose: (request) =>
+          request.tool === 'nominate'
+            ? {
+                reasoning: 'Nominate once',
+                nominee:
+                  request.day === 1 && request.seat === 1 && request.nominees.length === 5
+                    ? 2
+                    : null,
+              }
+            : request.tool === 'speak'
+              ? { reasoning: 'Explain', speech: 'Execute this seat.', slayer_target: null }
+              : { reasoning: 'Execute', raise_hand: true },
+      })
+      expect(
+        events.filter(
+          (event) =>
+            event.type === 'told' &&
+            event.kind === 'ability' &&
+            event.content.role === 'undertaker',
+        ),
+      ).toEqual([
+        expect.objectContaining({ content: { role: 'undertaker', result: { target: 2, role } } }),
+      ])
+    },
+  )
+  it('Undertaker gets no information without execution', async () => {
+    const { events } = await game([4, 5], {
+      seats: seatsFor(['undertaker', 'chef', 'soldier', 'scarletwoman', 'imp']),
+    })
+    expect(
+      events.filter((event) => event.type === 'ability.resolved' && event.role === 'undertaker'),
+    ).toEqual([])
+  })
+  it.each([
+    [3, 4],
+    [3, 5],
+  ])(
+    'Undertaker sees the executed Imp and Fortune Teller probes %j after succession',
+    async (...targets) => {
+      const { events } = await game([3, 4], {
+        seats: seatsFor(['undertaker', 'fortuneteller', 'soldier', 'scarletwoman', 'imp']),
+        discretion: () => Promise.resolve(1),
+        choose: (request) =>
+          request.tool === 'nominate'
+            ? {
+                reasoning: 'Nominate once',
+                nominee:
+                  request.day === 1 && request.seat === 1 && request.nominees.length === 5
+                    ? 5
+                    : null,
+              }
+            : request.tool === 'night_choice'
+              ? { reasoning: 'Probe', targets: request.day === 1 ? [3, 4] : targets }
+              : request.tool === 'speak'
+                ? { reasoning: 'Explain', speech: 'Execute the Demon.', slayer_target: null }
+                : { reasoning: 'Execute', raise_hand: true },
+      })
+      expect(
+        events.filter(
+          (event) =>
+            event.type === 'told' &&
+            event.kind === 'ability' &&
+            event.content.role === 'undertaker',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          content: { role: 'undertaker', result: { target: 5, role: 'imp' } },
+        }),
+      ])
+      expect(
+        events.flatMap((event) =>
+          event.type === 'ability.resolved' && event.role === 'fortuneteller' ? [event.result] : [],
+        ),
+      ).toEqual([false, true])
+    },
+  )
+  it.each([
+    [1, 'ravenkeeper'],
+    [2, 'drunk'],
+    [5, 'imp'],
+  ] as const)(
+    'wakes Ravenkeeper immediately on night death to inspect seat %s',
+    async (target, role) => {
+      const { events, requests } = await game([1, 4, 5], {
+        seats: seatsFor(['ravenkeeper', 'drunk', 'soldier', 'scarletwoman', 'imp']),
+        choose: (request) =>
+          request.tool === 'night_choice'
+            ? { reasoning: 'Inspect', targets: [target] }
+            : { reasoning: 'Pass', nominee: null },
+      })
+      const death = events.findIndex((event) => event.type === 'night.death' && event.seat === 1)
+      expect(events.slice(death, death + 5)).toEqual([
+        expect.objectContaining({ type: 'night.death', seat: 1 }),
+        expect.objectContaining({ type: 'contestant.decision', seat: 1 }),
+        expect.objectContaining({ type: 'night.choice', seat: 1, targets: [target] }),
+        expect.objectContaining({ type: 'ability.resolved', seat: 1, result: { target, role } }),
+        expect.objectContaining({
+          type: 'told',
+          seat: 1,
+          kind: 'ability',
+          content: { role: 'ravenkeeper', result: { target, role } },
+        }),
+      ])
+      expect(requests.filter((request) => request.role === 'ravenkeeper')).toHaveLength(1)
+    },
+  )
+  it('does not wake Ravenkeeper on daytime execution', async () => {
+    const { requests } = await game([4, 5], {
+      seats: seatsFor(['ravenkeeper', 'chef', 'soldier', 'scarletwoman', 'imp']),
+      choose: (request) =>
+        request.tool === 'nominate'
+          ? {
+              reasoning: 'Nominate',
+              nominee:
+                request.day === 1 && request.seat === 2 && request.nominees.length === 5 ? 1 : null,
+            }
+          : request.tool === 'speak'
+            ? { reasoning: 'Explain', speech: 'Execute.', slayer_target: null }
+            : { reasoning: 'Vote', raise_hand: true },
+    })
+    expect(requests.some((request) => request.role === 'ravenkeeper')).toBe(false)
+  })
+  it('shows a real Drunk card to Librarian and never the believed Townsfolk', async () => {
+    const seats = seatsFor(['librarian', 'drunk', 'soldier', 'scarletwoman', 'imp'])
+    const drunk = seats[1]
+    if (!drunk) throw new Error('Missing Drunk seat')
+    drunk.believedRole = 'washerwoman'
+    const { events } = await game([4, 5], {
+      seats,
+      discretion: (_id, candidates) => {
+        expect(candidates).toEqual([
+          { seats: [2, 3], role: 'drunk' },
+          { seats: [2, 4], role: 'drunk' },
+          { seats: [2, 5], role: 'drunk' },
+        ])
+        return Promise.resolve({ seats: [2, 3], role: 'drunk' })
+      },
+    })
+    expect(events.find((event) => event.type === 'told' && event.kind === 'ability')).toMatchObject(
+      { content: { role: 'librarian', result: { seats: [2, 3], role: 'drunk' } } },
+    )
+  })
+  it('skips D4 for one legal information candidate', async () => {
+    const { discretionCalls, events } = await game([3], {
+      seats: seatsFor(['washerwoman', 'chef', 'imp']),
+    })
+    expect(discretionCalls).toEqual([])
+    expect(events.find((event) => event.type === 'told' && event.kind === 'ability')).toMatchObject(
+      { content: { role: 'washerwoman', result: { seats: [2, 3], role: 'chef' } } },
+    )
+  })
+  it('rejects invalid Fortune Teller count, duplicate and out-of-range targets', () => {
+    const request: NightRequest = {
+      tool: 'night_choice',
+      seat: 1,
+      role: 'fortuneteller',
+      day: 1,
+      targets: [1, 2, 3, 4, 5],
+    }
+    for (const targets of [[1], [1, 1], [0, 2], [1, 2, 3]])
+      expect(validateNightChoice({ reasoning: 'Probe', targets }, request)).toContainEqual({
+        code: 'invalid_targets',
+      })
+    expect(validateNightChoice({ reasoning: 'Probe', targets: [1, 5] }, request)).toEqual([])
+  })
+})
 
 describe('nominations through the rules seam', () => {
   it('asks a simultaneous batch, runs reason and defense, votes clockwise, and cancels tied leaders', async () => {

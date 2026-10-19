@@ -1,6 +1,13 @@
 import { ROLES } from './game/roles'
 import { visibleTo } from './game/rules'
-import type { GameEvent, Language, Observer, RoleId, SeatState } from './types/game'
+import type {
+  GameEvent,
+  InformationResult,
+  Language,
+  Observer,
+  RoleId,
+  SeatState,
+} from './types/game'
 
 const REASONS: Record<string, { zh: string; en: string }> = {
   all_demons_dead: { zh: '所有恶魔均已死亡', en: 'all Demons are dead' },
@@ -68,6 +75,22 @@ function grimoireText(seats: readonly SeatState[], language: Language): string {
         : `Seat ${String(seat.seat)}: ${ROLES[seat.role].name.en}, ${seat.alignment}, ${seat.alive ? 'alive' : 'dead'}${statuses.length ? `, ${statuses.join(', ')}` : ''}`
     })
     .join('; ')
+}
+
+function informationText(
+  result: InformationResult,
+  language: Language,
+  observer: Observer,
+): string {
+  const zh = language === 'zh'
+  if (typeof result === 'boolean') return zh ? (result ? '是' : '否') : result ? 'Yes' : 'No'
+  if (typeof result === 'number') return String(result)
+  const role = ROLES[result.role].name[language]
+  if ('seats' in result) {
+    const seats = seatList(result.seats, language, observer)
+    return zh ? `${seats}之中有一名是${role}` : `One of ${seats} is the ${role}`
+  }
+  return `${seatName(result.target, language, observer)}: ${role}`
 }
 
 export function renderEvent(event: GameEvent, language: Language, observer: Observer): string {
@@ -154,7 +177,8 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
         : `${actor}: actual character changed from ${ROLES[event.from].name.en} to ${ROLES[event.to].name.en}.`
     case 'ability.resolved': {
       let result: string
-      if (typeof event.result === 'number') result = String(event.result)
+      if (typeof event.result !== 'object' || !('outcome' in event.result))
+        result = informationText(event.result, language, observer)
       else {
         const outcomes = {
           killed: { zh: '目标死亡', en: 'target died' },
@@ -187,17 +211,25 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
           return zh
             ? `${prefix}${actor}变成了${role.name.zh}。`
             : `${prefix}${self ? 'You have' : `${actor} has`} become ${role.name.en}.`
-        if (event.content.role === 'chef')
+        if (event.content.role === 'chef' && typeof event.content.result === 'number')
           return zh
             ? `${prefix}座位环上相邻邪恶玩家共有 ${String(event.content.result)} 对。`
             : `${prefix}There are ${String(event.content.result)} adjacent evil pairs in the seating circle.`
-        if (event.content.role === 'empath')
+        if (event.content.role === 'empath' && typeof event.content.result === 'number')
           return zh
             ? `${prefix}${actor}两侧最近的存活玩家中有 ${String(event.content.result)} 名邪恶玩家。`
             : `${prefix}${String(event.content.result)} of ${self ? 'your' : `${actor}'s`} two nearest living neighbours are evil.`
+        const result = event.content.result
+        if (
+          result === 0 &&
+          (event.content.role === 'librarian' || event.content.role === 'investigator')
+        )
+          return zh
+            ? `${prefix}没有${event.content.role === 'librarian' ? '外来者' : '爪牙'}（0）。`
+            : `${prefix}There are no ${event.content.role === 'librarian' ? 'Outsiders' : 'Minions'} (0).`
         return zh
-          ? `${prefix}${role.name.zh}能力结果：${String(event.content.result ?? '无')}。`
-          : `${prefix}${role.name.en} ability result: ${String(event.content.result ?? 'none')}.`
+          ? `${prefix}${role.name.zh}能力结果：${result === undefined ? '无' : informationText(result, language, observer)}。`
+          : `${prefix}${role.name.en} ability result: ${result === undefined ? 'none' : informationText(result, language, observer)}.`
       }
       if (event.kind === 'grimoire')
         return `${prefix}${grimoireText(event.content.seats, language)}`
