@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   vite: { plugins: [tailwindcss()] },
   devServer: { host: '127.0.0.1' },
   runtimeConfig: { dbPath: '.data/app.db' },
-  routeRules: { '/': { redirect: '/models' } },
+  routeRules: { '/': { redirect: '/games' } },
   shadcn: { prefix: '', componentDir: '~/components/ui' },
   i18n: {
     strategy: 'no_prefix',

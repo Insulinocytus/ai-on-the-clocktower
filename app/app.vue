@@ -19,6 +19,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
     <header class="flex items-center gap-6 border-b px-6 py-3">
       <span class="font-semibold">{{ t('app.title') }}</span>
       <nav class="flex gap-4 text-sm">
+        <NuxtLink to="/games" active-class="font-medium underline">{{ t('nav.games') }}</NuxtLink>
         <NuxtLink to="/models" active-class="font-medium underline">{{ t('nav.models') }}</NuxtLink>
       </nav>
       <Button variant="outline" size="sm" class="ml-auto" @click="toggleLocale">

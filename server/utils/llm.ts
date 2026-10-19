@@ -29,7 +29,11 @@ export class LlmCallError extends Error {
 }
 
 /** One OpenAI-compatible Chat Completions call with tools; resolves to the whole raw response. */
-export async function chatCompletion(target: LlmTarget, request: ChatRequest): Promise<unknown> {
+export async function chatCompletion(
+  target: LlmTarget,
+  request: ChatRequest,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const apiKey = process.env[target.apiKeyEnv]
   if (!apiKey) throw new LlmCallError(`Environment variable ${target.apiKeyEnv} is not set`)
 
@@ -54,12 +58,13 @@ export async function chatCompletion(target: LlmTarget, request: ChatRequest): P
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(body),
-      signal: timeout,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
     status = res.status
     retryAfter = res.headers.get('retry-after')
     text = await res.text()
   } catch (error) {
+    signal?.throwIfAborted()
     if (timeout.aborted) throw new LlmCallError(`Timed out after ${String(target.timeoutSec)}s`)
     throw new LlmCallError(
       `Request failed: ${error instanceof Error ? error.message : String(error)}`,

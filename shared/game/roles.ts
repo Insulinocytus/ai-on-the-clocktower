@@ -1,0 +1,298 @@
+import type { Alignment, RoleId, RoleType } from '../types/game'
+
+interface RoleMetadata {
+  id: RoleId
+  type: RoleType
+  alignment: Alignment
+  name: { en: string; zh: string }
+  ability: { en: string; zh: string }
+  firstNight: number | null
+  otherNight: number | null
+  reminders: string[]
+}
+
+export const ROLES: Record<RoleId, RoleMetadata> = {
+  washerwoman: {
+    id: 'washerwoman',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Washerwoman', zh: '洗衣妇' },
+    ability: {
+      en: 'You start knowing that 1 of 2 players is a particular Townsfolk.',
+      zh: '在你的首个夜晚，你会得知两名玩家和一个镇民角色：这两名玩家之一是该角色。',
+    },
+    firstNight: 2,
+    otherNight: null,
+    reminders: ['Townsfolk', 'Wrong'],
+  },
+  librarian: {
+    id: 'librarian',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Librarian', zh: '图书管理员' },
+    ability: {
+      en: 'You start knowing that 1 of 2 players is a particular Outsider. (Or that zero are in play.)',
+      zh: '在你的首个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色（或者你会得知没有外来者在场）。',
+    },
+    firstNight: 3,
+    otherNight: null,
+    reminders: ['Outsider', 'Wrong'],
+  },
+  investigator: {
+    id: 'investigator',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Investigator', zh: '调查员' },
+    ability: {
+      en: 'You start knowing that 1 of 2 players is a particular Minion.',
+      zh: '在你的首个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色（或者你会得知没有爪牙在场）。',
+    },
+    firstNight: 4,
+    otherNight: null,
+    reminders: ['Minion', 'Wrong'],
+  },
+  chef: {
+    id: 'chef',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Chef', zh: '厨师' },
+    ability: {
+      en: 'You start knowing how many pairs of evil players there are.',
+      zh: '在你的首个夜晚，你会得知场上邻座的邪恶玩家有多少对。',
+    },
+    firstNight: 5,
+    otherNight: null,
+    reminders: [],
+  },
+  empath: {
+    id: 'empath',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Empath', zh: '共情者' },
+    ability: {
+      en: 'Each night, you learn how many of your 2 alive neighbors are evil.',
+      zh: '每个夜晚，你会得知与你邻近的两名存活的玩家中邪恶玩家的数量。',
+    },
+    firstNight: 6,
+    otherNight: 6,
+    reminders: [],
+  },
+  fortuneteller: {
+    id: 'fortuneteller',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Fortune Teller', zh: '占卜师' },
+    ability: {
+      en: 'Each night, choose 2 players: you learn if either is a Demon. There is a good player that registers as a Demon to you.',
+      zh: '每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。会有一名善良玩家始终被你的能力当作恶魔。',
+    },
+    firstNight: 7,
+    otherNight: 7,
+    reminders: ['Red Herring'],
+  },
+  undertaker: {
+    id: 'undertaker',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Undertaker', zh: '送葬者' },
+    ability: {
+      en: 'Each night*, you learn which character died by execution today.',
+      zh: '每个夜晚*，你会得知今天白天死于处决的玩家的角色。',
+    },
+    firstNight: null,
+    otherNight: 8,
+    reminders: ['Died Today'],
+  },
+  monk: {
+    id: 'monk',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Monk', zh: '僧侣' },
+    ability: {
+      en: 'Each night*, choose a player (not yourself): they are safe from the Demon tonight.',
+      zh: '每个夜晚*，你要选择除你以外的一名玩家：当晚恶魔的负面能力对他无效。',
+    },
+    firstNight: null,
+    otherNight: 2,
+    reminders: ['Safe'],
+  },
+  ravenkeeper: {
+    id: 'ravenkeeper',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Ravenkeeper', zh: '守鸦人' },
+    ability: {
+      en: 'If you die at night, you are woken to choose a player: you learn their character.',
+      zh: '如果你在夜晚死亡，你会被唤醒，然后你要选择一名玩家：你会得知他的角色。',
+    },
+    firstNight: null,
+    otherNight: 5,
+    reminders: [],
+  },
+  virgin: {
+    id: 'virgin',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Virgin', zh: '贞洁者' },
+    ability: {
+      en: 'The 1st time you are nominated, if the nominator is a Townsfolk, they are executed immediately.',
+      zh: '当你首次被提名时，如果提名你的玩家是镇民，他立刻被处决。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: ['No Ability'],
+  },
+  slayer: {
+    id: 'slayer',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Slayer', zh: '猎手' },
+    ability: {
+      en: 'Once per game, during the day, publicly choose a player: if they are the Demon, they die.',
+      zh: '每局游戏限一次，你可以在白天时公开选择一名玩家：如果他是恶魔，他死亡。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: ['No Ability'],
+  },
+  soldier: {
+    id: 'soldier',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Soldier', zh: '士兵' },
+    ability: { en: 'You are safe from the Demon.', zh: '恶魔的负面能力对你无效。' },
+    firstNight: null,
+    otherNight: null,
+    reminders: [],
+  },
+  mayor: {
+    id: 'mayor',
+    type: 'townsfolk',
+    alignment: 'good',
+    name: { en: 'Mayor', zh: '镇长' },
+    ability: {
+      en: 'If only 3 players live & no execution occurs, your team wins. If you die at night, another player might die instead.',
+      zh: '如果只有三名玩家存活且白天没有人被处决，你的阵营获胜。如果你在夜晚即将死亡，可能会有一名其他玩家代替你死亡。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: [],
+  },
+  butler: {
+    id: 'butler',
+    type: 'outsider',
+    alignment: 'good',
+    name: { en: 'Butler', zh: '管家' },
+    ability: {
+      en: 'Each night, choose a player (not yourself): tomorrow, you may only vote if they are voting too.',
+      zh: '每个夜晚，你要选择除你以外的一名玩家：明天白天，只有他投票时你才能投票。',
+    },
+    firstNight: 8,
+    otherNight: 9,
+    reminders: ['Master'],
+  },
+  drunk: {
+    id: 'drunk',
+    type: 'outsider',
+    alignment: 'good',
+    name: { en: 'Drunk', zh: '酒鬼' },
+    ability: {
+      en: 'You do not know you are the Drunk. You think you are a Townsfolk character, but you are not.',
+      zh: '你不知道你是酒鬼。你以为你是一个镇民角色，但其实你不是。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: ['Is The Drunk'],
+  },
+  recluse: {
+    id: 'recluse',
+    type: 'outsider',
+    alignment: 'good',
+    name: { en: 'Recluse', zh: '陌客' },
+    ability: {
+      en: 'You might register as evil & as a Minion or Demon, even if dead.',
+      zh: '你可能会被当作邪恶阵营、爪牙角色或恶魔角色，即使你已死亡。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: [],
+  },
+  saint: {
+    id: 'saint',
+    type: 'outsider',
+    alignment: 'good',
+    name: { en: 'Saint', zh: '圣徒' },
+    ability: {
+      en: 'If you die by execution, your team loses.',
+      zh: '如果你死于处决，你的阵营落败。',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: [],
+  },
+  poisoner: {
+    id: 'poisoner',
+    type: 'minion',
+    alignment: 'evil',
+    name: { en: 'Poisoner', zh: '投毒者' },
+    ability: {
+      en: 'Each night, choose a player: they are poisoned tonight and tomorrow day.',
+      zh: '每个夜晚，你要选择一名玩家：他在当晚和明天白天中毒。',
+    },
+    firstNight: 1,
+    otherNight: 1,
+    reminders: ['Poisoned'],
+  },
+  spy: {
+    id: 'spy',
+    type: 'minion',
+    alignment: 'evil',
+    name: { en: 'Spy', zh: '间谍' },
+    ability: {
+      en: 'Each night, you see the Grimoire. You might register as good & as a Townsfolk or Outsider, even if dead.',
+      zh: '每个夜晚，你能查看魔典。你可能会被当作善良阵营、镇民角色或外来者角色，即使你已死亡。',
+    },
+    firstNight: 9,
+    otherNight: 10,
+    reminders: [],
+  },
+  scarletwoman: {
+    id: 'scarletwoman',
+    type: 'minion',
+    alignment: 'evil',
+    name: { en: 'Scarlet Woman', zh: '红唇女郎' },
+    ability: {
+      en: "If there are 5 or more players alive & the Demon dies, you become the Demon. (Travellers don't count.)",
+      zh: '如果大于等于五名玩家存活时（旅行者不计算在内）恶魔死亡，你变成那个恶魔。',
+    },
+    firstNight: null,
+    otherNight: 3,
+    reminders: ['Is The Demon'],
+  },
+  baron: {
+    id: 'baron',
+    type: 'minion',
+    alignment: 'evil',
+    name: { en: 'Baron', zh: '男爵' },
+    ability: {
+      en: 'There are extra Outsiders in play. [+2 Outsiders]',
+      zh: '会有额外的外来者在场。[+2 外来者]',
+    },
+    firstNight: null,
+    otherNight: null,
+    reminders: [],
+  },
+  imp: {
+    id: 'imp',
+    type: 'demon',
+    alignment: 'evil',
+    name: { en: 'Imp', zh: '小恶魔' },
+    ability: {
+      en: 'Each night*, choose a player: they die. If you kill yourself this way, a Minion becomes the Imp.',
+      zh: '每个夜晚*，你要选择一名玩家：他死亡。如果你以这种方式自杀，一名爪牙会变成小恶魔。',
+    },
+    firstNight: null,
+    otherNight: 4,
+    reminders: ['Dead'],
+  },
+}

@@ -1,6 +1,6 @@
 {
   "app": { "title": "AI on the Clocktower", "language": "中文" },
-  "nav": { "models": "Models" },
+  "nav": { "models": "Models", "games": "Games" },
   "common": {
     "add": "Add",
     "edit": "Edit",
@@ -51,5 +51,38 @@
     "toolCall": "Tool call",
     "raw": "Raw response",
     "retry": "Call again"
+  },
+  "games": {
+    "title": "Games",
+    "new": "New game",
+    "game": "Game",
+    "models": "Model presets",
+    "status": "Status",
+    "reason": "Reason",
+    "empty": "No games yet. Create a five-seat game to start watching.",
+    "running": "Running",
+    "waiting": "Waiting for manual discretion",
+    "ended": "Ended",
+    "aborted": "Aborted",
+    "incompatible": "This log version cannot be replayed.",
+    "live": "Live",
+    "replay": "Replay",
+    "seat": "Seat {seat}",
+    "selectPreset": "Select a model preset",
+    "language": "Game language",
+    "start": "Start game",
+    "starting": "Starting…",
+    "tracer": "Five AI seats play nights only. The role pool is Soldier, Chef, Empath, Scarlet Woman and Imp; all discretion is random. Days contain only the dawn announcement.",
+    "reasoning": "Inner reasoning and raw response",
+    "noReasoning": "No inner reasoning returned.",
+    "reconnecting": "Connection interrupted. Reconnecting and restoring missing events…",
+    "reasons": {
+      "model_call_failed": "Model call failed",
+      "engine_error": "Engine error",
+      "process_restart": "Process restarted",
+      "human": "Stopped by spectator",
+      "all_demons_dead": "All Demons are dead",
+      "two_alive": "Only two players remain"
+    }
   }
 }

@@ -1,6 +1,6 @@
 {
   "app": { "title": "AI 血染钟楼", "language": "EN" },
-  "nav": { "models": "模型" },
+  "nav": { "models": "模型", "games": "对局" },
   "common": {
     "add": "添加",
     "edit": "编辑",
@@ -51,5 +51,38 @@
     "toolCall": "Tool call",
     "raw": "原始响应",
     "retry": "再试一次"
+  },
+  "games": {
+    "title": "对局",
+    "new": "新建对局",
+    "game": "对局",
+    "models": "模型预设",
+    "status": "状态",
+    "reason": "原因",
+    "empty": "还没有对局。新建一局 5 人对局开始观战。",
+    "running": "运行中",
+    "waiting": "等待手动裁量",
+    "ended": "已结束",
+    "aborted": "已终止",
+    "incompatible": "日志格式版本不兼容，无法回放。",
+    "live": "直播",
+    "replay": "回放",
+    "seat": "{seat} 号座位",
+    "selectPreset": "选择模型预设",
+    "language": "对局语言",
+    "start": "开始对局",
+    "starting": "正在开局…",
+    "tracer": "5 个 AI 座位只进行夜晚。角色池为士兵、厨师、共情者、红唇女郎和小恶魔；裁量全部随机，白天只有黎明公告。",
+    "reasoning": "内心推理与原始响应",
+    "noReasoning": "未返回内心推理。",
+    "reconnecting": "连接已断开，正在重连并补齐事件…",
+    "reasons": {
+      "model_call_failed": "模型调用失败",
+      "engine_error": "引擎错误",
+      "process_restart": "进程重启",
+      "human": "观战者终止",
+      "all_demons_dead": "所有恶魔死亡",
+      "two_alive": "只剩两名玩家存活"
+    }
   }
 }

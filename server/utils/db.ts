@@ -20,6 +20,16 @@ CREATE TABLE IF NOT EXISTS presets (
   forceToolChoice INTEGER NOT NULL,
   extraBody TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS games (
+  id TEXT PRIMARY KEY,
+  createdAt TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS game_events (
+  gameId TEXT NOT NULL REFERENCES games(id),
+  seq INTEGER NOT NULL,
+  body TEXT NOT NULL,
+  PRIMARY KEY (gameId, seq)
+);
 `
 
 let db: Database.Database | undefined
