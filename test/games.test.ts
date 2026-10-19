@@ -487,21 +487,49 @@ describe('games HTTP seam', () => {
       const original = '记'.repeat(2000)
       const memos = [undefined, original, undefined, 'Keep only this claim.', '']
       let turn = 0
-      const fake = await nightProvider((request) => {
-        const messages = request.body.messages as { content: string }[]
-        const user = messages[1]?.content ?? ''
+      const scriptedRequests: string[] = []
+      const fake = await startFakeProvider((request) => {
+        const input = gameRequest.parse(request.body)
+        const name = input.tool_choice.function.name
+        const user = input.messages[1].content
         const ownSeat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
         if (!ownSeat) throw new Error('Missing contestant seat')
-        const accepted = turn < memos.length
-        const memo = accepted ? memos[turn] : 'Rejected'
-        turn++
+        let action: Record<string, unknown>
+        switch (name) {
+          case 'night_choice':
+            action = { targets: nightTargets(user) }
+            break
+          case 'speak':
+            action = { speech: 'Continue the discussion.', slayer_target: null }
+            if (ownSeat === 1) {
+              scriptedRequests.push(user)
+              const accepted = turn < memos.length
+              action.memo = accepted ? memos[turn] : 'Rejected'
+              if (!accepted) action.speech = 42
+              turn++
+            }
+            break
+          case 'nominate':
+            action = { nominee: null }
+            break
+          case 'vote':
+            action = { raise_hand: false }
+            break
+          case 'propose_whisper':
+            action = { members: null }
+            break
+          case 'rank_whispers':
+            action = { ranking: [] }
+            break
+          default:
+            throw new Error(`Unexpected fixture tool: ${name}`)
+        }
         return {
           kind: 'toolCall',
-          name: 'night_choice',
+          name,
           arguments: JSON.stringify({
-            reasoning: 'Keep targeting the same other seat.',
-            targets: accepted ? [ownSeat === 1 ? 2 : 1] : [],
-            memo,
+            reasoning: 'Exercise memo updates before any deaths.',
+            ...action,
           }),
         }
       })
@@ -540,9 +568,7 @@ describe('games HTTP seam', () => {
         }
         const memoHeading = language === 'zh' ? '# 你的备忘录\n' : '# Your memo\n'
         const stateHeading = language === 'zh' ? '# 当前公共局面' : '# Current public state'
-        const contents = fake.requests.map((request) => {
-          const messages = request.body.messages as { role: string; content: string }[]
-          const user = messages[1]?.content ?? ''
+        const contents = scriptedRequests.map((user) => {
           const [prefix, suffix] = user.split(memoHeading)
           expect(prefix).not.toContain(original)
           expect(prefix).not.toContain('Keep only this claim.')
