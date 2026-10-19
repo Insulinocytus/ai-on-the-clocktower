@@ -763,3 +763,216 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     await fake.close()
   }
 })
+
+it('updates pass and unselected public-speech memos but rejects invalid-attempt memos', async () => {
+  let nightTurn = 0
+  const attempts = new Map<number, number>()
+  const fake = await startFakeProvider((request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const tool = input.tool_choice.function.name
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    if (tool === 'night_choice')
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the game',
+          targets: [(nightTurn++ % 5) + 1],
+        }),
+      }
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
+    const attempt = (attempts.get(seat) ?? 0) + 1
+    attempts.set(seat, attempt)
+    const firstOffer = attempt === 1 && seat <= 2
+    return {
+      kind: 'toolCall',
+      name: tool,
+      arguments: JSON.stringify({
+        reasoning: 'Keep my own notes even if I do not speak',
+        speech: firstOffer ? `Unselected-or-selected offer from Seat ${String(seat)}` : null,
+        slayer_target: seat === 4 && attempt === 1 ? 1 : null,
+        memo:
+          seat === 4 && attempt === 1
+            ? 'INVALID ATTEMPT MEMO'
+            : firstOffer
+              ? `Offer memo ${String(seat)}`
+              : seat === 3 && attempt === 1
+                ? 'Pass memo'
+                : seat === 4 && attempt === 2
+                  ? 'Recovered pass memo'
+                  : undefined,
+      }),
+    }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    const speeches = events.filter((event) => event.type === 'public.speech')
+    expect(speeches).toHaveLength(1)
+    const selected = speeches[0]
+    if (!selected) throw new Error('Missing selected speech')
+    const unselected = selected.seat === 1 ? 2 : 1
+    expect(selected.seat).toBeOneOf([1, 2])
+    expect(events.filter((event) => event.type === 'seat.memo.updated')).toEqual([
+      expect.objectContaining({ seat: 1, memo: 'Offer memo 1' }),
+      expect.objectContaining({ seat: 2, memo: 'Offer memo 2' }),
+      expect.objectContaining({ seat: 3, memo: 'Pass memo' }),
+      expect.objectContaining({ seat: 4, memo: 'Recovered pass memo' }),
+    ])
+    expect(
+      events
+        .filter((event) => event.type === 'seat.memo.updated')
+        .every((event) => event.seq < selected.seq),
+    ).toBe(true)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'contestant.decision',
+        seat: unselected,
+        validation: { ok: true, errors: [] },
+      }),
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'contestant.decision',
+        seat: 4,
+        attempt: 1,
+        validation: { ok: false, errors: [{ code: 'invalid_slayer_target' }] },
+      }),
+    )
+  } finally {
+    await fake.close()
+  }
+})
+
+it('retries only the failing public seat and commits speech and memos after the whole batch succeeds', async () => {
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let nightTurn = 0
+  const attempts = new Map<number, number>()
+  const fake = await startFakeProvider(async (request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const tool = input.tool_choice.function.name
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    if (tool === 'night_choice')
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the game',
+          targets: [(nightTurn++ % 5) + 1],
+        }),
+      }
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
+    const firstBatch =
+      user.includes('# Current public state\nDay 1;') && !user.includes('Recovered public claim.')
+    if (!firstBatch)
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+      }
+    const attempt = (attempts.get(seat) ?? 0) + 1
+    attempts.set(seat, attempt)
+    if (seat === 5 && attempt === 2) await pending
+    return {
+      kind: 'toolCall',
+      name: tool,
+      arguments: JSON.stringify({
+        reasoning: 'Answer my own request independently',
+        speech: seat === 5 && attempt === 2 ? 'Recovered public claim.' : null,
+        slayer_target: seat === 5 && attempt === 1 ? 1 : null,
+        memo:
+          seat === 5 && attempt === 1 ? 'INVALID RETRY MEMO' : `Valid batch memo ${String(seat)}`,
+      }),
+    }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    await expect.poll(() => attempts.get(5)).toBe(2)
+    await expect
+      .poll(
+        async () => (await log()).filter((event) => event.type === 'contestant.decision').length,
+      )
+      .toBe(5)
+    const blocked = await log()
+    expect([1, 2, 3, 4, 5].map((seat) => attempts.get(seat))).toEqual([1, 1, 1, 1, 2])
+    expect(
+      blocked.filter(
+        (event) => event.type === 'seat.memo.updated' || event.type === 'public.speech',
+      ),
+    ).toEqual([])
+    expect(blocked.at(-1)?.type).not.toBe('game.aborted')
+    release?.()
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await log()
+    expect([1, 2, 3, 4, 5].map((seat) => attempts.get(seat))).toEqual([1, 1, 1, 1, 2])
+    const speech = events.find((event) => event.type === 'public.speech')
+    expect(speech).toMatchObject({ seat: 5, speech: 'Recovered public claim.', kind: 'free' })
+    if (!speech) throw new Error('Missing recovered speech')
+    const successful = events.find((event) => event.seq === speech.decision)
+    expect(successful).toMatchObject({
+      type: 'contestant.decision',
+      seat: 5,
+      attempt: 2,
+      validation: { ok: true, errors: [] },
+      raw: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    arguments: JSON.stringify({
+                      reasoning: 'Answer my own request independently',
+                      speech: 'Recovered public claim.',
+                      slayer_target: null,
+                      memo: 'Valid batch memo 5',
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    const memos = events.filter((event) => event.type === 'seat.memo.updated')
+    expect(memos.map((event) => [event.seat, event.memo])).toEqual([
+      [1, 'Valid batch memo 1'],
+      [2, 'Valid batch memo 2'],
+      [3, 'Valid batch memo 3'],
+      [4, 'Valid batch memo 4'],
+      [5, 'Valid batch memo 5'],
+    ])
+    expect(
+      memos.every((event) => event.seq > (successful?.seq ?? Infinity) && event.seq < speech.seq),
+    ).toBe(true)
+  } finally {
+    release?.()
+    await fake.close()
+  }
+})
