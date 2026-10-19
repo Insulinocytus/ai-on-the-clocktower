@@ -33,12 +33,12 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     en: 'raise_hand must be boolean; a spent dead vote token permits only false.',
   },
   invalid_speech: {
-    zh: '提名理由与辩护的 speech 必须为非空发言，不能 pass。',
-    en: 'Nomination reasons and defense require nonempty speech, not pass.',
+    zh: 'speech 必须是字符串或 null；提名理由和辩护必须非空。',
+    en: 'speech must be a string or null; nomination reasons and defence must be nonempty.',
   },
   invalid_slayer_target: {
-    zh: '只有非空公聊发言可以附带开枪目标；本次 slayer_target 必须为 null。',
-    en: 'Only nonempty public discussion speech can attach a Slayer target; slayer_target must be null now.',
+    zh: '猎手开枪目标只能附在非空公聊发言上，且必须是合法座位号。',
+    en: 'A Slayer target must be a legal seat number attached to a nonempty public speech.',
   },
   invalid_response: {
     zh: '响应必须包含 choices[0].message 及工具调用。',

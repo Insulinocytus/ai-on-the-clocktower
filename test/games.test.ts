@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
+import { $fetch, fetch, setup, startServer, stopServer } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
@@ -27,6 +27,12 @@ async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]
     const name = toolChoice.parse(request.body.tool_choice).function.name
     if (name === 'nominate')
       return { kind: 'toolCall', name, arguments: '{"reasoning":"Pass","nominee":null}' }
+    if (name === 'speak')
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+      }
     const messages = request.body.messages as { content: string }[]
     const user = messages[1]?.content ?? ''
     if (name === 'night_choice' && /as Fortune Teller|作为占卜师/.test(user))
@@ -48,13 +54,25 @@ async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]
     },
   }
 }
+const gameRequest = z.object({
+  messages: z.tuple([
+    z.object({ role: z.literal('system'), content: z.string() }),
+    z.object({ role: z.literal('user'), content: z.string() }),
+  ]),
+  tool_choice: toolChoice,
+})
 
-async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1', timeoutSec = 300) {
+async function preset(
+  apiKeyEnv: string,
+  baseUrl = 'http://127.0.0.1:1/v1',
+  timeoutSec = 300,
+  maxConcurrency = 5,
+) {
   const provider = await $fetch<{ id: number }>('/api/providers', {
     method: 'POST',
-    body: { name: 'Game provider', baseUrl, apiKeyEnv, timeoutSec },
+    body: { name: 'Game provider', baseUrl, apiKeyEnv, timeoutSec, maxConcurrency },
   })
-  return $fetch<{ id: number }>('/api/presets', {
+  return $fetch<{ id: number; providerId: number }>('/api/presets', {
     method: 'POST',
     body: {
       name: 'Game preset',
@@ -104,7 +122,14 @@ describe('games HTTP seam', () => {
               }
             : name === 'vote'
               ? { raise_hand: true }
-              : { speech: 'My nomination argument.', slayer_target: null }
+              : {
+                  speech: user.includes('phase: public discussion.')
+                    ? user.includes('You are Seat 1.') && !user.includes('A public claim.')
+                      ? 'A public claim.'
+                      : null
+                    : 'My nomination argument.',
+                  slayer_target: null,
+                }
       return {
         kind: 'toolCall',
         name,
@@ -133,6 +158,7 @@ describe('games HTTP seam', () => {
         language: 'en',
         logVersion: 2,
         promptVersion: 2,
+        speechLimit: 10,
         storyteller: null,
       })
       expect(Object.values(opened.config.discretions)).toEqual(
@@ -208,6 +234,9 @@ describe('games HTTP seam', () => {
         ),
       ).toBe(true)
       expect(publicEvents.at(-1)?.type).toBe('game.ended')
+      expect(
+        publicEvents.some((event) => event.type === 'public.speech' && event.kind === 'free'),
+      ).toBe(true)
       expect(publicEvents.some((event) => event.type === 'nomination')).toBe(true)
       expect(publicEvents.some((event) => event.type === 'vote')).toBe(true)
       expect(publicEvents.some((event) => event.type === 'execution')).toBe(true)
@@ -645,4 +674,618 @@ describe('games HTTP seam', () => {
       }
     },
   )
+  it('aborts an in-flight game once without recording the canceled decision or further requests', async () => {
+    const fake = await startFakeProvider()
+    try {
+      fake.script({ kind: 'hang' })
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      const opened = await $fetch<GameSummary>('/api/games', {
+        method: 'POST',
+        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+      })
+      await expect.poll(() => fake.requests.length).toBe(1)
+      expect(await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })).toMatchObject({
+        status: 'aborted',
+        reason: 'human',
+      })
+      await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })
+      await expect.poll(() => fake.requests[0]?.closed).toBe(true)
+      const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+      expect(events.filter((event) => event.type === 'game.aborted')).toHaveLength(1)
+      expect(events.some((event) => event.type === 'contestant.decision')).toBe(false)
+      expect(events.at(-1)).toMatchObject({ type: 'game.aborted', reason: 'human' })
+      expect(fake.requests).toHaveLength(1)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  it('shares provider capacity across games in FIFO order and removes aborted queued calls', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' }, { kind: 'hang' })
+      const provider = await $fetch<{ id: number }>('/api/providers', {
+        method: 'POST',
+        body: {
+          name: 'Shared queue',
+          baseUrl: fake.baseUrl,
+          apiKeyEnv: 'CLOCKTOWER_GAME_KEY',
+          maxConcurrency: 1,
+        },
+      })
+      for (const name of ['first', 'canceled', 'third']) {
+        const model = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: provider.id },
+        })
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          }),
+        )
+      }
+      await expect.poll(() => fake.requests.length).toBeGreaterThan(0)
+      expect(fake.requests).toHaveLength(1)
+      const [first, canceled, third] = games
+      if (!first || !canceled || !third) throw new Error('Missing game')
+      await $fetch(`/api/games/${canceled.id}/abort`, { method: 'POST' })
+      expect(fake.requests).toHaveLength(1)
+      await $fetch(`/api/games/${first.id}/abort`, { method: 'POST' })
+      await expect.poll(() => fake.requests.length).toBe(2)
+      expect(fake.requests.map((request) => request.body.model)).toEqual(['first', 'third'])
+      const events = await $fetch<GameEvent[]>(`/api/games/${canceled.id}/events`)
+      expect(events.some((event) => event.type === 'contestant.decision')).toBe(false)
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('reads updated provider capacity when granting queued calls and keeps FIFO order', async () => {
+    const fake = await startFakeProvider()
+    const gate = Promise.withResolvers<undefined>()
+    const calls: Promise<unknown>[] = []
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      fake.script(
+        {
+          kind: 'toolCall',
+          name: 'speak',
+          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          waitFor: gate.promise,
+        },
+        { kind: 'hang' },
+        { kind: 'hang' },
+      )
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      await expect.poll(() => fake.requests.length).toBe(1)
+      for (const name of ['second', 'third']) {
+        const queued = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: model.providerId },
+        })
+        calls.push(
+          $fetch(`/api/presets/${String(queued.id)}/trial`, {
+            method: 'POST',
+            body: { lang: 'en' },
+          }),
+        )
+      }
+      await $fetch(`/api/providers/${String(model.providerId)}`, {
+        method: 'PUT',
+        body: {
+          name: 'Updated',
+          baseUrl: fake.baseUrl,
+          apiKeyEnv: 'CLOCKTOWER_GAME_KEY',
+          maxConcurrency: 2,
+        },
+      })
+      gate.resolve(undefined)
+      await expect.poll(() => fake.requests.length).toBe(3)
+      expect(fake.requests.map((request) => request.body.model)).toEqual([
+        'fake-model',
+        'second',
+        'third',
+      ])
+    } finally {
+      gate.resolve(undefined)
+      await fake.close()
+      await Promise.allSettled(calls)
+    }
+  })
+
+  it('starts each timeout only after a queued request gets its slot', async () => {
+    const fake = await startFakeProvider()
+    const gate = Promise.withResolvers<undefined>()
+    const calls: Promise<{ valid: boolean; error?: string }>[] = []
+    try {
+      // The app runs in a subprocess: exercise its real timeout, not the Vitest clock.
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 1, 1)
+      fake.script(
+        { kind: 'hang' },
+        {
+          kind: 'toolCall',
+          name: 'speak',
+          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          waitFor: gate.promise,
+        },
+      )
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      await expect.poll(() => fake.requests.length).toBe(1)
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      expect(await calls[0]).toMatchObject({ valid: false, error: 'Timed out after 1s' })
+      await expect.poll(() => fake.requests.length).toBe(2)
+      gate.resolve(undefined)
+      expect(await calls[1]).toMatchObject({ valid: true })
+    } finally {
+      gate.resolve(undefined)
+      await fake.close()
+      await Promise.allSettled(calls)
+    }
+  })
+
+  it('releases provider slots during backoff and cancels the delayed retry on termination', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      for (let i = 0; i < 20; i++) fake.script({ kind: 'rateLimit', retryAfterSec: 60 })
+      for (const name of ['backoff', 'other-game']) {
+        const contestant = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: model.providerId },
+        })
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => contestant.id), language: 'en' },
+          }),
+        )
+      }
+      await expect
+        .poll(() => fake.requests.some((request) => request.body.model === 'other-game'))
+        .toBe(true)
+      for (const game of games) {
+        await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+        const events = await $fetch<GameEvent[]>(`/api/games/${game.id}/events`)
+        expect(
+          events
+            .filter((event) => event.type === 'contestant.decision')
+            .every((event) => event.attempt === 1),
+        ).toBe(true)
+        expect(events.at(-1)).toMatchObject({ type: 'game.aborted', reason: 'human' })
+      }
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('keeps different provider ids independent even when their URLs are identical', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' })
+      for (let index = 0; index < 2; index++) {
+        const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          }),
+        )
+      }
+      await expect.poll(() => fake.requests.length).toBe(2)
+      expect(fake.requests.every((request) => !request.closed)).toBe(true)
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('marks unfinished games aborted once on process restart while preserving terminal games', async () => {
+    const fake = await startFakeProvider()
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' })
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      const open = () =>
+        $fetch<GameSummary>('/api/games', {
+          method: 'POST',
+          body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        })
+      const finished = await open()
+      await $fetch(`/api/games/${finished.id}/abort`, { method: 'POST' })
+      const unfinished = await open()
+      await expect.poll(() => fake.requests.some((request) => !request.closed)).toBe(true)
+      await stopServer()
+      await startServer()
+      const list = await $fetch<GameSummary[]>('/api/games')
+      expect(list.find((game) => game.id === unfinished.id)).toMatchObject({
+        status: 'aborted',
+        reason: 'process_restart',
+      })
+      expect(list.find((game) => game.id === finished.id)).toMatchObject({
+        status: 'aborted',
+        reason: 'human',
+      })
+      await stopServer()
+      await startServer()
+      const events = await $fetch<GameEvent[]>(`/api/games/${unfinished.id}/events`)
+      expect(events.filter((event) => event.type === 'game.aborted')).toEqual([
+        expect.objectContaining({ reason: 'process_restart' }),
+      ])
+      expect(fake.requests.filter((request) => !request.closed)).toHaveLength(0)
+    } finally {
+      await fake.close()
+    }
+  })
+})
+
+it.each([0, -1, 1.5, '2', null])(
+  'rejects invalid per-conversation speech limit %s',
+  async (speechLimit) => {
+    const response = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ presets: [1, 1, 1, 1, 1], language: 'en', speechLimit }),
+    })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('speechLimit')
+  },
+)
+
+it('isolates public batches, logs decisions immediately, and trims old speech only at day boundaries', async () => {
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const roles = new Map<string, number>()
+  const offers = new Map<string, number>()
+  const captured: { seat: number; day: number; tool: string; prefix: string; system: string }[] = []
+  const fake = await startFakeProvider(async (request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    const day = Number(/# Current public state\nDay (\d+);/.exec(user)?.[1])
+    const role = /Your character: ([^;]+);/.exec(user)?.[1] ?? ''
+    const tool = input.tool_choice.function.name
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
+    roles.set(role, seat)
+    if (tool === 'night_choice') {
+      const victims = [...roles]
+        .filter(([character]) => !['Imp', 'Scarlet Woman', 'Soldier'].includes(character))
+        .map(([, target]) => target)
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the night.',
+          targets: user.includes('choose 2 distinct players')
+            ? [1, 2]
+            : role === 'Imp'
+              ? [day === 2 ? victims[0] : day === 3 ? victims[1] : seat]
+              : [1],
+        }),
+      }
+    }
+    captured.push({
+      seat,
+      day,
+      tool,
+      prefix: user.split('# Your memo')[0] ?? '',
+      system: input.messages[0].content,
+    })
+    const key = `${String(day)}:${String(seat)}`
+    const offer = (offers.get(key) ?? 0) + 1
+    offers.set(key, offer)
+    if (day === 1 && seat === 5 && offer === 1) await pending
+    const args = {
+      reasoning: 'Private offer, not spoken.',
+      speech: `SPEECH-D${String(day)}-S${String(seat)}-O${String(offer)}`,
+      slayer_target: null,
+    }
+    return { kind: 'toolCall', name: tool, arguments: JSON.stringify(args) }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    await expect
+      .poll(
+        () =>
+          fake.requests.filter(
+            (request) => gameRequest.parse(request.body).tool_choice.function.name === 'speak',
+          ).length,
+      )
+      .toBe(5)
+    await expect
+      .poll(
+        async () =>
+          (await log()).filter(
+            (event) => event.type === 'contestant.decision' && event.request.tool === 'speak',
+          ).length,
+      )
+      .toBe(4)
+    expect((await log()).some((event) => event.type === 'public.speech')).toBe(false)
+    expect(captured.every((request) => !request.prefix.includes('SPEECH-'))).toBe(true)
+    release?.()
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await log()
+    expect(events[0]).toMatchObject({ type: 'game.created', speechLimit: 1 })
+    const speeches = events.filter((event) => event.type === 'public.speech')
+    expect(speeches).toHaveLength(15)
+    expect(new Set(speeches.map((event) => event.speech)).size).toBe(15)
+    for (const speech of speeches)
+      expect(events.find((event) => event.seq === speech.decision)).toMatchObject({
+        type: 'contestant.decision',
+        seat: speech.seat,
+      })
+    const decisions = events.filter((event) => event.type === 'contestant.decision')
+    expect(decisions).toHaveLength(fake.requests.length)
+    const bySeat = new Map<number, typeof captured>()
+    for (const request of captured) {
+      expect(request.system).toBe(captured[0]?.system)
+      const prior = bySeat.get(request.seat) ?? []
+      const previous = prior.at(-1)
+      if (previous?.day === request.day)
+        expect(request.prefix.startsWith(previous.prefix.trimEnd())).toBe(true)
+      if (request.day === 2) expect(request.prefix).toContain('SPEECH-D1-')
+      if (request.day === 3) {
+        expect(request.prefix).not.toContain('SPEECH-D1-')
+        expect(request.prefix).toContain('SPEECH-D2-')
+        expect(request.prefix).toContain('Public discussion')
+      }
+      expect(request.prefix).not.toContain('Private offer, not spoken.')
+      expect(request.prefix).not.toContain('omitted')
+      prior.push(request)
+      bySeat.set(request.seat, prior)
+    }
+    const victim = events.find((event) => event.type === 'night.death')
+    expect(
+      captured.some(
+        (request) =>
+          victim?.type === 'night.death' &&
+          request.seat === victim.seat &&
+          request.day === 2 &&
+          request.tool === 'speak',
+      ),
+    ).toBe(true)
+    for (const request of fake.requests)
+      expect(request.body.tools).toEqual(fake.requests[0]?.body.tools)
+  } finally {
+    release?.()
+    await fake.close()
+  }
+})
+
+it('updates pass and unselected public-speech memos but rejects invalid-attempt memos', async () => {
+  let nightTurn = 0
+  const attempts = new Map<number, number>()
+  const fake = await startFakeProvider((request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const tool = input.tool_choice.function.name
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    if (tool === 'night_choice')
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the game',
+          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
+        }),
+      }
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
+    const attempt = (attempts.get(seat) ?? 0) + 1
+    attempts.set(seat, attempt)
+    const firstOffer = attempt === 1 && seat <= 2
+    return {
+      kind: 'toolCall',
+      name: tool,
+      arguments: JSON.stringify({
+        reasoning: 'Keep my own notes even if I do not speak',
+        speech: firstOffer ? `Unselected-or-selected offer from Seat ${String(seat)}` : null,
+        slayer_target: seat === 4 && attempt === 1 ? 1 : null,
+        memo:
+          seat === 4 && attempt === 1
+            ? 'INVALID ATTEMPT MEMO'
+            : firstOffer
+              ? `Offer memo ${String(seat)}`
+              : seat === 3 && attempt === 1
+                ? 'Pass memo'
+                : seat === 4 && attempt === 2
+                  ? 'Recovered pass memo'
+                  : undefined,
+      }),
+    }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    const speeches = events.filter((event) => event.type === 'public.speech')
+    expect(speeches).toHaveLength(1)
+    const selected = speeches[0]
+    if (!selected) throw new Error('Missing selected speech')
+    const unselected = selected.seat === 1 ? 2 : 1
+    expect(selected.seat).toBeOneOf([1, 2])
+    expect(events.filter((event) => event.type === 'seat.memo.updated')).toEqual([
+      expect.objectContaining({ seat: 1, memo: 'Offer memo 1' }),
+      expect.objectContaining({ seat: 2, memo: 'Offer memo 2' }),
+      expect.objectContaining({ seat: 3, memo: 'Pass memo' }),
+      expect.objectContaining({ seat: 4, memo: 'Recovered pass memo' }),
+    ])
+    expect(
+      events
+        .filter((event) => event.type === 'seat.memo.updated')
+        .every((event) => event.seq < selected.seq),
+    ).toBe(true)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'contestant.decision',
+        seat: unselected,
+        validation: { ok: true, errors: [] },
+      }),
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'contestant.decision',
+        seat: 4,
+        attempt: 1,
+        validation: { ok: false, errors: [{ code: 'invalid_slayer_target' }] },
+      }),
+    )
+  } finally {
+    await fake.close()
+  }
+})
+
+it('retries only the failing public seat and commits speech and memos after the whole batch succeeds', async () => {
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let nightTurn = 0
+  const attempts = new Map<number, number>()
+  const fake = await startFakeProvider(async (request) => {
+    const input = gameRequest.parse(request.body)
+    const user = input.messages[1].content
+    const tool = input.tool_choice.function.name
+    const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
+    if (tool === 'night_choice')
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the game',
+          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
+        }),
+      }
+    if (tool === 'nominate')
+      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
+    const firstBatch =
+      user.includes('# Current public state\nDay 1;') && !user.includes('Recovered public claim.')
+    if (!firstBatch)
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+      }
+    const attempt = (attempts.get(seat) ?? 0) + 1
+    attempts.set(seat, attempt)
+    if (seat === 5 && attempt === 2) await pending
+    return {
+      kind: 'toolCall',
+      name: tool,
+      arguments: JSON.stringify({
+        reasoning: 'Answer my own request independently',
+        speech: seat === 5 && attempt === 2 ? 'Recovered public claim.' : null,
+        slayer_target: seat === 5 && attempt === 1 ? 1 : null,
+        memo:
+          seat === 5 && attempt === 1 ? 'INVALID RETRY MEMO' : `Valid batch memo ${String(seat)}`,
+      }),
+    }
+  })
+  try {
+    const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en', speechLimit: 1 },
+    })
+    const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    await expect.poll(() => attempts.get(5)).toBe(2)
+    await expect
+      .poll(
+        async () =>
+          (await log()).filter(
+            (event) => event.type === 'contestant.decision' && event.request.tool === 'speak',
+          ).length,
+      )
+      .toBe(5)
+    const blocked = await log()
+    expect([1, 2, 3, 4, 5].map((seat) => attempts.get(seat))).toEqual([1, 1, 1, 1, 2])
+    expect(
+      blocked.filter(
+        (event) => event.type === 'seat.memo.updated' || event.type === 'public.speech',
+      ),
+    ).toEqual([])
+    expect(blocked.at(-1)?.type).not.toBe('game.aborted')
+    release?.()
+    await expect
+      .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+        timeout: 10000,
+      })
+      .toBe('ended')
+    const events = await log()
+    expect([1, 2, 3, 4, 5].map((seat) => attempts.get(seat))).toEqual([1, 1, 1, 1, 2])
+    const speech = events.find((event) => event.type === 'public.speech')
+    expect(speech).toMatchObject({ seat: 5, speech: 'Recovered public claim.', kind: 'free' })
+    if (!speech) throw new Error('Missing recovered speech')
+    const successful = events.find((event) => event.seq === speech.decision)
+    expect(successful).toMatchObject({
+      type: 'contestant.decision',
+      seat: 5,
+      attempt: 2,
+      validation: { ok: true, errors: [] },
+      raw: {
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    arguments: JSON.stringify({
+                      reasoning: 'Answer my own request independently',
+                      speech: 'Recovered public claim.',
+                      slayer_target: null,
+                      memo: 'Valid batch memo 5',
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    const memos = events.filter((event) => event.type === 'seat.memo.updated')
+    expect(memos.map((event) => [event.seat, event.memo])).toEqual([
+      [1, 'Valid batch memo 1'],
+      [2, 'Valid batch memo 2'],
+      [3, 'Valid batch memo 3'],
+      [4, 'Valid batch memo 4'],
+      [5, 'Valid batch memo 5'],
+    ])
+    expect(
+      memos.every((event) => event.seq > (successful?.seq ?? Infinity) && event.seq < speech.seq),
+    ).toBe(true)
+  } finally {
+    release?.()
+    await fake.close()
+  }
 })

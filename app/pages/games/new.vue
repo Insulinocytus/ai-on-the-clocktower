@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -33,6 +34,7 @@ const form = reactive({
     templateConfig?.seats.map((seat) => String(seat.id)) ?? Array.from({ length: 5 }, () => ''),
   storyteller: templateConfig?.storyteller ? String(templateConfig.storyteller.id) : '',
   language: templateConfig?.language ?? (locale.value === 'zh' ? 'zh' : 'en'),
+  speechLimit: templateConfig?.speechLimit ?? 10,
 })
 const missingPreset = (id: string) =>
   !!id && !presets.value.some((preset) => String(preset.id) === id)
@@ -141,6 +143,17 @@ async function create() {
             ><SelectItem value="en">English</SelectItem></SelectContent
           ></Select
         >
+      </div>
+      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
+        <Label for="speech-limit">{{ t('games.speechLimit') }}</Label>
+        <Input
+          id="speech-limit"
+          v-model.number="form.speechLimit"
+          type="number"
+          min="1"
+          step="1"
+          required
+        />
       </div>
       <p v-if="error" role="alert" class="text-destructive">{{ error }}</p>
       <Button

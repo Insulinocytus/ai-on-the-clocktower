@@ -80,7 +80,7 @@ export interface SpeechRequest {
   nominator?: number
   nominee?: number
 }
-interface SpeechChoice {
+export interface SpeechChoice {
   reasoning: string
   speech: string | null
   slayer_target: number | null

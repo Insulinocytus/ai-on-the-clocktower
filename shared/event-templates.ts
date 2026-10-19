@@ -17,6 +17,8 @@ const REASONS: Record<string, { zh: string; en: string }> = {
     en: 'model call failed or returned invalid output',
   },
   engine_error: { zh: '规则引擎错误', en: 'engine error' },
+  human: { zh: '观战者终止', en: 'stopped by spectator' },
+  process_restart: { zh: '进程重启', en: 'process restarted' },
   imp: { zh: '小恶魔击杀', en: 'killed by the Imp' },
   imp_suicide: { zh: '小恶魔自杀', en: 'Imp self-kill' },
 }

@@ -1,7 +1,6 @@
 import type {
   Alignment,
   ContestantRequest,
-  SpeechRequest,
   GameEvent,
   GameEventInput,
   Grimoire,
@@ -12,6 +11,8 @@ import type {
   PublicState,
   RoleId,
   SeatState,
+  SpeechChoice,
+  SpeechRequest,
   ValidationError,
 } from '../types/game'
 import { ROLES } from './roles'
@@ -376,14 +377,27 @@ export function validateNightChoice(value: unknown, request: NightRequest): Vali
   return errors
 }
 
-function validateSpeechChoice(value: unknown, request: SpeechRequest): ValidationError[] {
+export function validateSpeechChoice(value: unknown, request: SpeechRequest): ValidationError[] {
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const errors: ValidationError[] = []
   if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
-  if (typeof choice.speech !== 'string' || choice.speech.trim().length === 0)
+  if (
+    (choice.speech !== null && typeof choice.speech !== 'string') ||
+    (request.kind !== 'free' &&
+      (typeof choice.speech !== 'string' || choice.speech.trim().length === 0))
+  )
     errors.push({ code: 'invalid_speech' })
-  if (choice.slayer_target !== null || request.kind === 'free')
+  if (
+    choice.slayer_target !== null &&
+    (request.kind !== 'free' ||
+      typeof choice.speech !== 'string' ||
+      choice.speech.trim().length === 0 ||
+      typeof choice.slayer_target !== 'number' ||
+      !Number.isInteger(choice.slayer_target) ||
+      choice.slayer_target < 1 ||
+      choice.slayer_target > 5)
+  )
     errors.push({ code: 'invalid_slayer_target' })
   if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
     errors.push({ code: 'invalid_memo' })
@@ -416,7 +430,6 @@ export function validateContestantChoice(
   }
   return errors
 }
-
 export function winner(state: Grimoire): { winner: Alignment; reason: string } | null {
   if (!state.seats.some((seat) => seat.alive && ROLES[seat.role].type === 'demon')) {
     return { winner: 'good', reason: 'all_demons_dead' }
@@ -742,7 +755,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     },
   }
 
-  // shortcut: conversations are added by the public discussion and whisper tickets.
+  // shortcut: whisper rooms are added by the private-conversation ticket.
   for (let day = 1; !stopped(); day++) {
     await commit({ type: 'phase.started', day, phase: day === 1 ? 'first-night' : 'night' })
     const nightStart = state.seq
@@ -760,6 +773,60 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
     )
     await commit({ type: 'phase.started', day, phase: 'dawn' })
     await commit({ type: 'dawn.announced', day, deaths })
+    await commit({ type: 'phase.started', day, phase: 'public' })
+    const remaining = new Map(state.seats.map((seat) => [seat.seat, ports.config.speechLimit]))
+    let lastSpeaker: number | null = null
+    while (!stopped()) {
+      const batch: SpeechRequest[] = state.seats.flatMap((seat) => {
+        const allowance = remaining.get(seat.seat) ?? 0
+        return seat.seat !== lastSpeaker && allowance > 0
+          ? [{ tool: 'speak', seat: seat.seat, day, kind: 'free', remaining: allowance }]
+          : []
+      })
+      if (!batch.length) break
+      const choices = await ports.askContestants(batch)
+      if (
+        choices.length !== batch.length ||
+        choices.some((choice, index) => {
+          const request = batch[index]
+          return !request || validateSpeechChoice(choice, request).length !== 0
+        })
+      )
+        throw new Error('Invalid speech choice from ports')
+      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      if (stopped()) break
+      const offers = batch.flatMap((request, index) => {
+        const choice = choices[index] as SpeechChoice
+        return choice.speech === null ? [] : [{ request, choice, speech: choice.speech }]
+      })
+      if (!offers.length) break
+      const highest = Math.max(...offers.map(({ request }) => request.remaining ?? 0))
+      const candidates = offers.filter(({ request }) => request.remaining === highest)
+      const selected =
+        candidates.length === 1
+          ? candidates[0]
+          : candidates[Math.floor(ports.rng() * candidates.length)]
+      if (!selected) throw new Error('No speech selected')
+      const { request, choice, speech } = selected
+      await commit({
+        type: 'public.speech',
+        seat: request.seat,
+        speech,
+        kind: 'free',
+        ...(choice.slayer_target !== null && { slayerTarget: choice.slayer_target }),
+        decision: choice.decision ?? 0,
+      })
+      remaining.set(request.seat, (request.remaining ?? 0) - 1)
+      lastSpeaker = request.seat
+      // shortcut: real Slayer shots arrive with daytime role abilities; this role pool only has fake shots.
+      if (choice.slayer_target !== null)
+        await commit({
+          type: 'slayer.resolved',
+          seat: request.seat,
+          target: choice.slayer_target,
+          died: false,
+        })
+    }
     await commit({ type: 'phase.started', day, phase: 'nomination' })
     for (;;) {
       const publicState = foldPublic(ports.log, ports.config.seatCount)

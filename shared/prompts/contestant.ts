@@ -78,10 +78,23 @@ export function buildContestantPrompt({
         return zh
           ? `# 本次请求\n请选择今天尚未被提名的座位：${request.nominees.join('、')}。可以提名自己或死者；nominee 填合法座位号或 null（pass）。只有本轮被选中执行的提名才消耗今天的提名次数，落选后下一轮重新选择。\n请调用 nominate。`
           : `# This request\nLegal nominees not nominated today: ${request.nominees.join(', ')}. You may nominate yourself or a dead seat. Put a legal seat number in nominee, or null to pass. Only the nomination selected this round spends your daily nomination; unselected proposals are asked again next round.\nCall nominate.`
-      case 'speak':
+      case 'speak': {
+        const free = request.kind === 'free'
+        const purpose = free
+          ? zh
+            ? `公聊发言，还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。`
+            : `Public discussion: ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null.`
+          : request.kind === 'nomination'
+            ? zh
+              ? `为提名 ${String(request.nominee)} 号给出一条非空的提名理由，不能 pass。`
+              : `Give one nonempty reason for nominating Seat ${String(request.nominee)}; you cannot pass.`
+            : zh
+              ? `回应 ${String(request.nominator)} 号的提名，给出一条非空辩护，不能 pass。`
+              : `Give one nonempty defence against Seat ${String(request.nominator)}'s nomination; you cannot pass.`
         return zh
-          ? `# 本次请求\n${String(request.nominator)} 号提名 ${String(request.nominee)} 号。现在请作${request.kind === 'nomination' ? '提名理由' : '辩护'}，speech 必须为非空发言，不能 pass；slayer_target 必须为 null。\n请调用 speak。`
-          : `# This request\nSeat ${String(request.nominator)} nominated Seat ${String(request.nominee)}. Give your ${request.kind === 'nomination' ? 'nomination reason' : 'defense'} now. speech must be nonempty; passing is not allowed. slayer_target must be null.\nCall speak.`
+          ? `# 本次请求\n${purpose}\n${free ? '只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–5）；任何座位都可以声称开枪，否则填 null。' : 'slayer_target 必须填 null。'}reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 speak。`
+          : `# This request\n${purpose}\n${free ? 'Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–5), otherwise null. Any seat may claim a shot.' : 'slayer_target must be null.'} Put private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall speak.`
+      }
       case 'vote': {
         const votes = request.votes
           .map((vote) =>
@@ -109,7 +122,13 @@ export function buildContestantPrompt({
 
   return {
     messages: [
-      { role: 'system', content: contestantSystem(language) },
+      {
+        role: 'system',
+        content: contestantSystem(
+          language,
+          events.find((event) => event.type === 'game.created')?.speechLimit ?? 10,
+        ),
+      },
       { role: 'user', content: [identity, timeline, memo, currentState, requestText].join('\n\n') },
     ],
   }

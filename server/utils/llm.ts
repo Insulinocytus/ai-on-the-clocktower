@@ -1,7 +1,9 @@
 import type { Tool } from './tools'
+import { getProvider } from './models'
 
 /** Everything needed to address one model: provider connection plus preset call parameters. */
 export interface LlmTarget {
+  providerId: number
   baseUrl: string
   apiKeyEnv: string
   timeoutSec: number
@@ -31,8 +33,79 @@ export class LlmCallError extends Error {
   }
 }
 
+interface Waiter {
+  resolve: (release: () => void) => void
+  reject: (error: unknown) => void
+  signal?: AbortSignal
+  cancel: () => void
+}
+interface ProviderQueue {
+  active: number
+  waiting: Waiter[]
+}
+const providerQueues = new Map<number, ProviderQueue>()
+
+function drainProvider(id: number, queue: ProviderQueue): void {
+  while (queue.waiting.length) {
+    const provider = getProvider(id)
+    if (provider && queue.active >= provider.maxConcurrency) break
+    const waiter = queue.waiting.shift()
+    if (!waiter) break
+    waiter.signal?.removeEventListener('abort', waiter.cancel)
+    if (!provider) {
+      waiter.reject(new LlmCallError('Provider not found'))
+      continue
+    }
+    queue.active++
+    waiter.resolve(() => {
+      queue.active--
+      drainProvider(id, queue)
+    })
+  }
+  if (queue.active === 0 && queue.waiting.length === 0) providerQueues.delete(id)
+}
+
+function acquireProvider(id: number, signal?: AbortSignal): Promise<() => void> {
+  signal?.throwIfAborted()
+  let queue = providerQueues.get(id)
+  if (!queue) {
+    queue = { active: 0, waiting: [] }
+    providerQueues.set(id, queue)
+  }
+  const pending = Promise.withResolvers<() => void>()
+  const waiter: Waiter = {
+    resolve: pending.resolve,
+    reject: pending.reject,
+    signal,
+    cancel() {
+      const index = queue.waiting.indexOf(waiter)
+      if (index !== -1) queue.waiting.splice(index, 1)
+      pending.reject(signal?.reason)
+      drainProvider(id, queue)
+    },
+  }
+  queue.waiting.push(waiter)
+  signal?.addEventListener('abort', waiter.cancel, { once: true })
+  drainProvider(id, queue)
+  return pending.promise
+}
+
 /** One OpenAI-compatible Chat Completions call with tools; resolves to the whole raw response. */
 export async function chatCompletion(
+  target: LlmTarget,
+  request: ChatRequest,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const release = await acquireProvider(target.providerId, signal)
+  try {
+    signal?.throwIfAborted()
+    return await complete(target, request, signal)
+  } finally {
+    release()
+  }
+}
+
+async function complete(
   target: LlmTarget,
   request: ChatRequest,
   signal?: AbortSignal,

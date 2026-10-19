@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 /** One scripted reply of the fake OpenAI-compatible provider, consumed in order per request. */
 type FakeStep =
   /** A tool call; `arguments` is sent verbatim, so it may be malformed JSON. */
-  | { kind: 'toolCall'; name: string; arguments: string }
+  | { kind: 'toolCall'; name: string; arguments: string; waitFor?: Promise<void> }
   /** Plain assistant text and no tool call. */
   | { kind: 'text'; content: string }
   | { kind: 'rateLimit'; retryAfterSec: number; retryAfter?: string }
@@ -21,6 +21,7 @@ interface RecordedRequest {
   headers: IncomingHttpHeaders
   body: Record<string, unknown>
   receivedAt: number
+  closed: boolean
 }
 
 export interface FakeProvider {
@@ -56,66 +57,80 @@ export async function startFakeProvider(
         headers: req.headers,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
         receivedAt: Date.now(),
+        closed: false,
       }
       requests.push(request)
-      void Promise.resolve(responder?.(request)).then((response) => {
-        const step = response ?? steps.shift()
-        const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
-          res.writeHead(status, { 'content-type': 'application/json', ...headers })
-          res.end(JSON.stringify(body))
-        }
-        if (req.url !== '/v1/chat/completions') {
-          json(404, { error: { message: `unexpected path ${req.url ?? ''}` } })
-          return
-        }
-        if (!step) {
-          json(500, { error: { message: 'fake provider: no scripted step left' } })
-          return
-        }
-        switch (step.kind) {
-          case 'toolCall':
-            json(
-              200,
-              completion({
-                content: null,
-                tool_calls: [
-                  {
-                    id: 'call_fake',
-                    type: 'function',
-                    function: { name: step.name, arguments: step.arguments },
-                  },
-                ],
-              }),
-            )
-            return
-          case 'text':
-            json(200, completion({ content: step.content }))
-            return
-          case 'rateLimit':
-            json(
-              429,
-              { error: { message: 'rate limited' } },
-              { 'retry-after': step.retryAfter ?? String(step.retryAfterSec) },
-            )
-            return
-          case 'serverError':
-            json(step.status, { error: { message: 'upstream error' } })
-            return
-          case 'hang':
-            return
-          case 'raw':
-            json(200, step.body)
-            return
-          case 'disconnect':
-            req.socket.destroy()
-            return
-          case 'truncated':
-            res.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' })
-            res.write('{"choices":[')
-            res.destroy()
-            return
-        }
+      res.once('close', () => {
+        request.closed = true
       })
+      const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
+        res.writeHead(status, { 'content-type': 'application/json', ...headers })
+        res.end(JSON.stringify(body))
+      }
+      if (req.url !== '/v1/chat/completions') {
+        json(404, { error: { message: `unexpected path ${req.url ?? ''}` } })
+        return
+      }
+      void Promise.resolve()
+        .then(() => responder?.(request))
+        .then((reply) => {
+          const step = reply ?? steps.shift()
+          if (!step) {
+            json(500, { error: { message: 'fake provider: no scripted step left' } })
+            return
+          }
+          switch (step.kind) {
+            case 'toolCall': {
+              const respond = () => {
+                json(
+                  200,
+                  completion({
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call_fake',
+                        type: 'function',
+                        function: { name: step.name, arguments: step.arguments },
+                      },
+                    ],
+                  }),
+                )
+              }
+              if (step.waitFor) void step.waitFor.then(respond)
+              else respond()
+              return
+            }
+            case 'text':
+              json(200, completion({ content: step.content }))
+              return
+            case 'rateLimit':
+              json(
+                429,
+                { error: { message: 'rate limited' } },
+                { 'retry-after': step.retryAfter ?? String(step.retryAfterSec) },
+              )
+              return
+            case 'serverError':
+              json(step.status, { error: { message: 'upstream error' } })
+              return
+            case 'hang':
+              return
+            case 'raw':
+              json(200, step.body)
+              return
+            case 'disconnect':
+              req.socket.destroy()
+              return
+            case 'truncated':
+              res.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' })
+              res.write('{"choices":[')
+              res.destroy()
+              return
+          }
+        })
+        .catch((error: unknown) => {
+          json(500, { error: { message: String(error) } })
+        })
     })
   })
 
