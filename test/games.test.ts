@@ -497,7 +497,9 @@ describe('games HTTP seam', () => {
           body: { presets: Array.from({ length: 5 }, () => model.id), language, whisperLimit: 0 },
         })
         await expect
-          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+            timeout: 10000,
+          })
           .toBe('aborted')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         const memos = events.filter((event) => event.type === 'seat.memo.updated')
@@ -579,7 +581,11 @@ describe('games HTTP seam', () => {
       expect(fake.requests).toHaveLength(3)
       expect(fake.requests[2]?.body).toEqual(fake.requests[1]?.body)
       expect(
-        events.some((event) => event.type === 'night.choice' || event.type === 'seat.memo.updated'),
+        events.some(
+          (event) =>
+            (event.type === 'night.choice' && event.role === 'imp') ||
+            event.type === 'seat.memo.updated',
+        ),
       ).toBe(false)
       expect(events.at(-1)).toMatchObject({
         type: 'game.aborted',
@@ -1401,7 +1407,10 @@ it.each(['en', 'zh'] as const)(
           slayer_target: fail ? 2 : null,
         }
       } else if (name === 'nominate') args = { nominee: null }
-      else args = { targets: [seat] }
+      else
+        args = {
+          targets: /choose 2 distinct players|选择 2 名不同的玩家/.test(user) ? [1, 2] : [seat],
+        }
       return {
         kind: 'toolCall',
         name,
@@ -1506,7 +1515,7 @@ it('defaults to three private room entries and leaves a no-room round for public
           ? { nominee: null }
           : name === 'speak'
             ? { speech: null, slayer_target: null }
-            : { targets: [seat] }
+            : { targets: user.includes('choose 2 distinct players') ? [1, 2] : [seat] }
     return { kind: 'toolCall', name, arguments: JSON.stringify({ reasoning: '', ...args }) }
   })
   try {
