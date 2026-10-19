@@ -1,10 +1,10 @@
-import type { GameConfig } from './game'
+import type { GameConfig, GameReason } from './game'
 
 export interface GameSummary {
   id: string
   createdAt: string
   status: 'running' | 'waiting' | 'ended' | 'aborted'
-  reason?: string
+  reason?: GameReason
   replayable: boolean
   config: GameConfig
 }

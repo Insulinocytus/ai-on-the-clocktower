@@ -40,7 +40,7 @@ const { t, locale } = useI18n()
       <span
         v-if="observer === 'spectator' && row.falseInfo"
         class="mt-2 inline-block rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900"
-        :title="row.falseReason"
+        :title="row.falseReason ? t(`spectator.falseReasons.${row.falseReason}`) : undefined"
         >{{ t('spectator.falseInfo') }}</span
       >
       <details v-if="reasoning && row.reasoning && row.decision" class="mt-2 text-sm">

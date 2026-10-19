@@ -1,5 +1,11 @@
 import type { Preset } from './models'
 
+export const MEMO_MAX_LENGTH = 2000
+
+export type GameEndReason = 'all_demons_dead' | 'two_alive' | 'mayor' | 'saint_executed'
+export type GameAbortReason = 'model_call_failed' | 'engine_error' | 'human' | 'process_restart'
+export type GameReason = GameEndReason | GameAbortReason
+
 export type Language = 'en' | 'zh'
 export type Alignment = 'good' | 'evil'
 export type RoleType = 'townsfolk' | 'outsider' | 'minion' | 'demon'
@@ -242,11 +248,11 @@ type Event<T extends string, P> = { seq: number; type: T } & P
 export type GameEvent =
   | Event<'game.created', GameConfig>
   | Event<'phase.started', { day: number; phase: Phase }>
-  | Event<'game.ended', { winner: Alignment; reason: string }>
+  | Event<'game.ended', { winner: Alignment; reason: GameEndReason }>
   | Event<
       'game.aborted',
       {
-        reason: string
+        reason: GameAbortReason
         seat?: number
         discretion?: DiscretionId
         error?: unknown
@@ -311,7 +317,7 @@ export type GameEvent =
           | InformationResult
           | { target: number; outcome: 'killed' | 'dead' | 'soldier' | 'protected' | 'inactive' }
         deviated: boolean
-        reason?: string
+        reason?: 'drunk' | 'poisoned'
       }
     >
   | Event<'night.death', { seat: number; cause: string }>

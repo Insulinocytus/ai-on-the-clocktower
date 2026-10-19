@@ -62,7 +62,7 @@ onUnmounted(() => {
             }}</Badge></TableCell
           >
           <TableCell>{{
-            game.reason ? t(`games.reasons.${game.reason}`, game.reason) : '—'
+            game.reason ? t(`games.reasons.${game.reason}`) : '—'
           }}</TableCell>
           <TableCell>
             <Button v-if="game.replayable" variant="outline" size="sm" as-child>

@@ -1,7 +1,11 @@
+import en from '../i18n/locales/en.json'
+import zh from '../i18n/locales/zh.json'
+import { PHASE_LABELS } from './game/phases'
 import { ROLES } from './game/roles'
 import { visibleTo } from './game/rules'
 import type {
   GameEvent,
+  GameReason,
   InformationResult,
   Language,
   Observer,
@@ -9,17 +13,11 @@ import type {
   SeatState,
 } from './types/game'
 
-const REASONS: Record<string, { zh: string; en: string }> = {
-  all_demons_dead: { zh: '所有恶魔均已死亡', en: 'all Demons are dead' },
-  two_alive: { zh: '只剩两名玩家存活', en: 'only two players remain alive' },
-  saint_executed: { zh: '圣徒死于处决', en: 'the Saint died by execution' },
-  model_call_failed: {
-    zh: '模型调用失败或输出不合法',
-    en: 'model call failed or returned invalid output',
-  },
-  engine_error: { zh: '规则引擎错误', en: 'engine error' },
-  human: { zh: '观战者终止', en: 'stopped by spectator' },
-  process_restart: { zh: '进程重启', en: 'process restarted' },
+const REASONS: Record<Language, Record<GameReason, string>> = {
+  zh: zh.games.reasons,
+  en: en.games.reasons,
+}
+const NIGHT_CAUSES: Record<string, { zh: string; en: string }> = {
   imp: { zh: '小恶魔击杀', en: 'killed by the Imp' },
   imp_suicide: { zh: '小恶魔自杀', en: 'Imp self-kill' },
 }
@@ -121,27 +119,18 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
       return zh
         ? `创建 ${String(event.seatCount)} 人对局；语言：${event.language === 'zh' ? '中文' : '英文'}；种子：${String(event.seed)}；日志版本：${String(event.logVersion)}；提示词版本：${String(event.promptVersion)}。座位模型：${event.seats.map((seat, index) => `${String(seat.seat ?? index + 1)} 号 ${seat.name}（${seat.model}）`).join('；')}。`
         : `Created a ${String(event.seatCount)}-player game; language: ${event.language === 'zh' ? 'Chinese' : 'English'}; seed: ${String(event.seed)}; log version: ${String(event.logVersion)}; prompt version: ${String(event.promptVersion)}. Seat models: ${event.seats.map((seat, index) => `Seat ${String(seat.seat ?? index + 1)}: ${seat.name} (${seat.model})`).join('; ')}.`
-    case 'phase.started': {
-      const phases = {
-        'first-night': { zh: '首夜', en: 'First night' },
-        night: { zh: '夜晚', en: 'Night' },
-        dawn: { zh: '黎明', en: 'Dawn' },
-        whisper: { zh: '私聊阶段', en: 'Whisper phase' },
-        public: { zh: '公聊阶段', en: 'Public discussion' },
-        nomination: { zh: '提名阶段', en: 'Nominations' },
-      }
+    case 'phase.started':
       return zh
-        ? `第 ${String(event.day)} 天：${phases[event.phase].zh}开始。`
-        : `Day ${String(event.day)}: ${phases[event.phase].en} started.`
-    }
+        ? `第 ${String(event.day)} 天：${PHASE_LABELS[event.phase].zh}开始。`
+        : `Day ${String(event.day)}: ${PHASE_LABELS[event.phase].en} started.`
     case 'game.ended':
       return zh
-        ? `对局结束：${event.winner === 'good' ? '善良' : '邪恶'}阵营获胜。原因：${REASONS[event.reason]?.zh ?? event.reason}。`
-        : `Game ended: ${event.winner} wins. Reason: ${REASONS[event.reason]?.en ?? event.reason}.`
+        ? `对局结束：${event.winner === 'good' ? '善良' : '邪恶'}阵营获胜。原因：${REASONS[language][event.reason]}。`
+        : `Game ended: ${event.winner} wins. Reason: ${REASONS[language][event.reason]}.`
     case 'game.aborted':
       return zh
-        ? `对局已终止：${REASONS[event.reason]?.zh ?? event.reason}${event.seat === undefined ? '' : `，${actor}`}${event.discretion ? `，裁量 ${event.discretion}` : ''}。错误：${JSON.stringify(event.error ?? event.details ?? null)}。`
-        : `Game aborted: ${REASONS[event.reason]?.en ?? event.reason}${event.seat === undefined ? '' : `, ${actor}`}${event.discretion ? `, discretion ${event.discretion}` : ''}. Error: ${JSON.stringify(event.error ?? event.details ?? null)}.`
+        ? `对局已终止：${REASONS[language][event.reason]}${event.seat === undefined ? '' : `，${actor}`}${event.discretion ? `，裁量 ${event.discretion}` : ''}。错误：${JSON.stringify(event.error ?? event.details ?? null)}。`
+        : `Game aborted: ${REASONS[language][event.reason]}${event.seat === undefined ? '' : `, ${actor}`}${event.discretion ? `, discretion ${event.discretion}` : ''}. Error: ${JSON.stringify(event.error ?? event.details ?? null)}.`
     case 'contestant.decision':
       return zh
         ? `${actor}的模型决策：${event.request.tool}；第 ${String(event.attempt)} 次尝试，耗时 ${String(event.durationMs)} ms；校验：${JSON.stringify(event.validation)}。`
@@ -212,8 +201,8 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
     }
     case 'night.death':
       return zh
-        ? `${actor}在夜晚死亡，死因：${REASONS[event.cause]?.zh ?? event.cause}。`
-        : `${actor}: died at night. Cause: ${REASONS[event.cause]?.en ?? event.cause}.`
+        ? `${actor}在夜晚死亡，死因：${NIGHT_CAUSES[event.cause]?.zh ?? event.cause}。`
+        : `${actor}: died at night. Cause: ${NIGHT_CAUSES[event.cause]?.en ?? event.cause}.`
     case 'told': {
       const self = observer === `seat:${String(event.seat)}`
       const possessive = self ? 'Your' : `${actor}'s`

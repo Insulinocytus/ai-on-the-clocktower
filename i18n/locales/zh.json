@@ -117,6 +117,10 @@
     "pass": "pass（不行动）",
     "proposedNomination": "提议提名：{seat} 号",
     "falseInfo": "此信息为假",
+    "falseReasons": {
+      "drunk": "该座位是酒鬼，能力无效。",
+      "poisoned": "该座位已中毒，能力无效。"
+    },
     "attempt": "第 {attempt} 次尝试",
     "footprint": "{seat} 号足迹",
     "footprintHint": "点一个座位查看它的足迹",
@@ -198,12 +202,14 @@
     "noReasoning": "未返回内心推理。",
     "reconnecting": "连接已断开，正在重连并补齐事件…",
     "reasons": {
-      "model_call_failed": "模型调用失败",
+      "model_call_failed": "模型调用失败或输出不合法",
       "engine_error": "引擎错误",
       "process_restart": "进程重启",
       "human": "观战者终止",
       "all_demons_dead": "所有恶魔死亡",
-      "two_alive": "只剩两名玩家存活"
+      "two_alive": "只剩两名玩家存活",
+      "mayor": "镇长存活至仅三人存活且无人被处决的白天结束",
+      "saint_executed": "圣徒死于处决"
     }
   }
 }
