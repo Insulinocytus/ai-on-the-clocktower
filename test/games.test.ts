@@ -22,6 +22,38 @@ await setup({
 
 const toolChoice = z.object({ function: z.object({ name: z.string() }) })
 
+async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]) {
+  const fake = await startFakeProvider((request) => {
+    const name = toolChoice.parse(request.body.tool_choice).function.name
+    if (name === 'nominate')
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Pass","nominee":null}' }
+    if (name === 'speak')
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+      }
+    const messages = request.body.messages as { content: string }[]
+    const user = messages[1]?.content ?? ''
+    if (name === 'night_choice' && /as Fortune Teller|作为占卜师/.test(user))
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Probe","targets":[1,2]}' }
+    if (name === 'night_choice' && /as Ravenkeeper|作为守鸦人/.test(user))
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Inspect","targets":[1]}' }
+    return responder?.(request)
+  })
+  return {
+    ...fake,
+    get requests() {
+      return fake.requests.filter(
+        (request) =>
+          toolChoice.parse(request.body.tool_choice).function.name === 'night_choice' &&
+          !/as Fortune Teller|作为占卜师|as Ravenkeeper|作为守鸦人/.test(
+            JSON.stringify(request.body.messages),
+          ),
+      )
+    },
+  }
+}
 const gameRequest = z.object({
   messages: z.tuple([
     z.object({ role: z.literal('system'), content: z.string() }),
@@ -49,30 +81,6 @@ async function preset(
       forceToolChoice: true,
     },
   })
-}
-
-async function nightProvider() {
-  const fake = await startFakeProvider((request) => {
-    const input = gameRequest.parse(request.body)
-    const tool = input.tool_choice.function.name
-    if (tool === 'nominate')
-      return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
-    return tool === 'speak'
-      ? {
-          kind: 'toolCall',
-          name: 'speak',
-          arguments: JSON.stringify({ reasoning: 'Pass', speech: null, slayer_target: null }),
-        }
-      : undefined
-  })
-  return {
-    ...fake,
-    get requests() {
-      return fake.requests.filter(
-        (request) => gameRequest.parse(request.body).tool_choice.function.name === 'night_choice',
-      )
-    },
-  }
 }
 
 describe('games HTTP seam', () => {
@@ -104,7 +112,11 @@ describe('games HTTP seam', () => {
       const user = messages[1]?.content ?? ''
       const args =
         name === 'night_choice'
-          ? { targets: [(nightTurn++ % 5) + 1] }
+          ? {
+              targets: user.includes('choose 2 distinct players')
+                ? [1, 2]
+                : [(nightTurn++ % 5) + 1],
+            }
           : name === 'nominate'
             ? {
                 nominee:
@@ -270,7 +282,10 @@ describe('games HTTP seam', () => {
         .toBe('ended')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       const decisions = events.filter(
-        (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+        (event) =>
+          event.type === 'contestant.decision' &&
+          event.request.tool === 'night_choice' &&
+          event.request.role === 'imp',
       )
       expect(decisions.slice(0, 2)).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -380,7 +395,9 @@ describe('games HTTP seam', () => {
         events
           .filter(
             (event) =>
-              event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+              event.type === 'contestant.decision' &&
+              event.request.tool === 'night_choice' &&
+              event.request.role === 'imp',
           )
           .slice(0, 2),
       ).toMatchObject([
@@ -434,7 +451,9 @@ describe('games HTTP seam', () => {
           events
             .filter(
               (event) =>
-                event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+                event.type === 'contestant.decision' &&
+                event.request.tool === 'night_choice' &&
+                event.request.role === 'imp',
             )
             .slice(0, 2),
         ).toMatchObject([
@@ -450,25 +469,28 @@ describe('games HTTP seam', () => {
   it.each(['zh', 'en'] as const)(
     'replaces only accepted seat memos, keeps them out of the timeline, and projects them privately (%s)',
     async (language) => {
-      const fake = await nightProvider()
       const original = '记'.repeat(2000)
+      const memos = [undefined, original, undefined, 'Keep only this claim.', '']
+      let turn = 0
+      const fake = await nightProvider((request) => {
+        const messages = request.body.messages as { content: string }[]
+        const user = messages[1]?.content ?? ''
+        const ownSeat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
+        if (!ownSeat) throw new Error('Missing contestant seat')
+        const accepted = turn < memos.length
+        const memo = accepted ? memos[turn] : 'Rejected'
+        turn++
+        return {
+          kind: 'toolCall',
+          name: 'night_choice',
+          arguments: JSON.stringify({
+            reasoning: 'Keep targeting the same other seat.',
+            targets: accepted ? [ownSeat === 1 ? 2 : 1] : [],
+            memo,
+          }),
+        }
+      })
       try {
-        for (const memo of [undefined, original, undefined, 'Keep only this claim.', ''])
-          fake.script({
-            kind: 'toolCall',
-            name: 'night_choice',
-            arguments: JSON.stringify({ reasoning: 'Keep choosing Seat 1.', targets: [1], memo }),
-          })
-        for (let attempt = 0; attempt < 3; attempt++)
-          fake.script({
-            kind: 'toolCall',
-            name: 'night_choice',
-            arguments: JSON.stringify({
-              reasoning: 'Invalid targets.',
-              targets: [],
-              memo: 'Rejected',
-            }),
-          })
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
@@ -544,7 +566,10 @@ describe('games HTTP seam', () => {
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
         events.filter(
-          (event) => event.type === 'contestant.decision' && event.request.tool === 'night_choice',
+          (event) =>
+            event.type === 'contestant.decision' &&
+            event.request.tool === 'night_choice' &&
+            event.request.role === 'imp',
         ),
       ).toMatchObject([
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
@@ -626,7 +651,9 @@ describe('games HTTP seam', () => {
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
           events.flatMap((event) =>
-            event.type === 'contestant.decision' && event.request.tool === 'night_choice'
+            event.type === 'contestant.decision' &&
+            event.request.tool === 'night_choice' &&
+            event.request.role === 'imp'
               ? [event.attempt]
               : [],
           ),
@@ -990,6 +1017,23 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     if (tool === 'nominate')
       return { kind: 'toolCall', name: tool, arguments: '{"reasoning":"Pass","nominee":null}' }
     roles.set(role, seat)
+    if (tool === 'night_choice') {
+      const victims = [...roles]
+        .filter(([character]) => !['Imp', 'Scarlet Woman', 'Soldier'].includes(character))
+        .map(([, target]) => target)
+      return {
+        kind: 'toolCall',
+        name: tool,
+        arguments: JSON.stringify({
+          reasoning: 'Advance the night.',
+          targets: user.includes('choose 2 distinct players')
+            ? [1, 2]
+            : role === 'Imp'
+              ? [day === 2 ? victims[0] : day === 3 ? victims[1] : seat]
+              : [1],
+        }),
+      }
+    }
     captured.push({
       seat,
       day,
@@ -1001,17 +1045,11 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     const offer = (offers.get(key) ?? 0) + 1
     offers.set(key, offer)
     if (day === 1 && seat === 5 && offer === 1) await pending
-    const args =
-      tool === 'speak'
-        ? {
-            reasoning: 'Private offer, not spoken.',
-            speech: `SPEECH-D${String(day)}-S${String(seat)}-O${String(offer)}`,
-            slayer_target: null,
-          }
-        : {
-            reasoning: 'Move to the next day.',
-            targets: [day === 2 ? roles.get('Chef') : day === 3 ? roles.get('Empath') : seat],
-          }
+    const args = {
+      reasoning: 'Private offer, not spoken.',
+      speech: `SPEECH-D${String(day)}-S${String(seat)}-O${String(offer)}`,
+      slayer_target: null,
+    }
     return { kind: 'toolCall', name: tool, arguments: JSON.stringify(args) }
   })
   try {
@@ -1026,10 +1064,20 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
       },
     })
     const log = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
-    await expect.poll(() => fake.requests.length).toBe(5)
     await expect
       .poll(
-        async () => (await log()).filter((event) => event.type === 'contestant.decision').length,
+        () =>
+          fake.requests.filter(
+            (request) => gameRequest.parse(request.body).tool_choice.function.name === 'speak',
+          ).length,
+      )
+      .toBe(5)
+    await expect
+      .poll(
+        async () =>
+          (await log()).filter(
+            (event) => event.type === 'contestant.decision' && event.request.tool === 'speak',
+          ).length,
       )
       .toBe(4)
     expect((await log()).some((event) => event.type === 'public.speech')).toBe(false)
@@ -1070,10 +1118,14 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
       prior.push(request)
       bySeat.set(request.seat, prior)
     }
-    const chef = roles.get('Chef')
+    const victim = events.find((event) => event.type === 'night.death')
     expect(
       captured.some(
-        (request) => request.seat === chef && request.day === 2 && request.tool === 'speak',
+        (request) =>
+          victim?.type === 'night.death' &&
+          request.seat === victim.seat &&
+          request.day === 2 &&
+          request.tool === 'speak',
       ),
     ).toBe(true)
     for (const request of fake.requests)
@@ -1098,7 +1150,7 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
         name: tool,
         arguments: JSON.stringify({
           reasoning: 'Advance the game',
-          targets: [(nightTurn++ % 5) + 1],
+          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
         }),
       }
     if (tool === 'nominate')
@@ -1198,7 +1250,7 @@ it('retries only the failing public seat and commits speech and memos after the 
         name: tool,
         arguments: JSON.stringify({
           reasoning: 'Advance the game',
-          targets: [(nightTurn++ % 5) + 1],
+          targets: user.includes('choose 2 distinct players') ? [1, 2] : [(nightTurn++ % 5) + 1],
         }),
       }
     if (tool === 'nominate')
@@ -1241,7 +1293,10 @@ it('retries only the failing public seat and commits speech and memos after the 
     await expect.poll(() => attempts.get(5)).toBe(2)
     await expect
       .poll(
-        async () => (await log()).filter((event) => event.type === 'contestant.decision').length,
+        async () =>
+          (await log()).filter(
+            (event) => event.type === 'contestant.decision' && event.request.tool === 'speak',
+          ).length,
       )
       .toBe(5)
     const blocked = await log()
