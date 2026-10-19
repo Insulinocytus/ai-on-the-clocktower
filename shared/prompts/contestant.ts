@@ -21,7 +21,8 @@ export function buildContestantPrompt({
   const zh = language === 'zh'
   const observer = `seat:${String(seat)}` as Observer
   const projected = project(events, observer)
-  const state = foldPublic(projected)
+  const config = events.find((event) => event.type === 'game.created')
+  const state = foldPublic(projected, config?.seatCount ?? 5)
   const identityEvent = projected.findLast(
     (event) =>
       event.type === 'told' &&
@@ -155,8 +156,9 @@ export function buildContestantPrompt({
         role: 'system',
         content: contestantSystem(
           language,
-          events.find((event) => event.type === 'game.created')?.speechLimit ?? 10,
-          events.find((event) => event.type === 'game.created')?.whisperLimit ?? 3,
+          config?.speechLimit ?? 10,
+          config?.whisperLimit ?? 3,
+          config?.seatCount ?? 5,
         ),
       },
       { role: 'user', content: [identity, timeline, memo, currentState, requestText].join('\n\n') },

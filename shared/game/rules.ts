@@ -18,31 +18,15 @@ import type {
 } from '../types/game'
 import { ROLES } from './roles'
 
-// shortcut: five seats only; widen setup with #29.
-const ROLE_POOL: readonly RoleId[] = [
-  'soldier',
-  'chef',
-  'empath',
-  'washerwoman',
-  'librarian',
-  'investigator',
-  'fortuneteller',
-  'undertaker',
-  'ravenkeeper',
-  'monk',
-  'mayor',
-  'virgin',
-  'slayer',
-  'butler',
-  'drunk',
-  'recluse',
-  'saint',
-  'spy',
-  'baron',
-  'poisoner',
-  'scarletwoman',
-  'imp',
-]
+const ROLE_POOL = Object.values(ROLES).map((role) => role.id)
+
+export function setupCounts(seatCount: number) {
+  if (!Number.isInteger(seatCount) || seatCount < 5 || seatCount > 15)
+    throw new Error('Invalid seat count')
+  const minions = Math.max(1, Math.floor((seatCount - 4) / 3))
+  const townsfolk = seatCount < 7 ? 3 : 2 * minions + 3
+  return { townsfolk, outsiders: seatCount - townsfolk - minions - 1, minions }
+}
 
 export function createRng(seed: number): () => number {
   let state = seed >>> 0
@@ -56,7 +40,7 @@ export function createRng(seed: number): () => number {
 
 export function validate(roles: readonly string[]): ValidationError[] {
   const errors: ValidationError[] = []
-  if (roles.length !== 5) errors.push({ code: 'invalid_seat_count' })
+  if (roles.length < 5 || roles.length > 15) errors.push({ code: 'invalid_seat_count' })
   if (new Set(roles).size !== roles.length) errors.push({ code: 'duplicate_role' })
   if (roles.some((role) => !ROLE_POOL.some((allowed) => allowed === role))) {
     errors.push({ code: 'unsupported_role' })
@@ -65,11 +49,13 @@ export function validate(roles: readonly string[]): ValidationError[] {
     Object.hasOwn(ROLES, role) ? ROLES[role as RoleId].type : undefined,
   )
   if (roles.filter((role) => role === 'imp').length !== 1) errors.push({ code: 'invalid_demon' })
-  const outsiders = roles.includes('baron') ? 2 : 0
+  const counts = roles.length >= 5 && roles.length <= 15 ? setupCounts(roles.length) : null
+  const baron = roles.includes('baron') ? 2 : 0
   if (
-    types.filter((type) => type === 'townsfolk').length !== 3 - outsiders ||
-    types.filter((type) => type === 'outsider').length !== outsiders ||
-    types.filter((type) => type === 'minion').length !== 1 ||
+    !counts ||
+    types.filter((type) => type === 'townsfolk').length !== counts.townsfolk - baron ||
+    types.filter((type) => type === 'outsider').length !== counts.outsiders + baron ||
+    types.filter((type) => type === 'minion').length !== counts.minions ||
     types.filter((type) => type === 'demon').length !== 1
   ) {
     errors.push({ code: 'invalid_role_counts' })
@@ -80,18 +66,24 @@ export function validate(roles: readonly string[]): ValidationError[] {
   return errors
 }
 
-export function sample(rng: () => number): RoleId[] {
+export function sample(rng: () => number, seatCount = 5): RoleId[] {
+  const counts = setupCounts(seatCount)
   const minions = ROLE_POOL.filter((role) => ROLES[role].type === 'minion')
-  const minion = minions[Math.floor(rng() * minions.length)]
-  if (!minion) throw new Error('No implemented Minion')
+  const roles: RoleId[] = ['imp']
+  for (let index = 0; index < counts.minions; index++) {
+    const [role] = minions.splice(Math.floor(rng() * minions.length), 1)
+    if (role) roles.push(role)
+  }
+  const baron = roles.includes('baron') ? 2 : 0
   const townsfolk = ROLE_POOL.filter(
-    (role) => ROLES[role].type === 'townsfolk' && (minion !== 'baron' || role !== 'washerwoman'),
+    (role) =>
+      ROLES[role].type === 'townsfolk' &&
+      (counts.townsfolk - baron !== 1 || role !== 'washerwoman'),
   )
-  const roles: RoleId[] = [minion, 'imp']
   const outsiders = ROLE_POOL.filter((role) => ROLES[role].type === 'outsider')
   for (const [pool, count] of [
-    [townsfolk, minion === 'baron' ? 1 : 3],
-    [outsiders, minion === 'baron' ? 2 : 0],
+    [townsfolk, counts.townsfolk - baron],
+    [outsiders, counts.outsiders + baron],
   ] as const) {
     for (let index = 0; index < count; index++) {
       const [role] = pool.splice(Math.floor(rng() * pool.length), 1)
@@ -173,6 +165,7 @@ export function apply(state: Grimoire, event: GameEvent): Grimoire {
         ...next,
         seats: event.seats.map((seat) => ({ ...seat })),
         redHerring: event.redHerring ?? null,
+        bluffs: event.bluffs ?? state.bluffs,
       }
     case 'phase.started':
       return {
@@ -263,6 +256,7 @@ export function fold(events: readonly GameEvent[]): Grimoire {
     phase: null,
     seats: [],
     redHerring: null,
+    bluffs: [],
     winner: null,
     ended: false,
     aborted: false,
@@ -271,7 +265,6 @@ export function fold(events: readonly GameEvent[]): Grimoire {
 }
 
 export function foldPublic(events: readonly GameEvent[], seatCount = 5): PublicState {
-  // shortcut: public setup has five seats until configurable player counts ship.
   let state: PublicState = {
     seq: 0,
     day: 0,
@@ -407,7 +400,11 @@ export function validateNightChoice(value: unknown, request: NightRequest): Vali
   return errors
 }
 
-export function validateSpeechChoice(value: unknown, request: SpeechRequest): ValidationError[] {
+export function validateSpeechChoice(
+  value: unknown,
+  request: SpeechRequest,
+  seatCount = 5,
+): ValidationError[] {
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const errors: ValidationError[] = []
@@ -427,7 +424,7 @@ export function validateSpeechChoice(value: unknown, request: SpeechRequest): Va
       typeof choice.slayer_target !== 'number' ||
       !Number.isInteger(choice.slayer_target) ||
       choice.slayer_target < 1 ||
-      choice.slayer_target > 5)
+      choice.slayer_target > seatCount)
   )
     errors.push({ code: 'invalid_slayer_target' })
   if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
@@ -438,9 +435,10 @@ export function validateSpeechChoice(value: unknown, request: SpeechRequest): Va
 export function validateContestantChoice(
   value: unknown,
   request: ContestantRequest,
+  seatCount = 5,
 ): ValidationError[] {
   if (request.tool === 'night_choice') return validateNightChoice(value, request)
-  if (request.tool === 'speak') return validateSpeechChoice(value, request)
+  if (request.tool === 'speak') return validateSpeechChoice(value, request, seatCount)
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const errors: ValidationError[] = []
@@ -525,10 +523,18 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
   if (stopped()) return state
   const newSetup = state.seats.length === 0
   if (state.seats.length === 0) {
-    const candidates = { type: 'setup' as const, sample: sample(() => ports.rng()) }
+    const candidates = {
+      type: 'setup' as const,
+      sample: sample(() => ports.rng(), ports.config.seatCount),
+    }
     await commit({ type: 'discretion.requested', discretion: 'D1', candidates, source: 'random' })
     const choice = await ports.discretion('D1', candidates, state)
-    if (!Array.isArray(choice) || validate(choice).length !== 0) throw new Error('Invalid D1 setup')
+    if (
+      !Array.isArray(choice) ||
+      choice.length !== ports.config.seatCount ||
+      validate(choice).length !== 0
+    )
+      throw new Error('Invalid D1 setup')
     await commit({ type: 'discretion.resolved', discretion: 'D1', choice, source: 'random' })
     await commit({
       type: 'grimoire.set',
@@ -595,6 +601,40 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       await commit({ type: 'discretion.resolved', discretion: 'D3', choice, source: 'random' })
     }
     await commit({ type: 'grimoire.set', seats: state.seats, redHerring: choice })
+  }
+  if (ports.config.seatCount >= 7 && state.bluffs.length === 0) {
+    const absent = Object.values(ROLES)
+      .filter(
+        (role) => role.alignment === 'good' && !state.seats.some((seat) => seat.role === role.id),
+      )
+      .map((role) => role.id)
+    const candidates: RoleId[][] = []
+    for (let first = 0; first < absent.length; first++)
+      for (let second = first + 1; second < absent.length; second++)
+        for (let third = second + 1; third < absent.length; third++) {
+          const a = absent[first]
+          const b = absent[second]
+          const c = absent[third]
+          if (a && b && c) candidates.push([a, b, c])
+        }
+    let choice = candidates[0]
+    if (!choice) throw new Error('No legal Demon bluffs')
+    if (candidates.length > 1) {
+      await commit({ type: 'discretion.requested', discretion: 'D7', candidates, source: 'random' })
+      const selected = await ports.discretion('D7', candidates, state)
+      const legal = candidates.find(
+        (candidate) => JSON.stringify(candidate) === JSON.stringify(selected),
+      )
+      if (!legal) throw new Error('Invalid D7 bluffs')
+      choice = legal
+      await commit({ type: 'discretion.resolved', discretion: 'D7', choice, source: 'random' })
+    }
+    await commit({
+      type: 'grimoire.set',
+      seats: state.seats,
+      redHerring: state.redHerring,
+      bluffs: choice,
+    })
   }
   for (const role of ['spy', 'recluse'] as const) {
     const seat = state.seats.find((player) => player.role === role)
@@ -838,7 +878,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
 
   const handlers: Partial<Record<RoleId, (seat: SeatState) => Promise<void>>> = {
     spy: async (seat) => {
-      const result = { seats: state.seats, redHerring: state.redHerring }
+      const result = { seats: state.seats, redHerring: state.redHerring, bluffs: state.bluffs }
       await commit({
         type: 'ability.resolved',
         seat: seat.seat,
@@ -1036,7 +1076,9 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         choices.length !== batch.length ||
         choices.some((choice, index) => {
           const request = batch[index]
-          return !request || validateSpeechChoice(choice, request).length !== 0
+          return (
+            !request || validateSpeechChoice(choice, request, ports.config.seatCount).length !== 0
+          )
         })
       )
         throw new Error('Invalid speech choice from ports')
@@ -1222,6 +1264,32 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
 
   for (let day = 1; !stopped(); day++) {
     await commit({ type: 'phase.started', day, phase: day === 1 ? 'first-night' : 'night' })
+    if (day === 1 && ports.config.seatCount >= 7) {
+      const minions = state.seats.filter((seat) => ROLES[seat.role].type === 'minion')
+      const demon = state.seats.find((seat) => seat.role === 'imp')
+      if (!demon) throw new Error('Missing initial Demon')
+      for (const minion of minions)
+        await commit({
+          type: 'told',
+          seat: minion.seat,
+          kind: 'minion-info',
+          content: {
+            seats: state.seats
+              .filter(
+                (seat) =>
+                  seat.seat !== minion.seat &&
+                  (seat.role === 'imp' || ROLES[seat.role].type === 'minion'),
+              )
+              .map((seat) => seat.seat),
+          },
+        })
+      await commit({
+        type: 'told',
+        seat: demon.seat,
+        kind: 'demon-info',
+        content: { seats: minions.map((seat) => seat.seat), bluffs: state.bluffs },
+      })
+    }
     for (const seat of state.seats)
       if (seat.protected)
         await commit({ type: 'status.changed', seat: seat.seat, status: 'protected', value: false })
@@ -1326,7 +1394,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
           !speech ||
           !('speech' in speech) ||
           typeof speech.speech !== 'string' ||
-          validateSpeechChoice(speech, request).length !== 0
+          validateSpeechChoice(speech, request, ports.config.seatCount).length !== 0
         )
           throw new Error('Invalid nomination speech from ports')
         const decision =

@@ -37,6 +37,12 @@ const form = reactive({
   speechLimit: templateConfig?.speechLimit ?? 10,
   whisperLimit: templateConfig?.whisperLimit ?? 3,
 })
+const seatCount = computed({
+  get: () => String(form.presets.length),
+  set: (value: string) => {
+    form.presets = Array.from({ length: Number(value) }, (_, index) => form.presets[index] ?? '')
+  },
+})
 const missingPreset = (id: string) =>
   !!id && !presets.value.some((preset) => String(preset.id) === id)
 const invalidPresets = computed(
@@ -54,6 +60,7 @@ async function create() {
       method: 'POST',
       body: {
         ...form,
+        seatCount: form.presets.length,
         presets: form.presets.map(Number),
         storyteller: form.storyteller ? Number(form.storyteller) : null,
       },
@@ -71,7 +78,7 @@ async function create() {
 <template>
   <section class="max-w-2xl">
     <h1 class="mb-3 text-2xl font-semibold">{{ t('games.new') }}</h1>
-    <p class="mb-8 text-sm leading-6 text-muted-foreground">{{ t('games.tracer') }}</p>
+    <p class="mb-8 text-sm leading-6 text-muted-foreground">{{ t('games.setupHelp') }}</p>
     <p v-if="templateId" class="mb-6 text-sm text-muted-foreground">
       {{ t('games.templateFrom', { id: templateId.slice(0, 8) }) }}
     </p>
@@ -81,6 +88,17 @@ async function create() {
       <NuxtLink to="/models" class="underline">{{ t('nav.models') }}</NuxtLink>
     </p>
     <form class="grid gap-6" @submit.prevent="create">
+      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
+        <Label for="seat-count">{{ t('games.seatCount') }}</Label>
+        <Select v-model="seatCount">
+          <SelectTrigger id="seat-count"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="count in 11" :key="count" :value="String(count + 4)">
+              {{ count + 4 }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div
         v-for="(choice, index) in form.presets"
         :key="index"

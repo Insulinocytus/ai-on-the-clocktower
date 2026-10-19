@@ -48,7 +48,7 @@ interface ModelSnapshot extends Preset {
   seat?: number
 }
 export interface GameConfig {
-  seatCount: 5
+  seatCount: number
   seats: ModelSnapshot[]
   storyteller: ModelSnapshot | null
   discretions: Record<DiscretionId, DiscretionSource>
@@ -221,6 +221,7 @@ export interface Grimoire {
   phase: Phase | null
   seats: SeatState[]
   redHerring: number | null
+  bluffs: RoleId[]
   winner: Alignment | null
   ended: boolean
   aborted: boolean
@@ -235,7 +236,7 @@ export type InformationResult =
   | boolean
   | PairInformation
   | { target: number; role: RoleId }
-  | Pick<Grimoire, 'seats' | 'redHerring'>
+  | (Pick<Grimoire, 'seats' | 'redHerring'> & { bluffs?: RoleId[] })
 type Event<T extends string, P> = { seq: number; type: T } & P
 export type GameEvent =
   | Event<'game.created', GameConfig>
@@ -285,7 +286,7 @@ export type GameEvent =
       'discretion.resolved',
       { discretion: DiscretionId; choice: unknown; source: DiscretionSource; decision?: number }
     >
-  | Event<'grimoire.set', { seats: SeatState[]; redHerring?: number | null }>
+  | Event<'grimoire.set', { seats: SeatState[]; redHerring?: number | null; bluffs?: RoleId[] }>
   | Event<
       'status.changed',
       {
@@ -326,7 +327,11 @@ export type GameEvent =
     >
   | Event<
       'told',
-      { seat: number; kind: 'grimoire'; content: Pick<Grimoire, 'seats' | 'redHerring'> }
+      {
+        seat: number
+        kind: 'grimoire'
+        content: Pick<Grimoire, 'seats' | 'redHerring'> & { bluffs?: RoleId[] }
+      }
     >
   | Event<'seat.memo.updated', { seat: number; memo: string }>
   | Event<'night.choice', { seat: number; role: RoleId; targets: number[] }>
@@ -384,8 +389,11 @@ export interface Ports {
   commit(event: GameEventInput): GameEvent | Promise<GameEvent>
   askContestants(batch: ContestantRequest[]): Promise<ContestantChoice[]>
   discretion(
-    id: 'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D8' | 'D10' | 'D11' | 'D12' | 'D13' | 'D14',
-    candidates: { type: 'setup'; sample: RoleId[] } | (InformationResult | RoleId | Registration)[],
+    id:
+      'D1' | 'D2' | 'D3' | 'D4' | 'D5' | 'D6' | 'D7' | 'D8' | 'D10' | 'D11' | 'D12' | 'D13' | 'D14',
+    candidates:
+      | { type: 'setup'; sample: RoleId[] }
+      | (InformationResult | RoleId | RoleId[] | Registration)[],
     context: Grimoire,
   ): Promise<RoleId[] | RoleId | InformationResult | Registration>
   rng(): number

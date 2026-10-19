@@ -46,8 +46,9 @@ function grimoireText(
   seats: readonly SeatState[],
   language: Language,
   redHerring?: number | null,
+  bluffs?: readonly RoleId[],
 ): string {
-  const text = seats
+  let text = seats
     .map((seat) => {
       const statuses = [
         seat.poisoned ? (language === 'zh' ? '中毒' : 'poisoned') : '',
@@ -80,6 +81,11 @@ function grimoireText(
         : `Seat ${String(seat.seat)}: ${ROLES[seat.role].name.en}, ${seat.alignment}, ${seat.alive ? 'alive' : 'dead'}${statuses.length ? `, ${statuses.join(', ')}` : ''}`
     })
     .join('; ')
+  if (bluffs?.length)
+    text +=
+      language === 'zh'
+        ? `。恶魔伪装：${bluffs.map((role) => ROLES[role].name.zh).join('、')}`
+        : `. Demon bluffs: ${bluffs.map((role) => ROLES[role].name.en).join(', ')}`
   if (redHerring === undefined) return text
   return language === 'zh'
     ? `${text}。占卜师干扰项：${redHerring === null ? '无' : `${String(redHerring)} 号`}。`
@@ -94,7 +100,8 @@ function informationText(
   const zh = language === 'zh'
   if (typeof result === 'boolean') return zh ? (result ? '是' : '否') : result ? 'Yes' : 'No'
   if (typeof result === 'number') return String(result)
-  if ('redHerring' in result) return grimoireText(result.seats, language, result.redHerring)
+  if ('redHerring' in result)
+    return grimoireText(result.seats, language, result.redHerring, result.bluffs)
   const role = ROLES[result.role].name[language]
   if ('seats' in result) {
     const seats = seatList(result.seats, language, observer)
@@ -153,8 +160,8 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
         : `Resolved discretion ${event.discretion}, source: ${SOURCES[event.source].en}; choice: ${JSON.stringify(event.choice)}.`
     case 'grimoire.set':
       return zh
-        ? `设定魔典：${grimoireText(event.seats, language)}。占卜师干扰项：${event.redHerring == null ? '无' : `${String(event.redHerring)} 号`}。`
-        : `Grimoire set: ${grimoireText(event.seats, language)}. Fortune Teller red herring: ${event.redHerring == null ? 'none' : `Seat ${String(event.redHerring)}`}.`
+        ? `设定魔典：${grimoireText(event.seats, language, event.redHerring ?? null, event.bluffs)}`
+        : `Grimoire set: ${grimoireText(event.seats, language, event.redHerring ?? null, event.bluffs)}`
     case 'status.changed': {
       const statuses = {
         poisoned: { zh: '中毒', en: 'poisoned' },
@@ -242,7 +249,7 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
           : `${prefix}${role.name.en} ability result: ${result === undefined ? 'none' : informationText(result, language, observer)}.`
       }
       if (event.kind === 'grimoire')
-        return `${prefix}${grimoireText(event.content.seats, language, event.content.redHerring)}`
+        return `${prefix}${grimoireText(event.content.seats, language, event.content.redHerring, event.content.bluffs)}`
       const seats = seatList(event.content.seats, language, observer)
       if (event.kind === 'minion-info')
         return zh

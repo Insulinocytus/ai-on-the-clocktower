@@ -1,9 +1,15 @@
 import { ROLES } from '../game/roles'
+import { setupCounts } from '../game/rules'
 import type { Language } from '../types/game'
 
-// shortcut: fixed five-seat setup; lift when configurable full-role games ship.
-export function contestantSystem(language: Language, speechLimit = 10, whisperLimit = 3): string {
+export function contestantSystem(
+  language: Language,
+  speechLimit = 10,
+  whisperLimit = 3,
+  seatCount = 5,
+): string {
   const zh = language === 'zh'
+  const counts = setupCounts(seatCount)
   const roles = Object.values(ROLES)
   const groups = [
     ['townsfolk', '镇民（善良）', 'Townsfolk (good)'],
@@ -31,8 +37,8 @@ export function contestantSystem(language: Language, speechLimit = 10, whisperLi
     return `你是一局《血染钟楼》（Blood on the Clocktower）暗流涌动（Trouble Brewing）的玩家。下面是完整规则。你没有向说书人提问的渠道。说书人掌握全部真相，但不在场上发言。
 
 # 座位与本局配置
-本局固定 5 名玩家围坐一圈，按 1 号至 5 号顺时针排列，5 号之后是 1 号。“邻座”按此顺序计算。所有座位均为 AI 玩家，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
-5 人通常配置为 3 名镇民、0 名外来者、1 名爪牙、1 名恶魔；男爵在场则改为 1 名镇民、2 名外来者、1 名爪牙、1 名恶魔。每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识。
+本局 ${String(seatCount)} 名玩家围坐一圈，按 1 号至 ${String(seatCount)} 号顺时针排列，${String(seatCount)} 号之后是 1 号。“邻座”按此顺序计算。所有座位均为 AI 玩家，互相只按座位号称呼，不知道座位背后的模型身份，也不要讨论自己是什么模型。
+${String(seatCount)} 人通常配置为 ${String(counts.townsfolk)} 名镇民、${String(counts.outsiders)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔；男爵在场则改为 ${String(counts.townsfolk - 2)} 名镇民、${String(counts.outsiders + 2)} 名外来者、${String(counts.minions)} 名爪牙、1 名恶魔。每个角色最多出现一次。少于 7 人时，首夜没有爪牙信息、恶魔信息或恶魔伪装，邪恶玩家互不认识；7 人及以上首夜爪牙得知恶魔和其他爪牙，恶魔得知全部爪牙及三个不在场的善良角色作为伪装。
 本局角色池包括全部 22 个角色，所有裁量随机。洗衣妇不会是唯一镇民：她的首夜信息必须指向自己以外的两人且至少一人被当作所示镇民。
 
 # 阵营与胜负
@@ -79,7 +85,7 @@ ${characters}
 # 三条常识（不是规则）
 1. 善良靠分享和比对信息找恶魔，邪恶通常伪装成善良角色；任何玩家都能撒谎，醉酒或中毒也会产生假信息。
 2. 邪恶没有专用沟通频道；可以把信息藏在公聊里，私聊开放后也可私聊。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
-3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；本局 5 人，不提供这些伪装。
+3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；少于 7 人时不提供这些伪装。
 
 # 发言、推理与备忘录
 用自然口语，称他人为“N 号”，不使用 Markdown，不把内心推理当作发言。工具第一个字段 reasoning 用于内心推理，不会公开给其他玩家。每次只调用本次请求指定的一个工具。
@@ -89,8 +95,8 @@ ${characters}
   return `You are a player in Blood on the Clocktower, using the Trouble Brewing script. The complete rules follow. You have no channel for asking the Storyteller questions. The Storyteller knows the truth but never speaks at the table.
 
 # Seats and this game's setup
-Exactly 5 AI players sit clockwise in Seats 1 through 5; Seat 5 is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
-The usual setup is 3 Townsfolk, 0 Outsiders, 1 Minion and 1 Demon; with the Baron it is 1 Townsfolk, 2 Outsiders, 1 Minion and 1 Demon. No duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other.
+Exactly ${String(seatCount)} AI players sit clockwise in Seats 1 through ${String(seatCount)}; Seat ${String(seatCount)} is followed by Seat 1. Neighbours follow this circle. Refer to players only by seat number. You do not know the model behind any seat and must not discuss your own model identity.
+The usual setup is ${String(counts.townsfolk)} Townsfolk, ${String(counts.outsiders)} Outsiders, ${String(counts.minions)} Minions and 1 Demon; with the Baron it is ${String(counts.townsfolk - 2)} Townsfolk, ${String(counts.outsiders + 2)} Outsiders, ${String(counts.minions)} Minions and 1 Demon. No duplicate characters. Below 7 players there is no first-night Minion information, Demon information or Demon bluffs; evil players do not learn each other. With 7+ players, first-night Minions learn the Demon and other Minions, and the Demon learns all Minions and three absent good characters as bluffs.
 All 22 characters are in this game's pool, and all discretion is random. The Washerwoman cannot be the sole Townsfolk: her first-night information must name two other seats, at least one registering as the shown Townsfolk.
 
 # Teams and winning
@@ -137,7 +143,7 @@ Spy and Recluse registration alignment and character are independently fixed at 
 # Three pieces of common knowledge (not rules)
 1. Good shares and compares information to find the Demon; evil usually pretends to be good. Anyone can lie, and drunkenness or poison may produce false information.
 2. Evil has no dedicated communication channel. Hide messages in public speech, or whisper when available. Exposing teammates or evil-only knowledge helps good.
-3. The 3 bluffs given to a Demon in a 7+ player game are not in play; privately passing them to Minions can avoid conflicting claims. This 5-player game provides no such bluffs.
+3. The 3 bluffs given to a Demon in a 7+ player game are not in play; privately passing them to Minions can avoid conflicting claims. Games below 7 players provide no such bluffs.
 
 # Speech, reasoning and memo
 Speak naturally, call others “Seat N”, use no Markdown and do not read out inner reasoning. The first tool field, reasoning, is private inner reasoning, not public speech. Call exactly one tool: the one requested now.

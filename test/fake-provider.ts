@@ -44,6 +44,7 @@ const completion = (message: Record<string, unknown>) => ({
 /** A local stand-in for an OpenAI-compatible Chat Completions endpoint that answers from a script. */
 export async function startFakeProvider(
   responder?: (request: RecordedRequest) => FakeStep | undefined | Promise<FakeStep | undefined>,
+  fallback?: (request: RecordedRequest) => FakeStep | undefined,
 ): Promise<FakeProvider> {
   const steps: FakeStep[] = []
   const requests: RecordedRequest[] = []
@@ -74,7 +75,7 @@ export async function startFakeProvider(
       void Promise.resolve()
         .then(() => responder?.(request))
         .then((reply) => {
-          const step = reply ?? steps.shift()
+          const step = reply ?? steps.shift() ?? fallback?.(request)
           if (!step) {
             json(500, { error: { message: 'fake provider: no scripted step left' } })
             return

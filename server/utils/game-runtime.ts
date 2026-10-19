@@ -17,9 +17,8 @@ import { chatCompletion, LlmCallError } from './llm'
 import { checkToolCall, contestantTools } from './tools'
 import { appendGameEvent, insertGame, getGame, LOG_VERSION } from './game-store'
 
-// shortcut: five seats only; lift alongside the full role pool and demon succession ticket.
 export const gameInput = z.object({
-  presets: z.array(z.int()).length(5),
+  presets: z.array(z.int()).min(5).max(15),
   language: z.enum(['zh', 'en']),
   speechLimit: z.int().min(1).default(10),
   whisperLimit: z.int().min(0).default(3),
@@ -85,7 +84,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
     })
   // shortcut: random-only discretion; replace the dispatcher when manual/model discretion is added.
   const config: GameConfig = {
-    seatCount: 5,
+    seatCount: seats.length,
     seats,
     storyteller: null,
     discretions: {
@@ -183,7 +182,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       }
       const toolCheck = checkToolCall(raw, tools, tool)
       const errors = toolCheck.ok
-        ? validateContestantChoice(toolCheck.arguments, request)
+        ? validateContestantChoice(toolCheck.arguments, request, config.seatCount)
         : [{ code: toolCheck.code }]
       const valid = errors.length === 0
       const usage = usageShape.safeParse(raw)
