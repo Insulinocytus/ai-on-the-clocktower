@@ -1084,7 +1084,7 @@ describe('evil team setup through the rules seam', () => {
         })
         expect(prompt.messages[0].content).toContain(
           language === 'en'
-            ? `Exactly ${String(count)} AI players`
+            ? `Exactly ${String(count)} contestant models`
             : `本局 ${String(count)} 名玩家`,
         )
         expect(prompt.messages[1].content).toContain(
@@ -1844,7 +1844,7 @@ describe('folds at arbitrary log prefixes and winner precedence', () => {
       { seq: 6, type: 'phase.started', day: 2, phase: 'dawn' },
       { seq: 7, type: 'dawn.announced', day: 2, deaths: [2] },
       { seq: 8, type: 'vote', seat: 2, raiseHand: true, voteUsed: true },
-      { seq: 9, type: 'game.ended', winner: 'good', reason: 'test' },
+      { seq: 9, type: 'game.ended', winner: 'good', reason: 'all_demons_dead' },
     ]
     for (let length = 0; length <= events.length; length++) {
       const prefix = events.slice(0, length)

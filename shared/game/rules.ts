@@ -5,6 +5,7 @@ import type {
   DiscretionChoice,
   DiscretionDetails,
   DiscretionId,
+  GameEndReason,
   GameEvent,
   GameEventInput,
   Grimoire,
@@ -20,6 +21,7 @@ import type {
   SpeechRequest,
   ValidationError,
 } from '../types/game'
+import { MEMO_MAX_LENGTH } from '../types/game'
 import { ROLES } from './roles'
 
 const ROLE_POOL = Object.values(ROLES).map((role) => role.id)
@@ -484,7 +486,10 @@ export function validateNightChoice(value: unknown, request: NightRequest): Vali
   ) {
     errors.push({ code: 'invalid_targets' })
   }
-  if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
+  if (
+    choice.memo !== undefined &&
+    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
+  )
     errors.push({ code: 'invalid_memo' })
   return errors
 }
@@ -516,7 +521,10 @@ export function validateSpeechChoice(
       choice.slayer_target > seatCount)
   )
     errors.push({ code: 'invalid_slayer_target' })
-  if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
+  if (
+    choice.memo !== undefined &&
+    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
+  )
     errors.push({ code: 'invalid_memo' })
   return errors
 }
@@ -532,7 +540,10 @@ export function validateContestantChoice(
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
   const errors: ValidationError[] = []
   if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
-  if (choice.memo !== undefined && (typeof choice.memo !== 'string' || choice.memo.length > 2000))
+  if (
+    choice.memo !== undefined &&
+    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
+  )
     errors.push({ code: 'invalid_memo' })
   if (request.tool === 'nominate') {
     if (
@@ -570,7 +581,7 @@ export function validateContestantChoice(
 export function winner(
   state: Grimoire,
   endOfDay = false,
-): { winner: Alignment; reason: string } | null {
+): { winner: Alignment; reason: GameEndReason } | null {
   if (!state.seats.some((seat) => seat.alive && ROLES[seat.role].type === 'demon')) {
     return { winner: 'good', reason: 'all_demons_dead' }
   }
@@ -605,6 +616,9 @@ function registeredRole(seat: SeatState): RoleId {
 export async function runGame(ports: Ports): Promise<Grimoire> {
   let state = fold(ports.log)
   let executionDeath: number | null = null
+  const refold = () => {
+    for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+  }
   const stopped = () => state.ended || state.aborted
   const commit = async (input: GameEventInput) => {
     const event = await ports.commit(input)
@@ -799,7 +813,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       validateNightChoice(choice, request).length !== 0
     )
       throw new Error('Invalid night choice from ports')
-    for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+    refold()
     if (!stopped())
       await commit({
         type: 'night.choice',
@@ -1172,7 +1186,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         })
       )
         throw new Error('Invalid speech choice from ports')
-      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      refold()
       if (stopped()) break
       const offers = batch.flatMap((request, index) => {
         const choice = choices[index] as SpeechChoice
@@ -1262,7 +1276,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         eligible.length > 1
           ? await ports.askContestants(proposals)
           : [{ reasoning: '', members: null }]
-      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      refold()
       if (stopped()) return
       if (
         choices.length !== proposals.length ||
@@ -1297,7 +1311,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         else await commit({ type: 'whisper.ranked', seat: seat.seat, round, ranking: [] })
       }
       const ranked = rankings.length ? await ports.askContestants(rankings) : []
-      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      refold()
       if (stopped()) return
       if (
         ranked.length !== rankings.length ||
@@ -1427,7 +1441,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         .map((seat) => ({ tool: 'nominate', seat: seat.seat, day, nominees }))
       if (batch.length === 0 || nominees.length === 0) break
       const choices = await ports.askContestants(batch)
-      for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+      refold()
       if (stopped()) return state
       if (
         choices.length !== batch.length ||
@@ -1477,7 +1491,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       ] as const) {
         const request: SpeechRequest = { tool: 'speak', seat, day, kind, nominator, nominee }
         const speeches = await ports.askContestants([request])
-        for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+        refold()
         if (stopped()) return state
         const speech = speeches[0]
         if (
@@ -1517,7 +1531,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         let raiseHand = false
         if (canRaiseHand) {
           const choices = await ports.askContestants([request])
-          for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
+          refold()
           if (stopped()) return state
           const choice = choices[0]
           if (
