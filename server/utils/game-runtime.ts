@@ -28,6 +28,7 @@ export const gameInput = z.object({
 interface Runner {
   controller: AbortController
   log: GameEvent[]
+  commit: (event: GameEventInput) => GameEvent
 }
 const runners = new Map<string, Runner>()
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
@@ -51,6 +52,15 @@ class ContestantFailure extends Error {
   ) {
     super(message)
   }
+}
+
+export function abortGame(id: string) {
+  const game = getGame(id)
+  if (game.status === 'ended' || game.status === 'aborted') return game
+  const runner = runners.get(id)
+  if (!runner) throw createError({ statusCode: 409, statusMessage: 'Game runner is unavailable' })
+  runner.commit({ type: 'game.aborted', reason: 'human' })
+  return getGame(id)
 }
 
 export function createGame(input: z.infer<typeof gameInput>) {
@@ -102,15 +112,20 @@ export function createGame(input: z.infer<typeof gameInput>) {
     promptVersion: PROMPT_VERSION,
   }
   const id = randomUUID()
-  const runner: Runner = { controller: new AbortController(), log: [] }
+  const runner: Runner = {
+    controller: new AbortController(),
+    log: [],
+    commit(event) {
+      runner.controller.signal.throwIfAborted()
+      if (event.type === 'game.ended' || event.type === 'game.aborted') runner.controller.abort()
+      const stored = appendGameEvent(id, event, runner.log.length + 1)
+      runner.log.push(stored)
+      return stored
+    },
+  }
   insertGame(id)
   runners.set(id, runner)
-  const commit = (event: GameEventInput): GameEvent => {
-    runner.controller.signal.throwIfAborted()
-    const stored = appendGameEvent(id, event, runner.log.length + 1)
-    runner.log.push(stored)
-    return stored
-  }
+  const commit = runner.commit
   commit({ type: 'game.created', ...config })
   const rng = createRng(config.seed)
   const tools = contestantTools(config.language, config.seatCount)

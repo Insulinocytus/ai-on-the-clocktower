@@ -35,6 +35,7 @@ export default defineEventHandler(async (event): Promise<TrialResult> => {
     raw = await chatCompletion(
       {
         ...provider,
+        providerId: provider.id,
         model: preset.model,
         forceToolChoice: preset.forceToolChoice,
         extraBody: JSON.parse(preset.extraBody) as Record<string, unknown>,

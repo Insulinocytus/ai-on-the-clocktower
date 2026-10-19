@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
+import { $fetch, fetch, setup, startServer, stopServer } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { GameEvent } from '../shared/types/game'
@@ -30,12 +30,17 @@ const gameRequest = z.object({
   tool_choice: toolChoice,
 })
 
-async function preset(apiKeyEnv: string, baseUrl = 'http://127.0.0.1:1/v1', timeoutSec = 300) {
+async function preset(
+  apiKeyEnv: string,
+  baseUrl = 'http://127.0.0.1:1/v1',
+  timeoutSec = 300,
+  maxConcurrency = 5,
+) {
   const provider = await $fetch<{ id: number }>('/api/providers', {
     method: 'POST',
-    body: { name: 'Game provider', baseUrl, apiKeyEnv, timeoutSec },
+    body: { name: 'Game provider', baseUrl, apiKeyEnv, timeoutSec, maxConcurrency },
   })
-  return $fetch<{ id: number }>('/api/presets', {
+  return $fetch<{ id: number; providerId: number }>('/api/presets', {
     method: 'POST',
     body: {
       name: 'Game preset',
@@ -674,6 +679,259 @@ describe('games HTTP seam', () => {
       }
     },
   )
+  it('aborts an in-flight game once without recording the canceled decision or further requests', async () => {
+    const fake = await startFakeProvider()
+    try {
+      fake.script({ kind: 'hang' })
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      const opened = await $fetch<GameSummary>('/api/games', {
+        method: 'POST',
+        body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+      })
+      await expect.poll(() => fake.requests.length).toBe(1)
+      expect(await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })).toMatchObject({
+        status: 'aborted',
+        reason: 'human',
+      })
+      await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })
+      await expect.poll(() => fake.requests[0]?.closed).toBe(true)
+      const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+      expect(events.filter((event) => event.type === 'game.aborted')).toHaveLength(1)
+      expect(events.some((event) => event.type === 'contestant.decision')).toBe(false)
+      expect(events.at(-1)).toMatchObject({ type: 'game.aborted', reason: 'human' })
+      expect(fake.requests).toHaveLength(1)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  it('shares provider capacity across games in FIFO order and removes aborted queued calls', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' }, { kind: 'hang' })
+      const provider = await $fetch<{ id: number }>('/api/providers', {
+        method: 'POST',
+        body: {
+          name: 'Shared queue',
+          baseUrl: fake.baseUrl,
+          apiKeyEnv: 'CLOCKTOWER_GAME_KEY',
+          maxConcurrency: 1,
+        },
+      })
+      for (const name of ['first', 'canceled', 'third']) {
+        const model = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: provider.id },
+        })
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          }),
+        )
+      }
+      await expect.poll(() => fake.requests.length).toBeGreaterThan(0)
+      expect(fake.requests).toHaveLength(1)
+      const [first, canceled, third] = games
+      if (!first || !canceled || !third) throw new Error('Missing game')
+      await $fetch(`/api/games/${canceled.id}/abort`, { method: 'POST' })
+      expect(fake.requests).toHaveLength(1)
+      await $fetch(`/api/games/${first.id}/abort`, { method: 'POST' })
+      await expect.poll(() => fake.requests.length).toBe(2)
+      expect(fake.requests.map((request) => request.body.model)).toEqual(['first', 'third'])
+      const events = await $fetch<GameEvent[]>(`/api/games/${canceled.id}/events`)
+      expect(events.some((event) => event.type === 'contestant.decision')).toBe(false)
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('reads updated provider capacity when granting queued calls and keeps FIFO order', async () => {
+    const fake = await startFakeProvider()
+    const gate = Promise.withResolvers<undefined>()
+    const calls: Promise<unknown>[] = []
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      fake.script(
+        {
+          kind: 'toolCall',
+          name: 'speak',
+          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          waitFor: gate.promise,
+        },
+        { kind: 'hang' },
+        { kind: 'hang' },
+      )
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      await expect.poll(() => fake.requests.length).toBe(1)
+      for (const name of ['second', 'third']) {
+        const queued = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: model.providerId },
+        })
+        calls.push(
+          $fetch(`/api/presets/${String(queued.id)}/trial`, {
+            method: 'POST',
+            body: { lang: 'en' },
+          }),
+        )
+      }
+      await $fetch(`/api/providers/${String(model.providerId)}`, {
+        method: 'PUT',
+        body: {
+          name: 'Updated',
+          baseUrl: fake.baseUrl,
+          apiKeyEnv: 'CLOCKTOWER_GAME_KEY',
+          maxConcurrency: 2,
+        },
+      })
+      gate.resolve(undefined)
+      await expect.poll(() => fake.requests.length).toBe(3)
+      expect(fake.requests.map((request) => request.body.model)).toEqual([
+        'fake-model',
+        'second',
+        'third',
+      ])
+    } finally {
+      gate.resolve(undefined)
+      await fake.close()
+      await Promise.allSettled(calls)
+    }
+  })
+
+  it('starts each timeout only after a queued request gets its slot', async () => {
+    const fake = await startFakeProvider()
+    const gate = Promise.withResolvers<undefined>()
+    const calls: Promise<{ valid: boolean; error?: string }>[] = []
+    try {
+      // The app runs in a subprocess: exercise its real timeout, not the Vitest clock.
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 1, 1)
+      fake.script(
+        { kind: 'hang' },
+        {
+          kind: 'toolCall',
+          name: 'speak',
+          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          waitFor: gate.promise,
+        },
+      )
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      await expect.poll(() => fake.requests.length).toBe(1)
+      calls.push(
+        $fetch(`/api/presets/${String(model.id)}/trial`, { method: 'POST', body: { lang: 'en' } }),
+      )
+      expect(await calls[0]).toMatchObject({ valid: false, error: 'Timed out after 1s' })
+      await expect.poll(() => fake.requests.length).toBe(2)
+      gate.resolve(undefined)
+      expect(await calls[1]).toMatchObject({ valid: true })
+    } finally {
+      gate.resolve(undefined)
+      await fake.close()
+      await Promise.allSettled(calls)
+    }
+  })
+
+  it('releases provider slots during backoff and cancels the delayed retry on termination', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      for (let i = 0; i < 20; i++) fake.script({ kind: 'rateLimit', retryAfterSec: 60 })
+      for (const name of ['backoff', 'other-game']) {
+        const contestant = await $fetch<{ id: number }>('/api/presets', {
+          method: 'POST',
+          body: { name, model: name, providerId: model.providerId },
+        })
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => contestant.id), language: 'en' },
+          }),
+        )
+      }
+      await expect
+        .poll(() => fake.requests.some((request) => request.body.model === 'other-game'))
+        .toBe(true)
+      for (const game of games) {
+        await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+        const events = await $fetch<GameEvent[]>(`/api/games/${game.id}/events`)
+        expect(
+          events
+            .filter((event) => event.type === 'contestant.decision')
+            .every((event) => event.attempt === 1),
+        ).toBe(true)
+        expect(events.at(-1)).toMatchObject({ type: 'game.aborted', reason: 'human' })
+      }
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('keeps different provider ids independent even when their URLs are identical', async () => {
+    const fake = await startFakeProvider()
+    const games: GameSummary[] = []
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' })
+      for (let index = 0; index < 2; index++) {
+        const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+        games.push(
+          await $fetch<GameSummary>('/api/games', {
+            method: 'POST',
+            body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+          }),
+        )
+      }
+      await expect.poll(() => fake.requests.length).toBe(2)
+      expect(fake.requests.every((request) => !request.closed)).toBe(true)
+    } finally {
+      for (const game of games) await $fetch(`/api/games/${game.id}/abort`, { method: 'POST' })
+      await fake.close()
+    }
+  })
+
+  it('marks unfinished games aborted once on process restart while preserving terminal games', async () => {
+    const fake = await startFakeProvider()
+    try {
+      fake.script({ kind: 'hang' }, { kind: 'hang' })
+      const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl, 300, 1)
+      const open = () =>
+        $fetch<GameSummary>('/api/games', {
+          method: 'POST',
+          body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+        })
+      const finished = await open()
+      await $fetch(`/api/games/${finished.id}/abort`, { method: 'POST' })
+      const unfinished = await open()
+      await expect.poll(() => fake.requests.some((request) => !request.closed)).toBe(true)
+      await stopServer()
+      await startServer()
+      const list = await $fetch<GameSummary[]>('/api/games')
+      expect(list.find((game) => game.id === unfinished.id)).toMatchObject({
+        status: 'aborted',
+        reason: 'process_restart',
+      })
+      expect(list.find((game) => game.id === finished.id)).toMatchObject({
+        status: 'aborted',
+        reason: 'human',
+      })
+      await stopServer()
+      await startServer()
+      const events = await $fetch<GameEvent[]>(`/api/games/${unfinished.id}/events`)
+      expect(events.filter((event) => event.type === 'game.aborted')).toEqual([
+        expect.objectContaining({ reason: 'process_restart' }),
+      ])
+      expect(fake.requests.filter((request) => !request.closed)).toHaveLength(0)
+    } finally {
+      await fake.close()
+    }
+  })
 })
 
 it.each([0, -1, 1.5, '2', null])(
