@@ -3,7 +3,7 @@ import type { Preset } from './models'
 export const MEMO_MAX_LENGTH = 2000
 
 export type GameEndReason = 'all_demons_dead' | 'two_alive' | 'mayor' | 'saint_executed'
-export type GameAbortReason = 'model_call_failed' | 'engine_error' | 'human' | 'process_restart'
+type GameAbortReason = 'model_call_failed' | 'engine_error' | 'human' | 'process_restart'
 export type GameReason = GameEndReason | GameAbortReason
 
 export type Language = 'en' | 'zh'
