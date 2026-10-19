@@ -112,8 +112,8 @@ export function buildContestantPrompt({
                   ? `回应 ${String(request.nominator)} 号的提名，给出一条非空辩护，不能 pass。`
                   : `Give one nonempty defence against Seat ${String(request.nominator)}'s nomination; you cannot pass.`
         return zh
-          ? `# 本次请求\n${purpose}\n${free ? '只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–5）；任何座位都可以声称开枪，否则填 null。' : 'slayer_target 必须填 null。'}reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 speak。`
-          : `# This request\n${purpose}\n${free ? 'Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–5), otherwise null. Any seat may claim a shot.' : 'slayer_target must be null.'} Put private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall speak.`
+          ? `# 本次请求\n${purpose}\n${free ? `只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–${String(state.seats.length)}）；任何座位都可以声称开枪，否则填 null。` : 'slayer_target 必须填 null。'}reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 speak。`
+          : `# This request\n${purpose}\n${free ? `Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–${String(state.seats.length)}), otherwise null. Any seat may claim a shot.` : 'slayer_target must be null.'} Put private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall speak.`
       }
       case 'vote': {
         const votes = request.votes
