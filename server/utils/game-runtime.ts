@@ -9,17 +9,24 @@ import type {
   ContestantRequest,
   Ports,
   DiscretionId,
+  DiscretionCandidates,
   DiscretionChoice,
   ValidationError,
 } from '#shared/types/game'
-import { createRng, DISCRETION_IDS, runGame, validateContestantChoice } from '#shared/game/rules'
+import {
+  createRng,
+  DISCRETION_IDS,
+  runGame,
+  validateContestantChoice,
+  validateDiscretionChoice,
+} from '#shared/game/rules'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
 import { getPreset, getProvider } from './models'
 import { chatCompletion, LlmCallError } from './llm'
 import { checkToolCall, contestantTools, storytellerTools, type Tool } from './tools'
-import { appendGameEvent, insertGame, getGame, LOG_VERSION } from './game-store'
+import { appendGameEvent, insertGame, getGame, gameEvents, LOG_VERSION } from './game-store'
 
 export const gameInput = z.object({
   presets: z.array(z.int()).min(5).max(15),
@@ -36,6 +43,15 @@ interface Runner {
   controller: AbortController
   log: GameEvent[]
   commit: (event: GameEventInput) => GameEvent
+  lastManual?: { seq: number; choice: DiscretionChoice }
+  pending: Map<
+    number,
+    {
+      candidates: DiscretionCandidates
+      seatCount: number
+      resolve: (choice: DiscretionChoice) => void
+    }
+  >
 }
 const runners = new Map<string, Runner>()
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
@@ -70,10 +86,77 @@ export function abortGame(id: string) {
   return getGame(id)
 }
 
+export function submitManualDiscretion(id: string, seq: number, choice: unknown) {
+  const game = getGame(id)
+  const runner = runners.get(id)
+  const pending = runner?.pending.get(seq)
+  if (!runner || runner.controller.signal.aborted || !pending) {
+    const log = runner?.log ?? gameEvents(id)
+    const request = log.find((event) => event.seq === seq && event.type === 'discretion.requested')
+    const resolved =
+      request?.type === 'discretion.requested'
+        ? log.find(
+            (event) =>
+              event.seq > seq &&
+              event.type === 'discretion.resolved' &&
+              event.discretion === request.discretion,
+          )
+        : undefined
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Manual discretion is no longer pending',
+      data: {
+        ...(runner?.lastManual?.seq === seq
+          ? { choice: runner.lastManual.choice }
+          : resolved?.type === 'discretion.resolved'
+            ? { choice: resolved.choice }
+            : {}),
+        status: game.status,
+      },
+    })
+  }
+  const errors = validateDiscretionChoice(choice, pending.candidates, pending.seatCount)
+  if (errors.length)
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Illegal discretion choice',
+      data: { errors },
+    })
+  runner.pending.delete(seq)
+  runner.lastManual = { seq, choice: choice as DiscretionChoice }
+  pending.resolve(choice as DiscretionChoice)
+  return { choice }
+}
+
+function waitForManual(
+  runner: Runner,
+  seq: number,
+  candidates: DiscretionCandidates,
+  seatCount: number,
+): Promise<{ choice: DiscretionChoice }> {
+  const signal = runner.controller.signal
+  signal.throwIfAborted()
+  const { promise, resolve, reject } = Promise.withResolvers<{ choice: DiscretionChoice }>()
+  const cancel = () => {
+    runner.pending.delete(seq)
+    reject(signal.reason instanceof Error ? signal.reason : new Error('Game aborted'))
+  }
+  signal.addEventListener('abort', cancel, { once: true })
+  runner.pending.set(seq, {
+    candidates,
+    seatCount,
+    resolve: (choice) => {
+      signal.removeEventListener('abort', cancel)
+      resolve({ choice })
+    },
+  })
+  return promise
+}
+
 export function createGame(input: z.infer<typeof gameInput>) {
   const seats = input.presets.map((id, index) => ({ ...getPreset(id), seat: index + 1 }))
   const discretions = Object.fromEntries(
-    DISCRETION_IDS.map((id) => [id, input.discretions[id] ?? 'random']),
+    DISCRETION_IDS.map((id) => [id, input.discretions[id] ?? 'manual']),
   ) as GameConfig['discretions']
   const needsStoryteller = Object.values(discretions).includes('storyteller')
   if (needsStoryteller && !input.storyteller)
@@ -113,6 +196,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
   const runner: Runner = {
     controller: new AbortController(),
     log: [],
+    pending: new Map(),
     commit(event) {
       runner.controller.signal.throwIfAborted()
       if (event.type === 'game.ended' || event.type === 'game.aborted') runner.controller.abort()
@@ -249,7 +333,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       }
       return choices
     },
-    discretion: (id, candidates, context) => {
+    discretion: (id, candidates, context, requestSeq) => {
       switch (config.discretions[id]) {
         case 'random': {
           const choice = Array.isArray(candidates)
@@ -272,7 +356,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
             decision: result.decision,
           }))
         case 'manual':
-          throw new Error(`Discretion source ${config.discretions[id]} is not available`)
+          return waitForManual(runner, requestSeq, candidates, config.seatCount)
       }
     },
   }

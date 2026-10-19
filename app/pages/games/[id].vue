@@ -24,6 +24,70 @@ const showLosing = ref(false)
 const focusedSeat = ref<number>()
 let generation = 0
 let source: EventSource | undefined
+let manualSource: EventSource | undefined
+const manualEvents = ref<GameEvent[]>([])
+const manualOpen = ref(false)
+const pending = computed(() => {
+  if (
+    manualEvents.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
+  )
+    return undefined
+  const request = manualEvents.value.findLast(
+    (event) => event.type === 'discretion.requested' && event.source === 'manual',
+  )
+  return request?.type === 'discretion.requested' &&
+    !manualEvents.value.some(
+      (event) => event.type === 'discretion.resolved' && event.seq > request.seq,
+    )
+    ? request
+    : undefined
+})
+watch(
+  () => pending.value?.seq,
+  (seq) => {
+    manualOpen.value = seq !== undefined
+  },
+)
+
+function mergeManual(incoming: GameEvent[]) {
+  const bySeq = new Map(manualEvents.value.map((entry) => [entry.seq, entry]))
+  for (const entry of incoming) bySeq.set(entry.seq, entry)
+  manualEvents.value = [...bySeq.values()].sort((a, b) => a.seq - b.seq)
+  if (
+    manualEvents.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
+  )
+    manualSource?.close()
+}
+async function catchUpManual() {
+  try {
+    mergeManual(
+      await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
+        query: { observer: 'storyteller', after: manualEvents.value.at(-1)?.seq ?? 0 },
+      }),
+    )
+    await refresh()
+  } catch (cause) {
+    error.value = apiErrorMessage(cause)
+  }
+}
+function connectManual() {
+  if (replay.value || !game.value?.replayable) return
+  manualSource = new EventSource(`/api/games/${id}/stream?observer=storyteller&after=0`)
+  manualSource.onmessage = (message) => {
+    const event = JSON.parse(String(message.data)) as GameEvent
+    mergeManual([event])
+    if (
+      event.type === 'discretion.requested' ||
+      event.type === 'discretion.resolved' ||
+      event.type === 'game.ended' ||
+      event.type === 'game.aborted'
+    )
+      void refresh()
+  }
+  manualSource.onopen = () => {
+    void catchUpManual()
+  }
+}
 
 const blocks = computed(() =>
   channelBlocks(events.value)
@@ -124,6 +188,7 @@ async function abort() {
   try {
     game.value = await $fetch<GameSummary>(`/api/games/${id}/abort`, { method: 'POST' })
     await catchUp(events.value.at(-1)?.seq ?? 0)
+    await catchUpManual()
   } catch (cause) {
     error.value = apiErrorMessage(cause)
   } finally {
@@ -157,9 +222,15 @@ function connect() {
     if (current === generation && !replay.value) error.value = t('games.reconnecting')
   }
 }
-onMounted(connect)
+onMounted(() => {
+  connect()
+  connectManual()
+})
 watch(observer, connect)
-onUnmounted(() => source?.close())
+onUnmounted(() => {
+  source?.close()
+  manualSource?.close()
+})
 </script>
 
 <template>
@@ -175,6 +246,14 @@ onUnmounted(() => source?.close())
         <h1 class="mr-2 font-semibold">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
         <Badge variant="outline">{{ replay ? t('games.replay') : t('games.live') }}</Badge>
         <Badge variant="secondary">{{ t(`games.${game.status}`) }}</Badge>
+        <Button
+          v-if="pending && !manualOpen"
+          variant="outline"
+          size="sm"
+          class="border-amber-400 text-amber-800"
+          @click="manualOpen = true"
+          >{{ t('manual.waiting', { discretion: pending.discretion }) }}</Button
+        >
         <div v-if="game.replayable" class="ml-auto flex items-center gap-2">
           <template v-if="replay">
             <Button
@@ -261,6 +340,18 @@ onUnmounted(() => source?.close())
           @clear-focus="focusedSeat = undefined"
         />
       </div>
+      <SpectatorDiscretion
+        v-if="pending"
+        :key="pending.seq"
+        v-model:open="manualOpen"
+        :game-id="id"
+        :config="game.config"
+        :request="pending"
+        :events="manualEvents"
+        :aborting="aborting"
+        @submitted="catchUpManual"
+        @abort="abort"
+      />
     </template>
   </section>
 </template>

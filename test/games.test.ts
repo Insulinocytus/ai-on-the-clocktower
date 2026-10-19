@@ -21,6 +21,22 @@ await setup({
 })
 
 const toolChoice = z.object({ function: z.object({ name: z.string() }) })
+const randomDiscretions = {
+  D1: 'random',
+  seating: 'random',
+  D2: 'random',
+  D3: 'random',
+  D4: 'random',
+  D5: 'random',
+  D6: 'random',
+  D7: 'random',
+  D8: 'random',
+  D10: 'random',
+  D11: 'random',
+  D12: 'random',
+  D13: 'random',
+  D14: 'random',
+} as const
 
 async function nightProvider() {
   const action = gameActions()
@@ -163,6 +179,7 @@ describe('games HTTP seam', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        discretions: randomDiscretions,
         presets: [a.id, b.id, a.id, b.id, a.id],
         language: 'en',
         whisperLimit: 0,
@@ -173,6 +190,67 @@ describe('games HTTP seam', () => {
       data: { missing: ['CLOCKTOWER_MISSING_A', 'CLOCKTOWER_MISSING_B'] },
     })
     expect(await $fetch('/api/games')).toEqual([])
+  })
+  it('accepts only the first legal manual submission and rejects submissions after abort', async () => {
+    const model = await preset('CLOCKTOWER_GAME_KEY')
+    const opened = await $fetch<GameSummary>('/api/games', {
+      method: 'POST',
+      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+    })
+    const history = () => $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+    try {
+      await expect
+        .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+        .toBe('waiting')
+      expect(Object.values(opened.config.discretions)).toEqual(
+        Array.from({ length: 14 }, () => 'manual'),
+      )
+      expect(await $fetch<GameSummary[]>('/api/games')).toContainEqual(
+        expect.objectContaining({ id: opened.id, status: 'waiting' }),
+      )
+      const request = (await history()).find((event) => event.type === 'discretion.requested')
+      expect(request).toMatchObject({ discretion: 'D1', source: 'manual' })
+      if (!request) throw new Error('Missing manual request')
+      const submit = (choice: unknown, seq = request.seq) =>
+        fetch(`/api/games/${opened.id}/discretions/${String(seq)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ choice }),
+        })
+      expect((await submit(['imp'])).status).toBe(409)
+      expect((await submit(null, request.seq + 999)).status).toBe(409)
+      const choice = ['chef', 'fortuneteller', 'soldier', 'poisoner', 'imp']
+      const responses = await Promise.all([submit(choice), submit(choice)])
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 409])
+      const conflict = responses.find((response) => response.status === 409)
+      expect(await conflict?.json()).toMatchObject({ data: { choice } })
+      await expect
+        .poll(
+          async () =>
+            (await history()).filter((event) => event.type === 'discretion.requested').length,
+        )
+        .toBe(2)
+      const events = await history()
+      const resolved = events.filter((event) => event.type === 'discretion.resolved')
+      expect(resolved).toEqual([
+        expect.objectContaining({ discretion: 'D1', source: 'manual', choice }),
+      ])
+      expect(resolved[0]).not.toHaveProperty('decision')
+      expect(resolved[0]).not.toHaveProperty('reasoning')
+      expect(events.some((event) => event.type === 'storyteller.decision')).toBe(false)
+      const pending = events.findLast((event) => event.type === 'discretion.requested')
+      if (pending?.type !== 'discretion.requested' || !Array.isArray(pending.candidates))
+        throw new Error('Missing red-herring request')
+      expect(pending).toMatchObject({ discretion: 'D3', source: 'manual' })
+      expect((await submit(999, pending.seq)).status).toBe(409)
+      await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })
+      expect((await submit(pending.candidates[0], pending.seq)).status).toBe(409)
+      expect(
+        (await history()).filter((event) => event.type === 'discretion.resolved'),
+      ).toHaveLength(1)
+    } finally {
+      await $fetch(`/api/games/${opened.id}/abort`, { method: 'POST' })
+    }
   })
 
   it('requires a storyteller preset only when a discretion uses it and checks its credentials', async () => {
@@ -238,7 +316,7 @@ describe('games HTTP seam', () => {
             storyteller: model.id,
             language,
             whisperLimit: 0,
-            discretions: { D1: 'storyteller', seating: 'storyteller' },
+            discretions: { ...randomDiscretions, D1: 'storyteller', seating: 'storyteller' },
           },
         })
         await expect
@@ -302,6 +380,7 @@ describe('games HTTP seam', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        discretions: randomDiscretions,
         presets: Array.from({ length: seatCount }, () => model.id),
         language: 'en',
         whisperLimit: 0,
@@ -344,6 +423,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: seatCount }, () => model.id),
           language: 'en',
           whisperLimit: 0,
@@ -475,6 +555,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language: 'zh',
           whisperLimit: 0,
@@ -569,6 +650,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language: 'en',
           whisperLimit: 0,
@@ -623,6 +705,7 @@ describe('games HTTP seam', () => {
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
           body: {
+            discretions: randomDiscretions,
             presets: Array.from({ length: 5 }, () => model.id),
             language: 'en',
             whisperLimit: 0,
@@ -695,7 +778,12 @@ describe('games HTTP seam', () => {
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
-          body: { presets: Array.from({ length: 5 }, () => model.id), language, whisperLimit: 0 },
+          body: {
+            discretions: randomDiscretions,
+            presets: Array.from({ length: 5 }, () => model.id),
+            language,
+            whisperLimit: 0,
+          },
         })
         await expect
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
@@ -756,6 +844,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language: 'en',
           whisperLimit: 0,
@@ -805,6 +894,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language: 'en',
           whisperLimit: 0,
@@ -839,6 +929,7 @@ describe('games HTTP seam', () => {
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
           body: {
+            discretions: randomDiscretions,
             presets: Array.from({ length: 5 }, () => model.id),
             language: 'zh',
             whisperLimit: 0,
@@ -915,6 +1006,7 @@ describe('games HTTP seam', () => {
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language: 'en',
           whisperLimit: 0,
@@ -960,6 +1052,7 @@ describe('games HTTP seam', () => {
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
             body: {
+              discretions: randomDiscretions,
               presets: Array.from({ length: 5 }, () => model.id),
               language: 'en',
               whisperLimit: 0,
@@ -1090,6 +1183,7 @@ describe('games HTTP seam', () => {
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
             body: {
+              discretions: randomDiscretions,
               presets: Array.from({ length: 5 }, () => contestant.id),
               language: 'en',
               whisperLimit: 0,
@@ -1127,6 +1221,7 @@ describe('games HTTP seam', () => {
           await $fetch<GameSummary>('/api/games', {
             method: 'POST',
             body: {
+              discretions: randomDiscretions,
               presets: Array.from({ length: 5 }, () => model.id),
               language: 'en',
               whisperLimit: 0,
@@ -1151,6 +1246,7 @@ describe('games HTTP seam', () => {
         $fetch<GameSummary>('/api/games', {
           method: 'POST',
           body: {
+            discretions: randomDiscretions,
             presets: Array.from({ length: 5 }, () => model.id),
             language: 'en',
             whisperLimit: 0,
@@ -1191,6 +1287,7 @@ it.each([0, -1, 1.5, '2', null])(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        discretions: randomDiscretions,
         presets: [1, 1, 1, 1, 1],
         language: 'en',
         whisperLimit: 0,
@@ -1272,6 +1369,7 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
       body: {
+        discretions: randomDiscretions,
         presets: Array.from({ length: 5 }, () => model.id),
         language: 'en',
         whisperLimit: 0,
@@ -1401,6 +1499,7 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
       body: {
+        discretions: randomDiscretions,
         presets: Array.from({ length: 5 }, () => model.id),
         language: 'en',
         whisperLimit: 0,
@@ -1497,6 +1596,7 @@ it('retries only the failing public seat and commits speech and memos after the 
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
       body: {
+        discretions: randomDiscretions,
         presets: Array.from({ length: 5 }, () => model.id),
         language: 'en',
         whisperLimit: 0,
@@ -1580,7 +1680,12 @@ it.each([-1, 0.5, '3', null])('rejects invalid whisper room limit %s', async (wh
   const response = await fetch('/api/games', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ presets: [1, 1, 1, 1, 1], language: 'en', whisperLimit }),
+    body: JSON.stringify({
+      discretions: randomDiscretions,
+      presets: [1, 1, 1, 1, 1],
+      language: 'en',
+      whisperLimit,
+    }),
   })
   expect(response.status).toBe(400)
   expect(await response.text()).toContain('whisperLimit')
@@ -1627,6 +1732,7 @@ it.each(['en', 'zh'] as const)(
       const opened = await $fetch<GameSummary>('/api/games', {
         method: 'POST',
         body: {
+          discretions: randomDiscretions,
           presets: Array.from({ length: 5 }, () => model.id),
           language,
           whisperLimit: 1,
@@ -1720,7 +1826,11 @@ it('defaults to three private room entries and leaves a no-room round for public
     const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
     const opened = await $fetch<GameSummary>('/api/games', {
       method: 'POST',
-      body: { presets: Array.from({ length: 5 }, () => model.id), language: 'en' },
+      body: {
+        discretions: randomDiscretions,
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+      },
     })
     await expect
       .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {

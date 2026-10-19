@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select'
 import type { Preset } from '#shared/types/models'
 import type { GameSummary } from '#shared/types/game-view'
-import type { GameConfig } from '#shared/types/game'
+import type { GameConfig, DiscretionSource } from '#shared/types/game'
 import { DISCRETION_IDS } from '#shared/game/rules'
 
 const { t, locale } = useI18n()
@@ -35,7 +35,7 @@ const form = reactive({
     templateConfig?.seats.map((seat) => String(seat.id)) ?? Array.from({ length: 5 }, () => ''),
   storyteller: templateConfig?.storyteller ? String(templateConfig.storyteller.id) : '',
   discretions: Object.fromEntries(
-    DISCRETION_IDS.map((id) => [id, templateConfig?.discretions[id] ?? 'random']),
+    DISCRETION_IDS.map((id) => [id, templateConfig?.discretions[id] ?? 'manual']),
   ) as GameConfig['discretions'],
   language: templateConfig?.language ?? (locale.value === 'zh' ? 'zh' : 'en'),
   speechLimit: templateConfig?.speechLimit ?? 10,
@@ -57,6 +57,10 @@ const invalidPresets = computed(
 )
 const busy = ref(false)
 const error = ref('')
+const sources = ['random', 'storyteller', 'manual'] as const
+function setAll(source: DiscretionSource) {
+  for (const id of DISCRETION_IDS) form.discretions[id] = source
+}
 
 async function create() {
   if (templateError.value || invalidPresets.value) return
@@ -137,6 +141,17 @@ async function create() {
       </div>
       <fieldset class="grid gap-4">
         <legend class="mb-3 font-medium">{{ t('games.discretions') }}</legend>
+        <div class="flex flex-wrap gap-2">
+          <Button
+            v-for="source in sources"
+            :key="source"
+            type="button"
+            variant="outline"
+            size="sm"
+            @click="setAll(source)"
+            >{{ t('manual.batch', { source: t(`games.sources.${source}`) }) }}</Button
+          >
+        </div>
         <div
           v-for="id in DISCRETION_IDS"
           :key="id"
@@ -152,6 +167,7 @@ async function create() {
             <SelectContent>
               <SelectItem value="random">{{ t('games.sources.random') }}</SelectItem>
               <SelectItem value="storyteller">{{ t('games.sources.storyteller') }}</SelectItem>
+              <SelectItem value="manual">{{ t('games.sources.manual') }}</SelectItem>
             </SelectContent>
           </Select>
         </div>
