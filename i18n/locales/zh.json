@@ -55,6 +55,10 @@
   "games": {
     "title": "对局",
     "new": "新建对局",
+    "template": "以此局为模板新建",
+    "templateFrom": "以对局 {id} 为模板，种子将重新生成。",
+    "deletedPreset": "模型预设“{name}”已删除，请重新选择后再开局。",
+    "storyteller": "说书人模型",
     "game": "对局",
     "models": "模型预设",
     "status": "状态",

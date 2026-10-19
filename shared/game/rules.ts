@@ -525,8 +525,6 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       if (!('targets' in choice)) throw new Error('Expected night choice')
       for (const event of ports.log) if (event.seq > state.seq) state = apply(state, event)
       if (state.ended || state.aborted) return
-      if (choice.memo !== undefined)
-        await commit({ type: 'seat.memo.updated', seat: seat.seat, memo: choice.memo })
       await commit({ type: 'night.choice', seat: seat.seat, role: 'imp', targets: choice.targets })
       const target = state.seats.find((player) => player.seat === choice.targets[0])
       if (!target) throw new Error('Night target does not exist')
