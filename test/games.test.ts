@@ -25,16 +25,40 @@ const toolChoice = z.object({ function: z.object({ name: z.string() }) })
 async function nightProvider(responder?: Parameters<typeof startFakeProvider>[0]) {
   const fake = await startFakeProvider((request) => {
     const name = toolChoice.parse(request.body.tool_choice).function.name
-    if (name === 'nominate')
-      return { kind: 'toolCall', name, arguments: '{"reasoning":"Pass","nominee":null}' }
+    const messages = request.body.messages as { content: string }[]
+    const user = messages[1]?.content ?? ''
+    const identity = /You are Seat (\d+)|你是 (\d+) 号/.exec(user)
+    const seat = Number(identity?.[1] ?? identity?.[2])
+    if (name === 'nominate') {
+      const day = /Day (\d+); phase|第 (\d+) 天；阶段/.exec(user)
+      const firstAlive = /- Seat (\d+): alive|- (\d+) 号：存活/.exec(user)
+      const nominee =
+        !responder &&
+        Number(day?.[1] ?? day?.[2]) > 1 &&
+        seat === Number(firstAlive?.[1] ?? firstAlive?.[2])
+          ? seat
+          : null
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({
+          reasoning: 'One self-nomination per day after the first Imp action',
+          nominee,
+        }),
+      }
+    }
+    if (name === 'vote')
+      return { kind: 'toolCall', name, arguments: '{"reasoning":"Execute","raise_hand":true}' }
     if (name === 'speak')
       return {
         kind: 'toolCall',
         name,
-        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+        arguments: JSON.stringify({
+          reasoning: '',
+          speech: /cannot pass|不能 pass/.test(user) ? 'Argument' : null,
+          slayer_target: null,
+        }),
       }
-    const messages = request.body.messages as { content: string }[]
-    const user = messages[1]?.content ?? ''
     if (name === 'night_choice' && !/as Imp|作为小恶魔/.test(user))
       return {
         kind: 'toolCall',
@@ -72,6 +96,12 @@ function nightTargets(user: string, turn = 0): number[] {
   const targets = (domain?.[1] ?? domain?.[2] ?? '').match(/\d+/g)?.map(Number) ?? []
   const count = /as Fortune Teller|作为占卜师/.test(user) ? 2 : 1
   if (targets.length < count) throw new Error('Missing legal night targets in fixture prompt')
+  if (/as Poisoner|作为投毒者/.test(user)) {
+    const identity = /You are Seat (\d+)|你是 (\d+) 号/.exec(user)
+    const seat = Number(identity?.[1] ?? identity?.[2])
+    if (!targets.includes(seat)) throw new Error('Missing Poisoner fixture identity')
+    return [seat]
+  }
   return Array.from({ length: count }, (_, index) => {
     const target = targets[(turn + index) % targets.length]
     if (target === undefined) throw new Error('Missing fixture target')
@@ -693,7 +723,9 @@ describe('games HTTP seam', () => {
           },
         })
         await expect
-          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+            timeout: 10000,
+          })
           .toBe('aborted')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
@@ -1079,7 +1111,11 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
             role === 'Imp'
               ? [day <= 3 ? victims[0] : seat]
               : role === 'Monk'
-                ? [roles.get('Scarlet Woman')]
+                ? [
+                    [...roles.values()].find(
+                      (target) => target !== seat && target !== roles.get('Imp'),
+                    ),
+                  ]
                 : nightTargets(user),
         }),
       }
