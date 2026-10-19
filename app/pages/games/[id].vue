@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import type { GameEvent } from '#shared/types/game'
+import type { GameEvent, Observer } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { channelBlocks } from '#shared/game/channels'
 import { fold, foldPublic } from '#shared/game/rules'
+import { seatFootprint, spectatorRows } from '#shared/game/spectator'
 
 definePageMeta({ spectator: true })
 const route = useRoute()
@@ -17,18 +18,25 @@ const replay = computed(() => game.value?.status === 'ended' || game.value?.stat
 const following = ref(!replay.value)
 const selectedKey = ref<string>()
 const aborting = ref(false)
+const observer = ref<Observer>('spectator')
+const showReasoning = ref(true)
+const showLosing = ref(false)
+const focusedSeat = ref<number>()
+let generation = 0
 let source: EventSource | undefined
 
 const blocks = computed(() =>
   channelBlocks(events.value)
-    .filter((block) => block.kind !== 'allocation')
+    .filter((block) => showLosing.value || block.kind !== 'allocation')
     .map((block) => ({
       ...block,
       title:
         block.kind === 'room'
           ? t('spectator.blocks.room', { members: block.members?.join(', ') ?? '' }) +
             ((block.occurrence ?? 1) > 1 ? t('spectator.roundSuffix', { round: block.round }) : '')
-          : t(`spectator.blocks.${block.kind}`),
+          : block.kind === 'allocation'
+            ? t('spectator.blocks.allocation', { round: block.round })
+            : t(`spectator.blocks.${block.kind}`),
     })),
 )
 const latest = computed(() =>
@@ -50,8 +58,33 @@ const prefix = computed(() =>
 )
 const grimoire = computed(() => fold(prefix.value))
 const publicState = computed(() => foldPublic(prefix.value, game.value?.config.seatCount ?? 5))
+const rows = computed(
+  () => new Map(spectatorRows(prefix.value, showLosing.value).map((row) => [row.event.seq, row])),
+)
+const groups = computed(() => {
+  const shown =
+    focusedSeat.value === undefined
+      ? selected.value
+        ? [selected.value]
+        : []
+      : seatFootprint(
+          blocks.value.slice(0, selectedIndex.value + 1),
+          focusedSeat.value,
+          selected.value?.end ?? 0,
+        )
+  return shown.map((block) => ({
+    key: block.key,
+    title: block.title,
+    muted: block.kind === 'allocation',
+    rows: block.events.flatMap((event) => {
+      const row = rows.value.get(event.seq)
+      return row ? [row] : []
+    }),
+  }))
+})
 
 function select(key: string) {
+  focusedSeat.value = undefined
   selectedKey.value = key
   following.value = !replay.value && key === latest.value?.key
 }
@@ -75,14 +108,14 @@ function merge(incoming: GameEvent[]) {
 }
 
 async function catchUp(after: number) {
+  const current = generation
   try {
-    merge(
-      await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
-        query: { after, observer: 'spectator' },
-      }),
-    )
+    const incoming = await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
+      query: { after, observer: observer.value },
+    })
+    if (current === generation) merge(incoming)
   } catch (cause) {
-    error.value = apiErrorMessage(cause)
+    if (current === generation) error.value = apiErrorMessage(cause)
   }
 }
 
@@ -98,25 +131,34 @@ async function abort() {
   }
 }
 
-onMounted(() => {
+function connect() {
+  generation++
+  source?.close()
+  events.value = []
+  focusedSeat.value = undefined
   if (!game.value?.replayable) return
   if (replay.value) {
     void catchUp(0)
     return
   }
-  const after = events.value.at(-1)?.seq ?? 0
-  source = new EventSource(`/api/games/${id}/stream?observer=spectator&after=${String(after)}`)
+  const current = generation
+  source = new EventSource(
+    `/api/games/${id}/stream?observer=${encodeURIComponent(observer.value)}&after=0`,
+  )
   source.onmessage = (message) => {
-    merge([JSON.parse(String(message.data)) as GameEvent])
+    if (current === generation) merge([JSON.parse(String(message.data)) as GameEvent])
   }
   source.onopen = () => {
+    if (current !== generation) return
     error.value = ''
     void catchUp(events.value.at(-1)?.seq ?? 0)
   }
   source.onerror = () => {
-    if (!replay.value) error.value = t('games.reconnecting')
+    if (current === generation && !replay.value) error.value = t('games.reconnecting')
   }
-})
+}
+onMounted(connect)
+watch(observer, connect)
 onUnmounted(() => source?.close())
 </script>
 
@@ -177,6 +219,13 @@ onUnmounted(() => source?.close())
           >{{ t('games.abort') }}</Button
         >
       </header>
+      <SpectatorControls
+        v-if="game.replayable"
+        v-model:observer="observer"
+        v-model:reasoning="showReasoning"
+        v-model:losing="showLosing"
+        :seat-count="game.config.seatCount"
+      />
       <p v-if="!game.replayable" role="alert" class="p-6 text-destructive">
         {{ t('games.incompatible') }}
       </p>
@@ -193,12 +242,23 @@ onUnmounted(() => source?.close())
           :grimoire="grimoire"
           :public-state="publicState"
           :title="selected?.title ?? t('spectator.loading')"
+          :events="prefix"
+          :focused-seat="focusedSeat"
+          @focus="focusedSeat = focusedSeat === $event ? undefined : $event"
         />
         <SpectatorFeed
-          :events="selected?.events ?? []"
-          :title="selected?.title ?? t('spectator.loading')"
+          :groups="groups"
+          :title="
+            focusedSeat === undefined
+              ? (selected?.title ?? t('spectator.loading'))
+              : t('spectator.footprint', { seat: focusedSeat })
+          "
           :block-key="selected?.key"
           :following="following"
+          :observer="observer"
+          :reasoning="showReasoning"
+          :focused="focusedSeat !== undefined"
+          @clear-focus="focusedSeat = undefined"
         />
       </div>
     </template>
