@@ -68,6 +68,7 @@
     "waiting": "等待手动裁量",
     "ended": "已结束",
     "aborted": "已终止",
+    "abort": "终止对局",
     "incompatible": "日志格式版本不兼容，无法回放。",
     "live": "直播",
     "replay": "回放",

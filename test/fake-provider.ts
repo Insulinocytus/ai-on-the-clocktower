@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 /** One scripted reply of the fake OpenAI-compatible provider, consumed in order per request. */
 type FakeStep =
   /** A tool call; `arguments` is sent verbatim, so it may be malformed JSON. */
-  | { kind: 'toolCall'; name: string; arguments: string }
+  | { kind: 'toolCall'; name: string; arguments: string; waitFor?: Promise<void> }
   /** Plain assistant text and no tool call. */
   | { kind: 'text'; content: string }
   | { kind: 'rateLimit'; retryAfterSec: number; retryAfter?: string }
@@ -21,6 +21,7 @@ interface RecordedRequest {
   headers: IncomingHttpHeaders
   body: Record<string, unknown>
   receivedAt: number
+  closed: boolean
 }
 
 export interface FakeProvider {
@@ -56,8 +57,12 @@ export async function startFakeProvider(
         headers: req.headers,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
         receivedAt: Date.now(),
+        closed: false,
       }
       requests.push(request)
+      res.once('close', () => {
+        request.closed = true
+      })
       const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
         res.writeHead(status, { 'content-type': 'application/json', ...headers })
         res.end(JSON.stringify(body))
@@ -75,21 +80,26 @@ export async function startFakeProvider(
             return
           }
           switch (step.kind) {
-            case 'toolCall':
-              json(
-                200,
-                completion({
-                  content: null,
-                  tool_calls: [
-                    {
-                      id: 'call_fake',
-                      type: 'function',
-                      function: { name: step.name, arguments: step.arguments },
-                    },
-                  ],
-                }),
-              )
+            case 'toolCall': {
+              const respond = () => {
+                json(
+                  200,
+                  completion({
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call_fake',
+                        type: 'function',
+                        function: { name: step.name, arguments: step.arguments },
+                      },
+                    ],
+                  }),
+                )
+              }
+              if (step.waitFor) void step.waitFor.then(respond)
+              else respond()
               return
+            }
             case 'text':
               json(200, completion({ content: step.content }))
               return

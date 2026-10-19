@@ -13,6 +13,7 @@ const { data: game, error: loadError, refresh } = await useFetch<GameSummary>(`/
 const events = ref<GameEvent[]>([])
 const error = ref('')
 const replay = computed(() => game.value?.status === 'ended' || game.value?.status === 'aborted')
+const aborting = ref(false)
 let source: EventSource | undefined
 
 function merge(incoming: GameEvent[]) {
@@ -34,6 +35,18 @@ async function catchUp(after: number) {
     )
   } catch (cause) {
     error.value = apiErrorMessage(cause)
+  }
+}
+
+async function abort() {
+  aborting.value = true
+  try {
+    game.value = await $fetch<GameSummary>(`/api/games/${id}/abort`, { method: 'POST' })
+    await catchUp(events.value.at(-1)?.seq ?? 0)
+  } catch (cause) {
+    error.value = apiErrorMessage(cause)
+  } finally {
+    aborting.value = false
   }
 }
 
@@ -92,6 +105,15 @@ onUnmounted(() => source?.close())
       <div class="flex items-center justify-between gap-4">
         <h1 class="text-xl font-semibold">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
         <div class="flex gap-2">
+          <Button
+            v-if="!replay"
+            variant="destructive"
+            size="sm"
+            :disabled="aborting"
+            @click="abort"
+          >
+            {{ t('games.abort') }}
+          </Button>
           <Button v-if="game.replayable" variant="outline" size="sm" as-child>
             <NuxtLink :to="{ path: '/games/new', query: { template: id } }">
               {{ t('games.template') }}
