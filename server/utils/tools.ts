@@ -1,5 +1,6 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
+import type { ValidationError } from '#shared/types/game'
 
 export type Lang = 'zh' | 'en'
 
@@ -135,7 +136,13 @@ const completionShape = z.object({
 })
 
 export type ToolCallCheck =
-  { ok: true; name: string; arguments: unknown } | { ok: false; error: string }
+  | { ok: true; name: string; arguments: unknown; rawArguments: string }
+  | {
+      ok: false
+      error: string
+      code: ValidationError['code']
+      calls: { name: string; arguments: string }[]
+    }
 
 /** Checks for exactly one call to the requested tool, with schema-valid arguments. */
 export function checkToolCall(
@@ -144,33 +151,41 @@ export function checkToolCall(
   expectedTool: string,
 ): ToolCallCheck {
   const parsed = completionShape.safeParse(response)
-  if (!parsed.success) return { ok: false, error: 'Response has no choices[0].message' }
-  const calls = parsed.data.choices[0]?.message.tool_calls ?? []
+  const calls = parsed.success
+    ? (parsed.data.choices[0]?.message.tool_calls ?? []).map((call) => call.function)
+    : []
+  const fail = (code: ValidationError['code'], error: string): ToolCallCheck => ({
+    ok: false,
+    code,
+    error,
+    calls,
+  })
+  if (!parsed.success) return fail('invalid_response', 'Response has no choices[0].message')
   const [call] = calls
-  if (!call) return { ok: false, error: 'No tool call' }
+  if (!call) return fail('no_tool_call', 'No tool call')
   if (calls.length > 1) {
-    return { ok: false, error: `Expected one tool call, got ${String(calls.length)}` }
+    return fail('multiple_tool_calls', `Expected one tool call, got ${String(calls.length)}`)
   }
-  const { name } = call.function
+  const { name } = call
   const tool = tools.find((t) => t.function.name === name)
-  if (!tool) return { ok: false, error: `Unknown tool "${name}"` }
+  if (!tool) return fail('unknown_tool', `Unknown tool "${name}"`)
   if (name !== expectedTool) {
-    return { ok: false, error: `Expected tool "${expectedTool}", got "${name}"` }
+    return fail('wrong_tool', `Expected tool "${expectedTool}", got "${name}"`)
   }
   let args: unknown
   try {
-    args = JSON.parse(call.function.arguments)
+    args = JSON.parse(call.arguments)
   } catch {
-    return { ok: false, error: `Arguments of ${name} are not valid JSON` }
+    return fail('invalid_arguments_json', `Arguments of ${name} are not valid JSON`)
   }
   // Each call owns its schema cache; freshly generated schemas must not accumulate across requests.
   const ajv = new Ajv({ allowUnionTypes: true })
   const validate = ajv.compile(tool.function.parameters)
   if (!validate(args)) {
-    return {
-      ok: false,
-      error: `${name}: ${ajv.errorsText(validate.errors, { dataVar: 'arguments' })}`,
-    }
+    return fail(
+      'invalid_arguments',
+      `${name}: ${ajv.errorsText(validate.errors, { dataVar: 'arguments' })}`,
+    )
   }
-  return { ok: true, name, arguments: args }
+  return { ok: true, name, arguments: args, rawArguments: call.arguments }
 }

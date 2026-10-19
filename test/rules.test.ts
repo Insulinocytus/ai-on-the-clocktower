@@ -224,8 +224,8 @@ const CONFIG: GameConfig = {
   whisperLimit: 3,
   language: 'en',
   seed: 18,
-  logVersion: 1,
-  promptVersion: 1,
+  logVersion: 2,
+  promptVersion: 2,
 }
 const ORDER: RoleId[] = ['soldier', 'chef', 'empath', 'scarletwoman', 'imp']
 
@@ -316,6 +316,11 @@ async function game(
         })
         return choice
       })
+      for (const [index, choice] of choices.entries()) {
+        const request = batch[index]
+        if (request && choice.memo !== undefined)
+          commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
+      }
       return Promise.resolve(choices)
     },
   }

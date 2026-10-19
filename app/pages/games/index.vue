@@ -45,6 +45,7 @@ onUnmounted(() => {
           <TableHead>{{ t('games.models') }}</TableHead>
           <TableHead>{{ t('games.status') }}</TableHead>
           <TableHead>{{ t('games.reason') }}</TableHead>
+          <TableHead>{{ t('games.template') }}</TableHead>
         </TableRow></TableHeader
       >
       <TableBody>
@@ -63,6 +64,13 @@ onUnmounted(() => {
           <TableCell>{{
             game.reason ? t(`games.reasons.${game.reason}`, game.reason) : '—'
           }}</TableCell>
+          <TableCell>
+            <Button v-if="game.replayable" variant="outline" size="sm" as-child>
+              <NuxtLink :to="{ path: '/games/new', query: { template: game.id } }">
+                {{ t('games.template') }}
+              </NuxtLink>
+            </Button>
+          </TableCell>
         </TableRow>
       </TableBody>
     </Table>

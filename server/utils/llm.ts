@@ -23,6 +23,9 @@ export class LlmCallError extends Error {
     message: string,
     /** Raw response body, when there was one. */
     readonly body?: string,
+    readonly kind:
+      'network' | 'timeout' | 'http' | 'invalid_response' | 'missing_credentials' = 'network',
+    readonly retryAfter?: string,
   ) {
     super(message)
   }
@@ -35,7 +38,12 @@ export async function chatCompletion(
   signal?: AbortSignal,
 ): Promise<unknown> {
   const apiKey = process.env[target.apiKeyEnv]
-  if (!apiKey) throw new LlmCallError(`Environment variable ${target.apiKeyEnv} is not set`)
+  if (!apiKey)
+    throw new LlmCallError(
+      `Environment variable ${target.apiKeyEnv} is not set`,
+      undefined,
+      'missing_credentials',
+    )
 
   // Core request fields and preset policies take precedence over extra_body.
   const body: Record<string, unknown> = {
@@ -65,18 +73,19 @@ export async function chatCompletion(
     text = await res.text()
   } catch (error) {
     signal?.throwIfAborted()
-    if (timeout.aborted) throw new LlmCallError(`Timed out after ${String(target.timeoutSec)}s`)
+    if (timeout.aborted)
+      throw new LlmCallError(`Timed out after ${String(target.timeoutSec)}s`, undefined, 'timeout')
     throw new LlmCallError(
       `Request failed: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
   if (status < 200 || status >= 300) {
     const hint = retryAfter === null ? '' : ` (Retry-After: ${retryAfter})`
-    throw new LlmCallError(`HTTP ${String(status)}${hint}`, text)
+    throw new LlmCallError(`HTTP ${String(status)}${hint}`, text, 'http', retryAfter ?? undefined)
   }
   try {
     return JSON.parse(text) as unknown
   } catch {
-    throw new LlmCallError('Response body is not JSON', text)
+    throw new LlmCallError('Response body is not JSON', text, 'invalid_response')
   }
 }

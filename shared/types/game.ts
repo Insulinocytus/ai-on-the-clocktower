@@ -129,6 +129,13 @@ type ValidationCode =
   | 'invalid_vote'
   | 'invalid_speech'
   | 'invalid_slayer_target'
+  | 'invalid_response'
+  | 'no_tool_call'
+  | 'multiple_tool_calls'
+  | 'unknown_tool'
+  | 'wrong_tool'
+  | 'invalid_arguments_json'
+  | 'invalid_arguments'
 export interface ValidationError {
   code: ValidationCode
 }
