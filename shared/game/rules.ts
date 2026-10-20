@@ -73,8 +73,10 @@ export function validateDiscretionChoice(
       : [{ code: 'invalid_discretion' }]
   if (!Array.isArray(choice) || !choice.every((role: unknown) => typeof role === 'string'))
     return [{ code: 'invalid_discretion' }]
-  if (choice.length !== seatCount) return [{ code: 'invalid_seat_count' }]
-  const errors = validate(choice)
+  const errors: ValidationError[] = [
+    ...(choice.length === seatCount ? [] : [{ code: 'invalid_seat_count' as const }]),
+    ...validate(choice).filter((error) => error.code !== 'invalid_seat_count'),
+  ]
   if (
     candidates.type === 'seating' &&
     (choice.length !== candidates.roles.length ||
@@ -199,6 +201,8 @@ const AUDIENCES: Record<GameEvent['type'], Audience> = {
   'phase.started': 'public',
   'game.ended': 'public',
   'game.aborted': 'spectator',
+  'game.paused': 'spectator',
+  'game.resumed': 'spectator',
   'contestant.decision': 'spectator',
   'storyteller.decision': 'storyteller',
   'discretion.requested': 'storyteller',
@@ -317,6 +321,8 @@ export function apply(state: Grimoire, event: GameEvent): Grimoire {
     case 'game.aborted':
       return { ...next, aborted: true }
     case 'game.created':
+    case 'game.paused':
+    case 'game.resumed':
     case 'contestant.decision':
     case 'storyteller.decision':
     case 'discretion.requested':
@@ -441,6 +447,8 @@ export function foldPublic(events: readonly GameEvent[], seatCount = 5): PublicS
         break
       case 'game.created':
       case 'game.aborted':
+      case 'game.paused':
+      case 'game.resumed':
       case 'contestant.decision':
       case 'storyteller.decision':
       case 'discretion.requested':

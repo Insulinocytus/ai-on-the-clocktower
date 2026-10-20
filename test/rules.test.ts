@@ -477,6 +477,7 @@ describe('setup and metadata boundaries', () => {
     expect(validateDiscretionChoice(roles, { type: 'setup', sample: roles }, 5)).toEqual([])
     expect(validateDiscretionChoice(['imp'], { type: 'setup', sample: roles }, 5)).toEqual([
       { code: 'invalid_seat_count' },
+      { code: 'invalid_role_counts' },
     ])
     expect(
       validateDiscretionChoice(roles.toReversed(), { type: 'seating', roles, sample: roles }, 5),

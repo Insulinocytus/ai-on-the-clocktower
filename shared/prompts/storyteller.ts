@@ -1,4 +1,5 @@
 import { renderEvent } from '../event-templates'
+import { ROLES } from '../game/roles'
 import { project, setupCounts, validateDiscretionChoice } from '../game/rules'
 import { firstToolArguments } from '../game/tool-calls'
 import type {
@@ -182,6 +183,25 @@ export function discretionRequest(
           ? `选择 ${String(seatCount)} 个不同角色：${String(counts.townsfolk)} 镇民、${String(counts.outsiders)} 外来者、${String(counts.minions)} 爪牙、1 小恶魔。男爵在场时少 2 镇民、多 2 外来者。酒鬼占外来者名额，以为的镇民之后另定且不在场。洗衣妇不能是唯一镇民。`
           : `Choose ${String(seatCount)} distinct characters: ${String(counts.townsfolk)} Townsfolk, ${String(counts.outsiders)} Outsiders, ${String(counts.minions)} Minions and 1 Imp. A Baron replaces 2 Townsfolk with 2 Outsiders. The Drunk takes an Outsider slot; their absent believed Townsfolk is chosen later. The Washerwoman cannot be the sole Townsfolk.`,
     )
+    if (candidates.type === 'setup') {
+      const groups = [
+        ['townsfolk', '镇民', 'Townsfolk'],
+        ['outsider', '外来者', 'Outsiders'],
+        ['minion', '爪牙', 'Minions'],
+        ['demon', '恶魔', 'Demon'],
+      ] as const
+      const ids = groups.map(([type, chinese, english]) => {
+        const roles = Object.values(ROLES).filter((role) => role.type === type)
+        return zh
+          ? `${chinese}：${roles.map((role) => `${role.id}（${role.name.zh}）`).join('、')}`
+          : `${english}: ${roles.map((role) => `${role.id} (${role.name.en})`).join(', ')}`
+      })
+      lines.push(
+        zh
+          ? `roles 只能填以下角色 id：${ids.join('；')}。`
+          : `roles accepts only these character ids: ${ids.join('; ')}.`,
+      )
+    }
     lines.push(
       zh
         ? `roles 按座位顺序填 ${String(seatCount)} 个角色。`

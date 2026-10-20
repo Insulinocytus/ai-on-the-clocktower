@@ -447,8 +447,11 @@ describe('games HTTP seam', () => {
             name,
             arguments: JSON.stringify({
               reasoning: 'Balance the game',
-              roles:
-                attempts === 1 ? ['imp'] : ['soldier', 'chef', 'empath', 'scarletwoman', 'imp'],
+              roles: [
+                ['soldier', 'chef', 'empath', 'scarlet_woman', 'fortune_teller'],
+                ['imp'],
+                ['soldier', 'chef', 'empath', 'scarletwoman', 'imp'],
+              ][attempts - 1],
             }),
           }
         }
@@ -479,12 +482,17 @@ describe('games HTTP seam', () => {
         const events = await $fetch<GameEvent[]>(`/api/games/${game.id}/events`)
         const decisions = events.filter((event) => event.type === 'storyteller.decision')
         expect(decisions).toMatchObject([
-          { attempt: 1, discretion: 'D1', validation: { ok: false } },
-          { attempt: 2, discretion: 'D1', validation: { ok: true } },
+          {
+            attempt: 1,
+            discretion: 'D1',
+            validation: { ok: false, errors: [{ code: 'invalid_arguments' }] },
+          },
+          { attempt: 2, discretion: 'D1', validation: { ok: false } },
+          { attempt: 3, discretion: 'D1', validation: { ok: true } },
         ])
         expect(events.find((event) => event.type === 'discretion.resolved')).toMatchObject({
           source: 'storyteller',
-          decision: decisions[1]?.seq,
+          decision: decisions[2]?.seq,
         })
         expect(events[0]).toMatchObject({
           storyteller: { id: model.id },
@@ -493,7 +501,7 @@ describe('games HTTP seam', () => {
         const requests = fake.requests.filter(
           (request) => toolChoice.parse(request.body.tool_choice).function.name === 'decide',
         )
-        expect(requests).toHaveLength(2)
+        expect(requests).toHaveLength(3)
         const first = gameRequest.parse(requests[0]?.body)
         const second = gameRequest.parse(requests[1]?.body)
         expect(second.messages[0]).toEqual(first.messages[0])
@@ -501,6 +509,8 @@ describe('games HTTP seam', () => {
         expect(second.messages[1].content).toContain(
           language === 'zh' ? '上次提交无效' : 'Previous submission invalid',
         )
+        expect(second.messages[1].content).toMatch(/\/roles\/3 = "scarlet_woman".*scarletwoman/)
+        expect(second.messages[1].content).toMatch(/\/roles\/4 = "fortune_teller".*fortuneteller/)
         expect(requests[1]?.body.tools).toEqual(requests[0]?.body.tools)
         const tools = requests[0]?.body.tools as {
           function: { parameters: { properties: Record<string, unknown>; required: string[] } }
@@ -598,7 +608,7 @@ describe('games HTTP seam', () => {
         seatCount,
         language: 'en',
         logVersion: 2,
-        promptVersion: 2,
+        promptVersion: 3,
         speechLimit: 10,
         storyteller: null,
       })
@@ -741,7 +751,7 @@ describe('games HTTP seam', () => {
       expect(second[0]).toEqual(first[0])
       expect(second[1]?.content.startsWith(first[1]?.content ?? '')).toBe(true)
       const suffix = second[1]?.content.slice(first[1]?.content.length)
-      expect(suffix).toContain('上次提交无效（第 1 次尝试，最多 3 次）')
+      expect(suffix).toContain('上次提交无效（第 1 次尝试，最多 5 次）')
       expect(suffix).toContain('night_choice')
       expect(suffix).toContain(invalid)
       expect(suffix).toContain('目标')
@@ -824,7 +834,7 @@ describe('games HTTP seam', () => {
       expect(retried[0]).toEqual(first[0])
       expect(retried[1]?.content.startsWith(first[1]?.content ?? '')).toBe(true)
       const suffix = retried[1]?.content.slice(first[1]?.content.length)
-      expect(suffix).toContain('Previous submission invalid (attempt 1 of at most 3)')
+      expect(suffix).toContain('Previous submission invalid (attempt 1 of at most 5)')
       expect(suffix).toContain(explanation)
       if (step.kind === 'toolCall') expect(suffix).toContain(step.arguments)
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
@@ -947,7 +957,7 @@ describe('games HTTP seam', () => {
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
             timeout: 10000,
           })
-          .toBe('aborted')
+          .toBe('paused')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         const memos = events.filter((event) => event.type === 'seat.memo.updated')
         expect(memos.map((event) => event.memo)).toEqual([original, 'Keep only this claim.', ''])
@@ -986,7 +996,7 @@ describe('games HTTP seam', () => {
     },
   )
 
-  it('shares the attempt limit across invalid output and transport failures', async () => {
+  it('shares the attempt limit across invalid output and transport failures, then aborts the pause as human', async () => {
     const fake = await nightProvider()
     try {
       fake.script(
@@ -996,6 +1006,12 @@ describe('games HTTP seam', () => {
           arguments: '{"reasoning":"r","targets":[],"memo":"INVALID"}',
         },
         { kind: 'serverError', status: 503 },
+        { kind: 'toolCall', name: 'night_choice', arguments: '{ invalid arguments' },
+        {
+          kind: 'toolCall',
+          name: 'night_choice',
+          arguments: '{"reasoning":"r","targets":[]}',
+        },
         { kind: 'toolCall', name: 'night_choice', arguments: '{ last invalid arguments' },
       )
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
@@ -1010,7 +1026,7 @@ describe('games HTTP seam', () => {
       })
       await expect
         .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status)
-        .toBe('aborted')
+        .toBe('paused')
       const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
       expect(
         events.filter(
@@ -1023,8 +1039,10 @@ describe('games HTTP seam', () => {
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
         { attempt: 2, validation: { ok: false, code: 'call_failed', errorType: 'http' } },
         { attempt: 3, validation: { ok: false, errors: [{ code: 'invalid_arguments_json' }] } },
+        { attempt: 4, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
+        { attempt: 5, validation: { ok: false, errors: [{ code: 'invalid_arguments_json' }] } },
       ])
-      expect(fake.requests).toHaveLength(3)
+      expect(fake.requests).toHaveLength(5)
       expect(fake.requests[2]?.body).toEqual(fake.requests[1]?.body)
       expect(
         events.some(
@@ -1034,10 +1052,18 @@ describe('games HTTP seam', () => {
         ),
       ).toBe(false)
       expect(events.at(-1)).toMatchObject({
-        type: 'game.aborted',
-        reason: 'model_call_failed',
-        error: '[{"code":"invalid_arguments_json"}]',
+        type: 'game.paused',
+        seat: expect.any(Number) as unknown,
+        error: expect.stringContaining('invalid_arguments_json') as unknown,
       })
+      const aborted = await $fetch<GameSummary>(`/api/games/${opened.id}/abort`, {
+        method: 'POST',
+      })
+      expect(aborted).toMatchObject({ status: 'aborted', reason: 'human' })
+      const final = (await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)).at(-1)
+      expect(final).toMatchObject({ type: 'game.aborted', reason: 'human' })
+      expect(final).not.toHaveProperty('seat')
+      expect(fake.requests).toHaveLength(5)
     } finally {
       await fake.close()
     }
@@ -1078,11 +1104,12 @@ describe('games HTTP seam', () => {
       { kind: 'toolCall', name: 'night_choice', arguments: '{"reasoning":"r","targets":[]}' },
     ],
   ] as const)(
-    'aborts after three %s attempts, preserving the failing seat and error',
+    'pauses after five %s attempts, preserving the failing seat and error, then resumes on retry',
     async (_name, step) => {
       const fake = await nightProvider()
       try {
-        fake.script(step, step, step)
+        const failures = step.kind === 'serverError' ? 6 : 5
+        fake.script(...Array.from({ length: failures }, () => step))
         const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
         const opened = await $fetch<GameSummary>('/api/games', {
           method: 'POST',
@@ -1097,7 +1124,7 @@ describe('games HTTP seam', () => {
           .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
             timeout: 10000,
           })
-          .toBe('aborted')
+          .toBe('paused')
         const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
         expect(
           events.flatMap((event) =>
@@ -1107,14 +1134,13 @@ describe('games HTTP seam', () => {
               ? [event.attempt]
               : [],
           ),
-        ).toEqual([1, 2, 3])
+        ).toEqual([1, 2, 3, 4, 5])
         expect(events.at(-1)).toMatchObject({
-          type: 'game.aborted',
-          reason: 'model_call_failed',
+          type: 'game.paused',
           seat: expect.any(Number) as unknown,
           error: expect.any(String) as unknown,
         })
-        expect(fake.requests).toHaveLength(3)
+        expect(fake.requests).toHaveLength(5)
         if (step.kind === 'serverError') {
           expect(fake.requests[1]?.body).toEqual(fake.requests[0]?.body)
           expect(fake.requests[2]?.body).toEqual(fake.requests[1]?.body)
@@ -1128,7 +1154,7 @@ describe('games HTTP seam', () => {
           const second = fake.requests[1]?.body.messages as { content: string }[]
           const third = fake.requests[2]?.body.messages as { content: string }[]
           expect(third[1]?.content.startsWith(second[1]?.content ?? '')).toBe(true)
-          expect(third[1]?.content).toContain('上次提交无效（第 2 次尝试，最多 3 次）')
+          expect(third[1]?.content).toContain('上次提交无效（第 2 次尝试，最多 5 次）')
         }
         const after = events.at(-3)?.seq ?? 0
         const response = await fetch(`/api/games/${opened.id}/stream?after=0`, {
@@ -1151,6 +1177,41 @@ describe('games HTTP seam', () => {
           .map((line) => Number(line.slice(3).trim()))
         expect(ids).toEqual(events.filter((event) => event.seq > after).map((event) => event.seq))
         expect(new Set(ids).size).toBe(ids.length)
+        const resumed = await $fetch<GameSummary>(`/api/games/${opened.id}/resume`, {
+          method: 'POST',
+        })
+        expect(resumed.status).toBe('running')
+        await expect
+          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
+            timeout: 10000,
+          })
+          .toBe('ended')
+        const finished = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
+        const pausedAt = finished.find((event) => event.type === 'game.paused')?.seq ?? 0
+        expect(
+          finished.filter((event) => event.type === 'game.resumed').map((event) => event.seq),
+        ).toEqual([expect.any(Number)])
+        expect(finished.find((event) => event.type === 'game.resumed')?.seq).toBeGreaterThan(
+          pausedAt,
+        )
+        expect(
+          finished.find(
+            (event) =>
+              event.type === 'contestant.decision' &&
+              event.request.tool === 'night_choice' &&
+              event.request.role === 'imp' &&
+              event.attempt === failures + 1,
+          ),
+        ).toMatchObject({ validation: { ok: true } })
+        if (step.kind === 'serverError') {
+          const gap = (fake.requests[6]?.receivedAt ?? 0) - (fake.requests[5]?.receivedAt ?? 0)
+          expect(gap).toBeGreaterThanOrEqual(220)
+          expect(gap).toBeLessThan(2000)
+        } else {
+          const sixth = fake.requests[5]?.body.messages as { content: string }[]
+          expect(sixth[1]?.content).toContain('上次提交无效（第 5 次尝试，最多 10 次）')
+        }
+        expect((await fetch(`/api/games/${opened.id}/resume`, { method: 'POST' })).status).toBe(409)
       } finally {
         await fake.close()
       }
