@@ -1,13 +1,26 @@
+[settings]
+experimental = true
+
+[deps.pnpm]
+auto = true
+run = "pnpm install --frozen-lockfile --prefer-offline"
+
 [tools]
 node = "24"
 pnpm = "12.14.0"
 
-[hooks]
-enter = "mise install"
-postinstall = "mise generate git-pre-commit --write --task check"
-
 [env]
 _.path = ["./node_modules/.bin"]
+
+[tasks.setup]
+shell = "bash -c"
+run = '''
+set -e
+mise install
+mise deps
+mise generate git-pre-commit --write --task check
+mise generate git-pre-commit --write --hook post-checkout --task setup
+'''
 
 [tasks.dev]
 run = "nuxt dev"
