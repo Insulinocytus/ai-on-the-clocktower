@@ -1,3 +1,48 @@
 [tools]
 node = "24"
 pnpm = "12.14.0"
+
+[hooks]
+enter = "mise install"
+postinstall = "mise generate git-pre-commit --write --task check"
+
+[env]
+_.path = ["./node_modules/.bin"]
+
+[tasks.dev]
+run = "nuxt dev"
+
+[tasks.build]
+run = "nuxt build"
+
+[tasks.start]
+run = "node scripts/start.mjs"
+
+[tasks.format]
+run = "prettier . --write"
+
+[tasks."nuxt:prepare"]
+run = "nuxt prepare"
+
+[tasks.typecheck]
+depends = ["nuxt:prepare"]
+run = "vue-tsc -b --noEmit"
+
+[tasks.lint]
+depends = ["nuxt:prepare"]
+run = "eslint . --max-warnings 0"
+
+[tasks.test]
+# vitest never reads .nuxt, but nuxt prepare clears it, including vitest's .nuxt/test build dirs.
+wait_for = ["nuxt:prepare"]
+run = "vitest run"
+
+[tasks."check:format"]
+run = "prettier . --check"
+
+[tasks."check:knip"]
+depends = ["nuxt:prepare"]
+run = "knip"
+
+[tasks.check]
+depends = ["nuxt:prepare", "typecheck", "lint", "test", "check:format", "check:knip"]

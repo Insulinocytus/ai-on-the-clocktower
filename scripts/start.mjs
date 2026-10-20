@@ -1,4 +1,4 @@
-// Production entry for `pnpm start`: load `.env`, default to listening on 127.0.0.1 only, then boot the built Nitro server.
+// Production entry for `mise run start`: load `.env`, default to listening on 127.0.0.1 only, then boot the built Nitro server.
 try {
   process.loadEnvFile()
 } catch (error) {

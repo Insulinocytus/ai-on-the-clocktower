@@ -35,6 +35,8 @@ await setup({
   rootDir: fileURLToPath(new URL('..', import.meta.url)),
   server: true,
   browser: false,
+  // Tracing externals takes ~45s on Windows (nuxt/nuxt#34753); tests run against the repo's node_modules anyway.
+  nuxtConfig: { nitro: { externals: { trace: false } } },
   env: {
     NUXT_DB_PATH: dbPath,
     CLOCKTOWER_GAME_KEY: 'game-test-secret',
