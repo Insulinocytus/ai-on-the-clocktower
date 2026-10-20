@@ -16,7 +16,7 @@
    - **Claude 直连**：兼容层官方定位为"用来测试"，`response_format`、`reasoning_effort`、`strict` 被忽略，思考内容不返回，system 消息被提升合并。要结构化输出/思考须用原生 Messages API，**或经 OpenRouter 路由**（OpenRouter 的 `reasoning` 参数文档覆盖 Claude，结构化输出文档把 Anthropic 列为支持方；具体端点是否可用仍需实测）。
    - **Gemini 直连**：兼容层仍标注 beta，思考要走 `extra_body.google.thinking_config`，Gemini 3 的 thought signature 需额外处理；经 OpenRouter 则统一为 `reasoning` / `reasoning_details`。非强制，但不如经 OpenRouter 省心。
    - DeepSeek / Qwen / Kimi / GLM / Ollama：**不需要原生适配**，但各自需要 `extra_body` 参数模板与响应字段解析（见矩阵）。
-4. **"内心推理"（见 GLOSSARY）不要绑定到厂商的推理字段。** OpenAI（Chat Completions）不暴露原始推理，Claude 经 OpenRouter 只给**摘要**，Claude 直连不给。可移植的做法是把 `inner_reasoning` 作为行动 schema 里的一个普通字符串字段；厂商原生推理字段（`reasoning_content` / `reasoning` / `reasoning_details`）仅作为有则展示的附加物。这直接影响 #8。
+4. **"推理摘要"（见 GLOSSARY）不要绑定到厂商的推理字段。** OpenAI（Chat Completions）不暴露原始推理，Claude 经 OpenRouter 只给**摘要**，Claude 直连不给。可移植的做法是把 `inner_reasoning` 作为行动 schema 里的一个普通字符串字段；厂商原生推理字段（`reasoning_content` / `reasoning` / `reasoning_details`）仅作为有则展示的附加物。这直接影响 #8。
 5. **对 #9 的含义**：连接配置除 base URL / key / 模型名外，至少要存：结构化模式（`json_schema | tool | json_object | prompt`）、推理字段名、请求侧 `extra_body` 模板（如 `thinking` / `enable_thinking` / `reasoning`）、是否允许强制 `tool_choice`、采样参数是否被锁定。DeepSeek/Kimi/Claude/OpenAI 推理模式下 `temperature` 等被锁定或忽略，**配置里不应默认下发 `temperature`**。
 
 ## 能力矩阵

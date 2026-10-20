@@ -12,7 +12,6 @@ import type { Observer } from '#shared/types/game'
 
 defineProps<{ seatCount: number }>()
 const observer = defineModel<Observer>('observer', { required: true })
-const reasoning = defineModel<boolean>('reasoning', { required: true })
 const losing = defineModel<boolean>('losing', { required: true })
 const { t } = useI18n()
 </script>
@@ -42,10 +41,6 @@ const { t } = useI18n()
           <SelectItem value="public">{{ t('spectator.publicOnly') }}</SelectItem>
         </SelectContent>
       </Select>
-    </div>
-    <div class="flex items-center gap-2">
-      <Checkbox id="spectator-reasoning" v-model="reasoning" />
-      <Label for="spectator-reasoning">{{ t('spectator.reasoning') }}</Label>
     </div>
     <div class="flex items-center gap-2">
       <Checkbox id="spectator-losing" v-model="losing" />

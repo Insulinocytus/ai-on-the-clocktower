@@ -1,18 +1,17 @@
 import { z } from 'zod'
 import type { GameEvent } from '../types/game'
 import type { ChannelBlock } from './channels'
-import { firstToolArguments } from './tool-calls'
+import { firstToolCall, isAccepted } from './tool-calls'
 
 type Decision = Extract<GameEvent, { type: 'contestant.decision' | 'storyteller.decision' }>
 const argumentsShape = z.object({
-  reasoning: z.string(),
+  reasoning_summary: z.string().optional(),
   speech: z.string().nullable().optional(),
   nominee: z.number().nullable().optional(),
 })
-const validation = z.object({ ok: z.literal(true) })
 
 function decisionArguments(event: Decision) {
-  const text = firstToolArguments(event.raw)
+  const text = firstToolCall(event.raw)?.arguments
   if (!text) return undefined
   try {
     const args = argumentsShape.safeParse(JSON.parse(text) as unknown)
@@ -24,8 +23,7 @@ function decisionArguments(event: Decision) {
 
 export interface SpectatorRow {
   event: GameEvent
-  decision?: Decision
-  reasoning?: string
+  reasoningSummary?: string
   speech?: string | null
   nominee?: number | null
   losing: boolean
@@ -35,9 +33,7 @@ export interface SpectatorRow {
 
 // Input is the observer's projected prefix, never the future or another audience's log.
 export function spectatorRows(events: readonly GameEvent[], losing: boolean): SpectatorRow[] {
-  const decisions = new Map<number, Decision>()
   const pending = new Map<string, Decision>()
-  const adopted = new Map<number, Decision>()
   const used = new Set<number>()
   const resolutions = new Map<number, Extract<GameEvent, { type: 'ability.resolved' }>>()
   const falseInformation = new Map<
@@ -47,13 +43,11 @@ export function spectatorRows(events: readonly GameEvent[], losing: boolean): Sp
 
   for (const event of events) {
     if (event.type === 'contestant.decision' || event.type === 'storyteller.decision') {
-      decisions.set(event.seq, event)
-      if (event.type === 'contestant.decision' && validation.safeParse(event.validation).success)
+      if (event.type === 'contestant.decision' && isAccepted(event))
         pending.set(`${event.request.tool}:${String(event.seat)}`, event)
       continue
     }
-    let decision: Decision | undefined
-    if ('decision' in event && event.decision) decision = decisions.get(event.decision)
+    if ('decision' in event && event.decision) used.add(event.decision)
     else {
       const action =
         event.type === 'night.choice'
@@ -69,13 +63,10 @@ export function spectatorRows(events: readonly GameEvent[], losing: boolean): Sp
                   : undefined
       if (action) {
         const key = `${String(action[0])}:${String(action[1])}`
-        decision = pending.get(key)
+        const decision = pending.get(key)
+        if (decision) used.add(decision.seq)
         pending.delete(key)
       }
-    }
-    if (decision) {
-      adopted.set(event.seq, decision)
-      used.add(decision.seq)
     }
     if (event.type === 'ability.resolved') resolutions.set(event.seat, event)
     if (event.type === 'told' && event.kind === 'ability') {
@@ -86,21 +77,23 @@ export function spectatorRows(events: readonly GameEvent[], losing: boolean): Sp
   }
 
   return events.flatMap((event): SpectatorRow[] => {
-    if (event.type === 'storyteller.decision') return []
-    const rejected = event.type === 'contestant.decision'
-    if (rejected && (!losing || used.has(event.seq))) return []
-    const decision = rejected ? event : adopted.get(event.seq)
-    const args = decision ? decisionArguments(decision) : undefined
+    const row = { event, losing: false, falseInfo: falseInformation.has(event.seq) }
+    if (event.type === 'storyteller.decision') {
+      if (!isAccepted(event)) return []
+      return [{ ...row, reasoningSummary: decisionArguments(event)?.reasoning_summary }]
+    }
+    if (event.type !== 'contestant.decision')
+      return [{ ...row, falseReason: falseInformation.get(event.seq) }]
+    const args = decisionArguments(event)
+    if (used.has(event.seq)) return [{ ...row, reasoningSummary: args?.reasoning_summary }]
+    if (!losing) return []
     return [
       {
-        event,
-        decision,
-        reasoning: args?.reasoning,
-        speech: rejected ? args?.speech : undefined,
-        nominee: rejected ? args?.nominee : undefined,
-        losing: rejected,
-        falseInfo: falseInformation.has(event.seq),
-        falseReason: falseInformation.get(event.seq),
+        ...row,
+        reasoningSummary: args?.reasoning_summary,
+        speech: args?.speech,
+        nominee: args?.nominee,
+        losing: true,
       },
     ]
   })

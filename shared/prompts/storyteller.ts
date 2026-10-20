@@ -1,7 +1,7 @@
 import { renderEvent } from '../event-templates'
 import { ROLES } from '../game/roles'
 import { project, setupCounts, validateDiscretionChoice } from '../game/rules'
-import { firstToolArguments } from '../game/tool-calls'
+import { firstToolCall } from '../game/tool-calls'
 import type {
   DiscretionCandidates,
   DiscretionChoice,
@@ -36,7 +36,7 @@ export function parseStorytellerChoice(
     return { ok: false, errors: [{ code: 'invalid_discretion' }] }
   const args = value as Record<string, unknown>
   if (!Array.isArray(candidates)) {
-    if (Object.keys(args).some((key) => key !== 'reasoning' && key !== 'roles'))
+    if (Object.keys(args).some((key) => key !== 'reasoning_summary' && key !== 'roles'))
       return { ok: false, errors: [{ code: 'invalid_discretion' }] }
     const errors = validateDiscretionChoice(args.roles, candidates, seatCount)
     return errors.length
@@ -44,7 +44,7 @@ export function parseStorytellerChoice(
       : { ok: true, choice: args.roles as DiscretionChoice }
   }
   const keys = Object.keys(args)
-    .filter((key) => key !== 'reasoning')
+    .filter((key) => key !== 'reasoning_summary')
     .sort()
   for (const choice of candidates) {
     const expected = fields(choice, id)
@@ -258,8 +258,8 @@ export function discretionRequest(
     )
   lines.push(
     zh
-      ? 'reasoning 必填，只填上述要求的字段；不要填其他字段。请调用 decide。'
-      : 'reasoning is required. Fill only the fields requested above; omit all others. Call decide.',
+      ? 'reasoning_summary 必填，用一两句话概括你这次的思考；只填上述要求的字段，不要填其他字段。请调用 decide。'
+      : 'reasoning_summary is required: one or two sentences summarising your thinking. Fill only the fields requested above; omit all others. Call decide.',
   )
   return lines.join('\n')
 }
@@ -276,20 +276,13 @@ export function buildStorytellerPrompt(
   const projected = project(events, 'storyteller')
   const lines: string[] = []
   for (const event of projected) {
-    if (event.type === 'seat.memo.updated' || event.type === 'discretion.requested') continue
+    if (event.type === 'contestant.decision' || event.type === 'discretion.requested') continue
     lines.push(renderEvent(event, language, 'storyteller'))
     if (event.type === 'storyteller.decision') {
-      const args = firstToolArguments(event.raw)
+      const args = firstToolCall(event.raw)?.arguments
       if (args) lines.push(args)
     }
   }
-  const memos = Array.from({ length: config.seatCount }, (_, index) => {
-    const seat = index + 1
-    const memo = projected.findLast(
-      (event) => event.type === 'seat.memo.updated' && event.seat === seat,
-    )
-    return `${String(seat)}: ${memo?.type === 'seat.memo.updated' ? memo.memo : zh ? '（空）' : '(empty)'}`
-  })
   const grimoire = renderEvent(
     {
       seq: context.seq,
@@ -314,7 +307,6 @@ export function buildStorytellerPrompt(
         role: 'user',
         content: [
           `${zh ? '# 时间线' : '# Timeline'}\n${lines.join('\n')}`,
-          `${zh ? '# 各座位备忘录' : '# Seat memos'}\n${memos.join('\n')}`,
           `${zh ? '# 当前魔典' : '# Current Grimoire'}\n${grimoire}`,
           discretionRequest(language, id, candidates, context, config.seatCount),
         ].join('\n\n'),

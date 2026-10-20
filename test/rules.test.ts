@@ -92,7 +92,7 @@ describe('spectator presentation of projected logs', () => {
     ).toEqual([[6], [8]])
   })
 
-  it('attaches adopted reasoning, dims only losing decisions, and marks false tells only in their projected prefix', () => {
+  it('shows adopted summaries before effects, dims only losing decisions, and marks false tells only in their projected prefix', () => {
     const decision = (seq: number, seat: number, speech: string | null): GameEvent => ({
       seq,
       type: 'contestant.decision',
@@ -105,7 +105,11 @@ describe('spectator presentation of projected logs', () => {
               tool_calls: [
                 {
                   function: {
-                    arguments: JSON.stringify({ reasoning: `Reason ${String(seq)}`, speech }),
+                    name: 'speak',
+                    arguments: JSON.stringify({
+                      reasoning_summary: `Reason ${String(seq)}`,
+                      speech,
+                    }),
                   },
                 },
               ],
@@ -136,16 +140,18 @@ describe('spectator presentation of projected logs', () => {
       { seq: 6, type: 'told', seat: 1, kind: 'ability', content: { role: 'chef', result: 1 } },
     ]
     const rows = spectatorRows(project(events, 'spectator'), false)
-    expect(rows.map((row) => row.event.seq)).toEqual([4, 5, 6])
-    expect(rows[0]).toMatchObject({ reasoning: 'Reason 1', losing: false })
-    expect(rows[2]).toMatchObject({ falseInfo: true, falseReason: 'poisoned' })
+    expect(rows.map((row) => row.event.seq)).toEqual([1, 4, 5, 6])
+    expect(rows[0]).toMatchObject({ reasoningSummary: 'Reason 1', losing: false })
+    expect(rows[1]?.reasoningSummary).toBeUndefined()
+    expect(rows[3]).toMatchObject({ falseInfo: true, falseReason: 'poisoned' })
     expect(
       spectatorRows(events, true)
         .filter((row) => row.losing)
         .map((row) => row.speech),
     ).toEqual(['Not selected', null])
     expect(spectatorRows(project(events, 'seat:1'), true)).toEqual([
-      expect.objectContaining({ event: events[3], reasoning: undefined }),
+      expect.objectContaining({ event: events[0], reasoningSummary: 'Reason 1', losing: false }),
+      expect.objectContaining({ event: events[3] }),
       expect.objectContaining({ event: events[5], falseInfo: false }),
     ])
     expect(spectatorRows(events.slice(0, 4), false).some((row) => row.falseInfo)).toBe(false)
@@ -230,7 +236,7 @@ describe('spectator channel blocks', () => {
       blocks.slice(0, 5).map((block) => block.key),
     )
   })
-  it('routes parallel room decisions and memos by their request, not the last active room', () => {
+  it('routes parallel room decisions by their request, not the last active room', () => {
     const decision = (seq: number, request: ContestantRequest): GameEvent => ({
       seq,
       type: 'contestant.decision',
@@ -254,15 +260,14 @@ describe('spectator channel blocks', () => {
         seat: 1,
         room: { id: 'a', round: 1, members: [1, 2] },
       }),
-      { seq: 5, type: 'seat.memo.updated', seat: 1, memo: 'Keep this in room A.' },
-      decision(6, {
+      decision(5, {
         tool: 'speak',
         kind: 'whisper',
         day: 1,
         seat: 3,
         room: { id: 'b', round: 1, members: [3, 4] },
       }),
-      decision(7, {
+      decision(6, {
         tool: 'propose_whisper',
         day: 1,
         seat: 1,
@@ -270,18 +275,17 @@ describe('spectator channel blocks', () => {
         remaining: 1,
         eligible: [2],
       }),
-      { seq: 8, type: 'seat.memo.updated', seat: 1, memo: 'Next round.' },
-      { seq: 9, type: 'whisper.proposed', seat: 1, round: 2, members: null },
-      { seq: 10, type: 'phase.started', day: 1, phase: 'public' },
-      { seq: 11, type: 'phase.started', day: 1, phase: 'nomination' },
+      { seq: 7, type: 'whisper.proposed', seat: 1, round: 2, members: null },
+      { seq: 8, type: 'phase.started', day: 1, phase: 'public' },
+      { seq: 9, type: 'phase.started', day: 1, phase: 'nomination' },
     ]
     expect(channelBlocks(events).map((block) => block.events.map((event) => event.seq))).toEqual([
       [1],
-      [2, 4, 5],
-      [3, 6],
-      [7, 8, 9],
-      [10],
-      [11],
+      [2, 4],
+      [3, 5],
+      [6, 7],
+      [8],
+      [9],
     ])
   })
 })
@@ -424,7 +428,7 @@ const STORYTELLER_TYPES = [
 ]
 const SEAT_TYPES = [
   'told',
-  'seat.memo.updated',
+  'contestant.decision',
   'night.choice',
   'whisper.candidates',
   'whisper.speech',
@@ -433,7 +437,6 @@ const SEAT_TYPES = [
 const SPECTATOR_TYPES = [
   'game.created',
   'game.aborted',
-  'contestant.decision',
   'whisper.proposed',
   'whisper.ranked',
   'future.unknown',
@@ -610,19 +613,23 @@ describe('setup and metadata boundaries', () => {
       targets: [1, 2, 3, 4, 5],
     }
     for (const targets of [[], [1, 2], [0], [6], [1.5], ['1'], null]) {
-      expect(validateNightChoice({ reasoning: 'choose', targets }, request)).toContainEqual({
-        code: 'invalid_targets',
-      })
+      expect(validateNightChoice({ reasoning_summary: 'choose', targets }, request)).toContainEqual(
+        {
+          code: 'invalid_targets',
+        },
+      )
     }
     expect(validateNightChoice(null, request)).toContainEqual({ code: 'invalid_targets' })
-    expect(validateNightChoice({ reasoning: 2, targets: [1] }, request)).toContainEqual({
-      code: 'invalid_reasoning',
+    expect(validateNightChoice({ reasoning_summary: 2, targets: [1] }, request)).toContainEqual({
+      code: 'invalid_reasoning_summary',
     })
     expect(
-      validateNightChoice({ reasoning: '', targets: [1], memo: 'x'.repeat(2001) }, request),
-    ).toContainEqual({ code: 'invalid_memo' })
-    expect(validateNightChoice({ reasoning: '', targets: [5], memo: '' }, request)).toEqual([])
-    expect(validateNightChoice({ reasoning: '', targets: [1] }, request)).toEqual([])
+      validateNightChoice({ reasoning_summary: 'x'.repeat(501), targets: [1] }, request),
+    ).toContainEqual({ code: 'invalid_reasoning_summary' })
+    expect(
+      validateNightChoice({ reasoning_summary: 'x'.repeat(500), targets: [5] }, request),
+    ).toEqual([])
+    expect(validateNightChoice({ reasoning_summary: '', targets: [1] }, request)).toEqual([])
   })
 })
 
@@ -751,18 +758,18 @@ async function game(
           if (request.tool === 'night_choice') requests.push(structuredClone(request))
           choice = options.act(request)
         } else if (request.tool === 'nominate') {
-          choice = options.choose?.(request) ?? { reasoning: 'Pass', nominee: null }
+          choice = options.choose?.(request) ?? { reasoning_summary: 'Pass', nominee: null }
         } else if (request.tool === 'speak') {
           choice =
             request.kind === 'free'
-              ? { reasoning: 'Pass', speech: null, slayer_target: null }
+              ? { reasoning_summary: 'Pass', speech: null, slayer_target: null }
               : (options.choose?.(request) ?? {
-                  reasoning: 'Explain',
+                  reasoning_summary: 'Explain',
                   speech: 'My argument.',
                   slayer_target: null,
                 })
         } else if (request.tool === 'vote') {
-          choice = options.choose?.(request) ?? { reasoning: 'Vote', raise_hand: false }
+          choice = options.choose?.(request) ?? { reasoning_summary: 'Vote', raise_hand: false }
         } else if (request.tool === 'night_choice') {
           requests.push(structuredClone(request))
           if (request.role !== 'imp' && options.choose) choice = options.choose(request)
@@ -770,9 +777,8 @@ async function game(
             const target = targets[calls++]
             if (target === undefined) throw new Error('Script exhausted')
             choice = {
-              reasoning: `Choose ${String(target)}`,
+              reasoning_summary: `Choose ${String(target)}`,
               targets: [target],
-              memo: `Day ${String(request.day)}`,
             }
           }
         } else {
@@ -791,11 +797,6 @@ async function game(
         })
         return choice
       })
-      for (const [index, choice] of choices.entries()) {
-        const request = batch[index]
-        if (request && choice.memo !== undefined)
-          commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
-      }
       return Promise.resolve(choices)
     },
   }
@@ -882,7 +883,7 @@ describe('storyteller context at the rules seam', () => {
       },
       act: (request) =>
         request.tool === 'night_choice'
-          ? { reasoning: 'Self', targets: [request.seat] }
+          ? { reasoning_summary: 'Self', targets: [request.seat] }
           : passAction(request),
     })
     expect(
@@ -908,7 +909,7 @@ describe('storyteller context at the rules seam', () => {
   })
 
   it.each(['zh', 'en'] as const)(
-    'projects only spoken content, latest memos and storyteller decisions in %s',
+    'projects spoken content and storyteller decisions, but not contestant decisions in %s',
     async (language) => {
       const { events } = await game([5, 4])
       const append = (event: GameEventInput) => events.push({ ...event, seq: events.length + 1 })
@@ -916,7 +917,7 @@ describe('storyteller context at the rules seam', () => {
         type: 'contestant.decision',
         seat: 1,
         request: { tool: 'speak', seat: 1, kind: 'free', day: 1 },
-        raw: { reasoning: 'HIDDEN_THOUGHT', speech: 'HIDDEN_UNSELECTED' },
+        raw: { reasoning_summary: 'HIDDEN_THOUGHT', speech: 'HIDDEN_UNSELECTED' },
         model: 'HIDDEN_MODEL',
         usage: null,
         durationMs: 1,
@@ -935,8 +936,6 @@ describe('storyteller context at the rules seam', () => {
         decision: 0,
       })
       append({ type: 'public.speech', seat: 2, kind: 'free', speech: 'ACTUAL_PUBLIC', decision: 0 })
-      append({ type: 'seat.memo.updated', seat: 1, memo: 'OLD_MEMO' })
-      append({ type: 'seat.memo.updated', seat: 1, memo: 'LATEST_MEMO' })
       append({
         type: 'storyteller.decision',
         discretion: 'D12',
@@ -946,7 +945,12 @@ describe('storyteller context at the rules seam', () => {
             {
               message: {
                 tool_calls: [
-                  { function: { arguments: '{"reasoning":"PRIOR_REASON","answer":true}' } },
+                  {
+                    function: {
+                      name: 'decide',
+                      arguments: '{"reasoning_summary":"PRIOR_REASON","answer":true}',
+                    },
+                  },
                 ],
               },
             },
@@ -970,7 +974,7 @@ describe('storyteller context at the rules seam', () => {
         context,
       )
       const user = prompt.messages[1].content
-      for (const visible of ['ACTUAL_WHISPER', 'ACTUAL_PUBLIC', 'LATEST_MEMO', 'PRIOR_REASON'])
+      for (const visible of ['ACTUAL_WHISPER', 'ACTUAL_PUBLIC', 'PRIOR_REASON'])
         expect(user).toContain(visible)
       for (const hidden of [
         'HIDDEN_THOUGHT',
@@ -979,13 +983,12 @@ describe('storyteller context at the rules seam', () => {
         'HIDDEN_STORYTELLER_MODEL',
         '123456',
         '987654',
-        'OLD_MEMO',
       ])
         expect(user).not.toContain(hidden)
       const headings =
         language === 'zh'
-          ? ['# 时间线', '# 各座位备忘录', '# 当前魔典', '# 本次裁量']
-          : ['# Timeline', '# Seat memos', '# Current Grimoire', '# This decision']
+          ? ['# 时间线', '# 当前魔典', '# 本次裁量']
+          : ['# Timeline', '# Current Grimoire', '# This decision']
       expect(headings.map((heading) => user.indexOf(heading))).toEqual(
         headings.map((heading) => user.indexOf(heading)).toSorted((a, b) => a - b),
       )
@@ -1032,12 +1035,19 @@ describe('storyteller context at the rules seam', () => {
       { id: 'D14', choice: 4, args: { seats: [4] } },
     ]
     for (const { id, choice, args } of cases) {
-      expect(parseStorytellerChoice({ reasoning: 'Legal', ...args }, id, [choice], 5)).toEqual({
+      expect(
+        parseStorytellerChoice({ reasoning_summary: 'Legal', ...args }, id, [choice], 5),
+      ).toEqual({
         ok: true,
         choice,
       })
       expect(
-        parseStorytellerChoice({ reasoning: 'Illegal', ...args, number: 99 }, id, [choice], 5),
+        parseStorytellerChoice(
+          { reasoning_summary: 'Illegal', ...args, number: 99 },
+          id,
+          [choice],
+          5,
+        ),
       ).toMatchObject({ ok: false })
     }
   })
@@ -1070,7 +1080,7 @@ describe('evil team setup through the rules seam', () => {
                 : request.targets
                     .filter((seat) => request.role !== 'butler' || seat !== request.seat)
                     .slice(0, request.role === 'fortuneteller' ? 2 : 1)
-          return { reasoning: '', targets }
+          return { reasoning_summary: '', targets }
         },
       })
       const dawn = events.findIndex((event) => event.type === 'dawn.announced')
@@ -1081,15 +1091,15 @@ describe('evil team setup through the rules seam', () => {
           language,
           request: { tool: 'speak', seat: count, day: 1, kind: 'free' },
         })
-        expect(prompt.messages[0].content).toContain(
+        expect(prompt.messages[0]?.content).toContain(
           language === 'en'
             ? `Exactly ${String(count)} contestant models`
             : `本局 ${String(count)} 名玩家`,
         )
-        expect(prompt.messages[1].content).toContain(
+        expect(prompt.messages.at(-1)?.content).toContain(
           language === 'en' ? `- Seat ${String(count)}: alive` : `- ${String(count)} 号：存活`,
         )
-        expect(prompt.messages[1].content).toContain(
+        expect(prompt.messages.at(-1)?.content).toContain(
           language === 'en'
             ? `${String(count)} alive; voting threshold ${String(Math.ceil(count / 2))}`
             : `存活 ${String(count)} 人；投票门槛 ${String(Math.ceil(count / 2))}`,
@@ -1232,10 +1242,10 @@ describe('information Townsfolk through the rules seam', () => {
         },
         choose: (request) =>
           request.tool === 'night_choice'
-            ? { reasoning: 'Probe', targets: [...targets] }
+            ? { reasoning_summary: 'Probe', targets: [...targets] }
             : request.tool === 'nominate'
-              ? { reasoning: 'Pass', nominee: null }
-              : { reasoning: 'Vote', raise_hand: false },
+              ? { reasoning_summary: 'Pass', nominee: null }
+              : { reasoning_summary: 'Vote', raise_hand: false },
       })
       expect(state.redHerring).toBe(1)
       expect(
@@ -1267,15 +1277,15 @@ describe('information Townsfolk through the rules seam', () => {
         choose: (request) =>
           request.tool === 'nominate'
             ? {
-                reasoning: 'Nominate once',
+                reasoning_summary: 'Nominate once',
                 nominee:
                   request.day === 1 && request.seat === 1 && request.nominees.length === 5
                     ? 2
                     : null,
               }
             : request.tool === 'speak'
-              ? { reasoning: 'Explain', speech: 'Execute this seat.', slayer_target: null }
-              : { reasoning: 'Execute', raise_hand: true },
+              ? { reasoning_summary: 'Explain', speech: 'Execute this seat.', slayer_target: null }
+              : { reasoning_summary: 'Execute', raise_hand: true },
       })
       expect(
         events.filter(
@@ -1305,13 +1315,13 @@ describe('information Townsfolk through the rules seam', () => {
       choose: (request) =>
         request.tool === 'nominate'
           ? {
-              reasoning: 'Execute the corpse once',
+              reasoning_summary: 'Execute the corpse once',
               nominee:
                 request.day === 1 && request.seat === 1 && request.nominees.length === 5 ? 2 : null,
             }
           : request.tool === 'speak'
-            ? { reasoning: '', speech: 'Execute this seat.', slayer_target: null }
-            : { reasoning: '', raise_hand: true },
+            ? { reasoning_summary: '', speech: 'Execute this seat.', slayer_target: null }
+            : { reasoning_summary: '', raise_hand: true },
     })
     expect(events).toContainEqual(expect.objectContaining({ type: 'execution', seat: 2 }))
     expect(
@@ -1336,17 +1346,21 @@ describe('information Townsfolk through the rules seam', () => {
         choose: (request) =>
           request.tool === 'nominate'
             ? {
-                reasoning: 'Nominate once',
+                reasoning_summary: 'Nominate once',
                 nominee:
                   request.day === 1 && request.seat === 1 && request.nominees.length === 5
                     ? 5
                     : null,
               }
             : request.tool === 'night_choice'
-              ? { reasoning: 'Probe', targets: request.day === 1 ? [3, 4] : targets }
+              ? { reasoning_summary: 'Probe', targets: request.day === 1 ? [3, 4] : targets }
               : request.tool === 'speak'
-                ? { reasoning: 'Explain', speech: 'Execute the Demon.', slayer_target: null }
-                : { reasoning: 'Execute', raise_hand: true },
+                ? {
+                    reasoning_summary: 'Explain',
+                    speech: 'Execute the Demon.',
+                    slayer_target: null,
+                  }
+                : { reasoning_summary: 'Execute', raise_hand: true },
       })
       expect(
         events.filter(
@@ -1378,8 +1392,8 @@ describe('information Townsfolk through the rules seam', () => {
         seats: seatsFor(['ravenkeeper', 'drunk', 'soldier', 'scarletwoman', 'imp']),
         choose: (request) =>
           request.tool === 'night_choice'
-            ? { reasoning: 'Inspect', targets: [target] }
-            : { reasoning: 'Pass', nominee: null },
+            ? { reasoning_summary: 'Inspect', targets: [target] }
+            : { reasoning_summary: 'Pass', nominee: null },
       })
       const death = events.findIndex((event) => event.type === 'night.death' && event.seat === 1)
       expect(events.slice(death, death + 5)).toEqual([
@@ -1403,13 +1417,13 @@ describe('information Townsfolk through the rules seam', () => {
       choose: (request) =>
         request.tool === 'nominate'
           ? {
-              reasoning: 'Nominate',
+              reasoning_summary: 'Nominate',
               nominee:
                 request.day === 1 && request.seat === 2 && request.nominees.length === 5 ? 1 : null,
             }
           : request.tool === 'speak'
-            ? { reasoning: 'Explain', speech: 'Execute.', slayer_target: null }
-            : { reasoning: 'Vote', raise_hand: true },
+            ? { reasoning_summary: 'Explain', speech: 'Execute.', slayer_target: null }
+            : { reasoning_summary: 'Vote', raise_hand: true },
     })
     expect(requests.some((request) => request.role === 'ravenkeeper')).toBe(false)
   })
@@ -1451,10 +1465,12 @@ describe('information Townsfolk through the rules seam', () => {
       targets: [1, 2, 3, 4, 5],
     }
     for (const targets of [[1], [1, 1], [0, 2], [1, 2, 3]])
-      expect(validateNightChoice({ reasoning: 'Probe', targets }, request)).toContainEqual({
+      expect(validateNightChoice({ reasoning_summary: 'Probe', targets }, request)).toContainEqual({
         code: 'invalid_targets',
       })
-    expect(validateNightChoice({ reasoning: 'Probe', targets: [1, 5] }, request)).toEqual([])
+    expect(validateNightChoice({ reasoning_summary: 'Probe', targets: [1, 5] }, request)).toEqual(
+      [],
+    )
   })
 })
 
@@ -1466,7 +1482,7 @@ describe('nominations through the rules seam', () => {
         seen.push(structuredClone(request))
         if (request.tool === 'nominate') {
           return {
-            reasoning: 'Nominate',
+            reasoning_summary: 'Nominate',
             nominee:
               request.day === 1 && request.seat === 1 && request.nominees.includes(2)
                 ? 2
@@ -1475,8 +1491,9 @@ describe('nominations through the rules seam', () => {
                   : null,
           }
         }
-        if (request.tool === 'vote') return { reasoning: 'Vote', raise_hand: request.seat <= 3 }
-        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+        if (request.tool === 'vote')
+          return { reasoning_summary: 'Vote', raise_hand: request.seat <= 3 }
+        return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
       },
     })
     const nominations = events.filter((event) => event.type === 'nomination')
@@ -1533,12 +1550,12 @@ describe('nominations through the rules seam', () => {
       choose: (request) => {
         if (request.tool === 'nominate')
           return {
-            reasoning: 'Execute the demon',
+            reasoning_summary: 'Execute the demon',
             nominee:
               request.day === 1 && request.seat === 1 && request.nominees.includes(5) ? 5 : null,
           }
-        if (request.tool === 'vote') return { reasoning: 'Execute', raise_hand: true }
-        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+        if (request.tool === 'vote') return { reasoning_summary: 'Execute', raise_hand: true }
+        return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
       },
     })
     const execution = events.findIndex((event) => event.type === 'execution')
@@ -1558,7 +1575,7 @@ describe('nominations through the rules seam', () => {
         seen.push(structuredClone(request))
         if (request.tool === 'nominate')
           return {
-            reasoning: 'Nominate',
+            reasoning_summary: 'Nominate',
             nominee:
               request.day === 2 && request.seat === 1 && request.nominees.includes(2)
                 ? 2
@@ -1567,8 +1584,8 @@ describe('nominations through the rules seam', () => {
                   : null,
           }
         if (request.tool === 'vote')
-          return { reasoning: 'Use my vote', raise_hand: request.seat === 2 }
-        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+          return { reasoning_summary: 'Use my vote', raise_hand: request.seat === 2 }
+        return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
       },
     })
     expect(
@@ -1596,7 +1613,7 @@ describe('nominations through the rules seam', () => {
         seen.push(structuredClone(request))
         if (request.tool === 'nominate')
           return {
-            reasoning: 'Nominate',
+            reasoning_summary: 'Nominate',
             nominee:
               request.day === 1 && request.seat === 1 && request.nominees.includes(2)
                 ? 2
@@ -1606,8 +1623,8 @@ describe('nominations through the rules seam', () => {
           }
         if (request.tool === 'speak' && request.kind === 'nomination') round++
         if (request.tool === 'vote')
-          return { reasoning: 'Vote', raise_hand: request.seat <= (round === 1 ? 2 : 3) }
-        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+          return { reasoning_summary: 'Vote', raise_hand: request.seat <= (round === 1 ? 2 : 3) }
+        return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
       },
     })
     const votes = seen.filter((request) => request.tool === 'vote')
@@ -1621,11 +1638,11 @@ describe('nominations through the rules seam', () => {
           seen.push(structuredClone(request))
           if (request.tool === 'nominate')
             return {
-              reasoning: 'Repeat target',
+              reasoning_summary: 'Repeat target',
               nominee: request.seat === 1 || request.seat === 3 ? 2 : null,
             }
-          if (request.tool === 'vote') return { reasoning: 'Abstain', raise_hand: false }
-          return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+          if (request.tool === 'vote') return { reasoning_summary: 'Abstain', raise_hand: false }
+          return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
         },
       }),
     ).rejects.toThrow('Invalid nomination from ports')
@@ -1646,9 +1663,9 @@ describe('nominations through the rules seam', () => {
       game([], {
         choose: (request) =>
           request.tool === 'nominate'
-            ? { reasoning: 'Nominate', nominee: request.seat === 1 ? 2 : null }
+            ? { reasoning_summary: 'Nominate', nominee: request.seat === 1 ? 2 : null }
             : {
-                reasoning: 'Explain',
+                reasoning_summary: 'Explain',
                 speech:
                   request.tool === 'speak' && request.kind === kind ? speech : 'A valid argument.',
                 slayer_target: null,
@@ -1661,12 +1678,12 @@ describe('nominations through the rules seam', () => {
       choose: (request) => {
         if (request.tool === 'nominate')
           return {
-            reasoning: 'Nominate',
+            reasoning_summary: 'Nominate',
             nominee:
               request.day === 2 && request.seat === 1 && request.nominees.includes(5) ? 5 : null,
           }
-        if (request.tool === 'vote') return { reasoning: 'Execute', raise_hand: true }
-        return { reasoning: 'Explain', speech: 'My argument.', slayer_target: null }
+        if (request.tool === 'vote') return { reasoning_summary: 'Execute', raise_hand: true }
+        return { reasoning_summary: 'Explain', speech: 'My argument.', slayer_target: null }
       },
     })
     expect(events.slice(-2)).toEqual([
@@ -1743,7 +1760,7 @@ describe('scripted pure rules seam', () => {
     ])
     const death = events.findIndex((event) => event.type === 'night.death')
     expect(events.slice(death - 3, death + 1).map((event) => event.type)).toEqual([
-      'seat.memo.updated',
+      'contestant.decision',
       'night.choice',
       'ability.resolved',
       'night.death',
@@ -1784,7 +1801,9 @@ describe('scripted pure rules seam', () => {
       seats,
       d14: 3,
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [3] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [3] }
+          : passAction(request),
     })
     expect(discretionCalls).toEqual(['D14'])
     expect(events.filter((event) => event.type === 'role.changed')).toEqual([
@@ -1933,11 +1952,11 @@ describe('public conversation', () => {
         discretion: () => Promise.reject(new Error('Unexpected discretion')),
         askContestants: (batch) => {
           if (batch.every((request) => request.tool === 'nominate'))
-            return Promise.resolve(batch.map(() => ({ reasoning: 'Pass', nominee: null })))
+            return Promise.resolve(batch.map(() => ({ reasoning_summary: 'Pass', nominee: null })))
           batches.push(batch.map((request) => request.seat))
           return Promise.resolve(
             batch.map((request) => ({
-              reasoning: 'Join the discussion',
+              reasoning_summary: 'Join the discussion',
               speech: `Speech from ${String(request.seat)}`,
               slayer_target: null,
             })),
@@ -1977,7 +1996,7 @@ async function conversation(
       },
       askContestants: (batch) => {
         if (batch.every((request) => request.tool === 'nominate'))
-          return Promise.resolve(batch.map(() => ({ reasoning: 'Pass', nominee: null })))
+          return Promise.resolve(batch.map(() => ({ reasoning_summary: 'Pass', nominee: null })))
         const speeches = batch.filter((request) => request.tool === 'speak')
         if (speeches.length !== batch.length) throw new Error('Unexpected non-speech request')
         const choices = respond(speeches, events)
@@ -2017,7 +2036,7 @@ describe('public conversation edge cases', () => {
     const events = await conversation((batch) => {
       batches.push(batch.map((request) => request.seat))
       return batch.map((request) => ({
-        reasoning: 'Can still contribute after death',
+        reasoning_summary: 'Can still contribute after death',
         speech: batches.length === 1 && request.seat === 1 ? 'My information still matters.' : null,
         slayer_target: null,
       }))
@@ -2043,7 +2062,7 @@ describe('public conversation edge cases', () => {
       const events = await conversation((batch) => {
         round++
         return batch.map((request) => ({
-          reasoning: 'Claim a shot',
+          reasoning_summary: 'Claim a shot',
           speech: round === 1 && request.seat === 1 ? 'I shoot Seat 5.' : null,
           slayer_target: round === 1 && request.seat === 1 ? 5 : null,
         }))
@@ -2067,7 +2086,7 @@ describe('public conversation edge cases', () => {
       return conversation((batch) => {
         round++
         return batch.map((request) => ({
-          reasoning: 'A private proposal',
+          reasoning_summary: 'A private proposal',
           speech: round === 1 ? `Offer ${String(request.seat)}` : null,
           slayer_target: null,
         }))
@@ -2088,7 +2107,7 @@ describe('public conversation edge cases', () => {
 
   it('restricts claimed shots to nonempty public speech without restricting fake shooters', () => {
     const request: SpeechRequest = { tool: 'speak', seat: 1, day: 1, kind: 'free', remaining: 10 }
-    const choice = { reasoning: '', speech: 'I shoot.', slayer_target: 5 }
+    const choice = { reasoning_summary: '', speech: 'I shoot.', slayer_target: 5 }
     expect(validateSpeechChoice(choice, request)).toEqual([])
     expect(validateSpeechChoice({ ...choice, slayer_target: 15 }, request, 15)).toEqual([])
     expect(validateContestantChoice({ ...choice, slayer_target: 10 }, request, 10)).toEqual([])
@@ -2156,12 +2175,12 @@ describe('whispers through the rules seam', () => {
     const { events, requests } = await whispers((request) => {
       if (request.tool === 'propose_whisper')
         return {
-          reasoning: 'Meet',
+          reasoning_summary: 'Meet',
           members: request.seat === 1 ? [3, 2] : request.seat === 2 ? [1, 3] : null,
         }
       if (request.tool === 'rank_whispers')
-        return { reasoning: 'Accept', ranking: request.rooms.map((room) => room.id) }
-      return { reasoning: 'Pass', speech: null, slayer_target: null }
+        return { reasoning_summary: 'Accept', ranking: request.rooms.map((room) => room.id) }
+      return { reasoning_summary: 'Pass', speech: null, slayer_target: null }
     })
     expect(events.filter((event) => event.type === 'whisper.room.opened')).toMatchObject([
       { round: 1, members: [1, 2, 3] },
@@ -2191,7 +2210,7 @@ describe('whisper allocation and allowances', () => {
     const { events } = await whispers((request) => {
       if (request.tool === 'propose_whisper')
         return {
-          reasoning: '',
+          reasoning_summary: '',
           members:
             request.round === 1
               ? (({ 1: [2, 3], 2: [4], 3: [5] } as Record<number, number[]>)[request.seat] ?? null)
@@ -2199,13 +2218,13 @@ describe('whisper allocation and allowances', () => {
         }
       if (request.tool === 'rank_whispers')
         return {
-          reasoning: '',
+          reasoning_summary: '',
           ranking:
             ({ 1: [1], 2: [2, 1], 3: [3, 1], 4: [2], 5: [3] } as Record<number, number[]>)[
               request.seat
             ] ?? [],
         }
-      return { reasoning: '', speech: null, slayer_target: null }
+      return { reasoning_summary: '', speech: null, slayer_target: null }
     })
     const rooms = events.filter((event) => event.type === 'whisper.room.opened')
     expect(rooms.map((room) => room.members).sort()).toEqual([
@@ -2221,7 +2240,7 @@ describe('whisper allocation and allowances', () => {
         (request) => {
           if (request.tool === 'propose_whisper')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               members:
                 request.round === 1
                   ? (({ 1: [2], 2: [3], 3: [1] } as Record<number, number[]>)[request.seat] ?? null)
@@ -2229,12 +2248,12 @@ describe('whisper allocation and allowances', () => {
             }
           if (request.tool === 'rank_whispers')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               ranking:
                 ({ 1: [1, 3], 2: [2, 1], 3: [3, 2] } as Record<number, number[]>)[request.seat] ??
                 [],
             }
-          return { reasoning: '', speech: null, slayer_target: null }
+          return { reasoning_summary: '', speech: null, slayer_target: null }
         },
         { seed },
       )
@@ -2252,9 +2271,9 @@ describe('whisper allocation and allowances', () => {
     const { events, requests } = await whispers(
       (request) => {
         if (request.tool === 'propose_whisper')
-          return { reasoning: '', members: request.seat === 1 ? [2, 3] : null }
+          return { reasoning_summary: '', members: request.seat === 1 ? [2, 3] : null }
         if (request.tool === 'rank_whispers')
-          return { reasoning: '', ranking: request.seat === 3 ? [] : [1] }
+          return { reasoning_summary: '', ranking: request.seat === 3 ? [] : [1] }
         throw new Error('No room should converse')
       },
       { limit: 3 },
@@ -2269,17 +2288,17 @@ describe('whisper allocation and allowances', () => {
       (request) => {
         if (request.tool === 'propose_whisper')
           return {
-            reasoning: '',
+            reasoning_summary: '',
             members: request.seat === 1 ? [2] : request.seat === 3 ? [4] : null,
           }
         if (request.tool === 'rank_whispers')
           return {
-            reasoning: '',
+            reasoning_summary: '',
             ranking:
               request.round === 1 && request.seat === 4 ? [] : request.rooms.map((room) => room.id),
           }
         return {
-          reasoning: '',
+          reasoning_summary: '',
           speech: request.seat === 1 ? 'Even dead, I can speak.' : null,
           slayer_target: null,
         }
@@ -2321,16 +2340,16 @@ describe('whisper allocation and allowances', () => {
     const { events } = await whispers(async (request) => {
       if (request.tool === 'propose_whisper')
         return {
-          reasoning: '',
+          reasoning_summary: '',
           members: request.seat === 1 ? [2] : request.seat === 3 ? [4] : null,
         }
       if (request.tool === 'rank_whispers')
-        return { reasoning: '', ranking: request.rooms.map((room) => room.id) }
+        return { reasoning_summary: '', ranking: request.rooms.map((room) => room.id) }
       if (request.tool !== 'speak' || !request.room) throw new Error('Expected room speech')
       if (request.seat === 1) await otherRoomStarted
       if (request.seat === 3) release?.()
       return {
-        reasoning: '',
+        reasoning_summary: '',
         speech: request.seat % 2 === 1 ? `Private secret ${String(request.seat)}` : null,
         slayer_target: null,
       }
@@ -2388,11 +2407,13 @@ describe('whisper semantic boundaries', () => {
       eligible: [1, 2, 3],
     }
     for (const members of [[], [1], [2, 2], [4], [0], [2.5], ['2'], undefined])
-      expect(validateContestantChoice({ reasoning: '', members }, proposal)).toContainEqual({
-        code: 'invalid_whisper_members',
-      })
+      expect(validateContestantChoice({ reasoning_summary: '', members }, proposal)).toContainEqual(
+        {
+          code: 'invalid_whisper_members',
+        },
+      )
     for (const members of [null, [2], [3, 2]])
-      expect(validateContestantChoice({ reasoning: '', members }, proposal)).toEqual([])
+      expect(validateContestantChoice({ reasoning_summary: '', members }, proposal)).toEqual([])
     const ranking: ContestantRequest = {
       tool: 'rank_whispers',
       seat: 1,
@@ -2404,20 +2425,24 @@ describe('whisper semantic boundaries', () => {
       ],
     }
     for (const value of [[1], [7, 7], ['7'], null, undefined])
-      expect(validateContestantChoice({ reasoning: '', ranking: value }, ranking)).toContainEqual({
+      expect(
+        validateContestantChoice({ reasoning_summary: '', ranking: value }, ranking),
+      ).toContainEqual({
         code: 'invalid_whisper_ranking',
       })
     for (const value of [[], [9], [9, 7]])
-      expect(validateContestantChoice({ reasoning: '', ranking: value }, ranking)).toEqual([])
+      expect(validateContestantChoice({ reasoning_summary: '', ranking: value }, ranking)).toEqual(
+        [],
+      )
     expect(
       validateSpeechChoice(
-        { reasoning: '', speech: 'A private shot.', slayer_target: 2 },
+        { reasoning_summary: '', speech: 'A private shot.', slayer_target: 2 },
         { tool: 'speak', seat: 1, day: 1, kind: 'whisper' },
       ),
     ).toContainEqual({ code: 'invalid_slayer_target' })
     expect(
       validateSpeechChoice(
-        { reasoning: '', speech: null, slayer_target: null },
+        { reasoning_summary: '', speech: null, slayer_target: null },
         { tool: 'speak', seat: 1, day: 1, kind: 'whisper' },
       ),
     ).toEqual([])
@@ -2426,9 +2451,9 @@ describe('whisper semantic boundaries', () => {
   it('ends without another proposal batch when everyone exhausts their allowance', async () => {
     const { events, requests } = await whispers((request) => {
       if (request.tool === 'propose_whisper')
-        return { reasoning: '', members: request.seat === 1 ? [2, 3, 4, 5] : null }
-      if (request.tool === 'rank_whispers') return { reasoning: '', ranking: [1] }
-      return { reasoning: '', speech: null, slayer_target: null }
+        return { reasoning_summary: '', members: request.seat === 1 ? [2, 3, 4, 5] : null }
+      if (request.tool === 'rank_whispers') return { reasoning_summary: '', ranking: [1] }
+      return { reasoning_summary: '', speech: null, slayer_target: null }
     })
     expect(events.filter((event) => event.type === 'whisper.room.opened')).toHaveLength(1)
     expect(requests.filter((request) => request.tool === 'propose_whisper')).toHaveLength(5)
@@ -2438,21 +2463,21 @@ describe('whisper semantic boundaries', () => {
 function passAction(request: ContestantRequest): ContestantChoice {
   switch (request.tool) {
     case 'night_choice':
-      return { reasoning: '', targets: [5] }
+      return { reasoning_summary: '', targets: [5] }
     case 'speak':
       return {
-        reasoning: '',
+        reasoning_summary: '',
         speech: request.kind === 'free' ? null : 'Argument',
         slayer_target: null,
       }
     case 'nominate':
-      return { reasoning: '', nominee: null }
+      return { reasoning_summary: '', nominee: null }
     case 'vote':
-      return { reasoning: '', raise_hand: false }
+      return { reasoning_summary: '', raise_hand: false }
     case 'propose_whisper':
-      return { reasoning: '', members: null }
+      return { reasoning_summary: '', members: null }
     case 'rank_whispers':
-      return { reasoning: '', ranking: [] }
+      return { reasoning_summary: '', ranking: [] }
   }
 }
 
@@ -2463,7 +2488,7 @@ describe('protection and daytime triggers', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'monk' ? (request.day === 2 ? 5 : 3) : request.seat],
             }
           : passAction(request),
@@ -2502,7 +2527,7 @@ describe('protection and daytime triggers', () => {
         },
         act: (request) =>
           request.tool === 'night_choice'
-            ? { reasoning: '', targets: [request.day === 2 ? 1 : request.seat] }
+            ? { reasoning_summary: '', targets: [request.day === 2 ? 1 : request.seat] }
             : passAction(request),
       })
       const night2 = events.filter(
@@ -2529,7 +2554,7 @@ describe('protection and daytime triggers', () => {
       act: (request) => {
         if (request.tool === 'nominate' && request.day === 1)
           return {
-            reasoning: '',
+            reasoning_summary: '',
             nominee:
               request.nominees.includes(4) && request.seat === 2
                 ? 4
@@ -2537,8 +2562,9 @@ describe('protection and daytime triggers', () => {
                   ? 1
                   : null,
           }
-        if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
-        if (request.tool === 'night_choice') return { reasoning: '', targets: [request.seat] }
+        if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
+        if (request.tool === 'night_choice')
+          return { reasoning_summary: '', targets: [request.seat] }
         return passAction(request)
       },
     })
@@ -2561,9 +2587,13 @@ describe('protection and daytime triggers', () => {
           request.seat === 1 &&
           request.day <= 2
         )
-          return { reasoning: '', speech: 'I shoot.', slayer_target: request.day === 1 ? 5 : 4 }
+          return {
+            reasoning_summary: '',
+            speech: 'I shoot.',
+            slayer_target: request.day === 1 ? 5 : 4,
+          }
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.day === 2 ? 2 : request.seat] }
+          return { reasoning_summary: '', targets: [request.day === 2 ? 2 : request.seat] }
         return passAction(request)
       },
     })
@@ -2585,17 +2615,17 @@ describe('protection and daytime triggers', () => {
       seats: seatsFor(['butler', 'chef', 'soldier', 'scarletwoman', 'imp']),
       act: (request) => {
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.role === 'butler' ? 5 : request.seat] }
+          return { reasoning_summary: '', targets: [request.role === 'butler' ? 5 : request.seat] }
         if (
           request.tool === 'nominate' &&
           request.day === 1 &&
           request.seat === 2 &&
           request.nominees.includes(3)
         )
-          return { reasoning: '', nominee: 3 }
+          return { reasoning_summary: '', nominee: 3 }
         if (request.tool === 'vote') {
           votes.push(request)
-          return { reasoning: '', raise_hand: request.seat !== 5 }
+          return { reasoning_summary: '', raise_hand: request.seat !== 5 }
         }
         return passAction(request)
       },
@@ -2626,7 +2656,7 @@ describe('protection and daytime triggers', () => {
       seats,
       act: (request) =>
         request.tool === 'night_choice'
-          ? { reasoning: '', targets: [request.seat] }
+          ? { reasoning_summary: '', targets: [request.seat] }
           : passAction(request),
     })
     expect(events.at(-1)).toMatchObject({ type: 'game.ended', winner: 'good', reason: 'mayor' })
@@ -2642,10 +2672,10 @@ describe('protection and daytime triggers', () => {
             request.seat === 3 &&
             request.nominees.includes(2)
           )
-            return { reasoning: '', nominee: 2 }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+            return { reasoning_summary: '', nominee: 2 }
+          if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
           return request.tool === 'night_choice'
-            ? { reasoning: '', targets: [request.seat] }
+            ? { reasoning_summary: '', targets: [request.seat] }
             : passAction(request)
         },
       })
@@ -2665,7 +2695,7 @@ describe('protection and daytime triggers', () => {
     (role) => {
       expect(
         validateNightChoice(
-          { reasoning: '', targets: [1] },
+          { reasoning_summary: '', targets: [1] },
           { tool: 'night_choice', seat: 1, role, day: 2, targets: [1, 2] },
         ),
       ).toContainEqual({ code: 'invalid_targets' })
@@ -2691,7 +2721,7 @@ describe('protection and daytime triggers', () => {
         act: (request) =>
           request.tool === 'night_choice'
             ? {
-                reasoning: '',
+                reasoning_summary: '',
                 targets: [
                   request.role === 'poisoner'
                     ? 1
@@ -2747,8 +2777,9 @@ describe('protection and daytime triggers', () => {
             request.seat === nominator &&
             request.nominees.includes(1)
           )
-            return { reasoning: '', nominee: 1 }
-          if (request.tool === 'night_choice') return { reasoning: '', targets: [request.seat] }
+            return { reasoning_summary: '', nominee: 1 }
+          if (request.tool === 'night_choice')
+            return { reasoning_summary: '', targets: [request.seat] }
           return passAction(request)
         },
       })
@@ -2785,7 +2816,7 @@ describe('protection and daytime triggers', () => {
             request.day <= 2
           )
             return {
-              reasoning: '',
+              reasoning_summary: '',
               speech: 'I shoot.',
               slayer_target:
                 request.day === 2
@@ -2797,7 +2828,7 @@ describe('protection and daytime triggers', () => {
                       : 5,
             }
           if (request.tool === 'night_choice')
-            return { reasoning: '', targets: [request.day === 2 ? 2 : request.seat] }
+            return { reasoning_summary: '', targets: [request.day === 2 ? 2 : request.seat] }
           return passAction(request)
         },
       })
@@ -2827,7 +2858,7 @@ describe('protection and daytime triggers', () => {
         act: (request) => {
           if (request.tool === 'night_choice')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [
                 request.role === 'poisoner'
                   ? 1
@@ -2847,8 +2878,8 @@ describe('protection and daytime triggers', () => {
             request.nominees.includes(2) &&
             mode === 'execution'
           )
-            return { reasoning: '', nominee: 2 }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+            return { reasoning_summary: '', nominee: 2 }
+          if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
           return passAction(request)
         },
       })
@@ -2890,15 +2921,19 @@ describe('protection and daytime triggers', () => {
         seats,
         act: (request) => {
           if (request.tool === 'night_choice')
-            return { reasoning: '', targets: [request.role === 'butler' ? 3 : request.seat] }
+            return {
+              reasoning_summary: '',
+              targets: [request.role === 'butler' ? 3 : request.seat],
+            }
           if (
             request.tool === 'nominate' &&
             request.day === 1 &&
             request.seat === 2 &&
             request.nominees.includes(3)
           )
-            return { reasoning: '', nominee: 3 }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: request.seat === 1 }
+            return { reasoning_summary: '', nominee: 3 }
+          if (request.tool === 'vote')
+            return { reasoning_summary: '', raise_hand: request.seat === 1 }
           return passAction(request)
         },
       })
@@ -2923,14 +2958,14 @@ describe('protection and daytime triggers', () => {
       seats,
       act: (request) => {
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.role === 'monk' ? 5 : 3] }
+          return { reasoning_summary: '', targets: [request.role === 'monk' ? 5 : 3] }
         if (
           request.tool === 'speak' &&
           request.kind === 'free' &&
           request.day === 2 &&
           request.seat === 1
         )
-          return { reasoning: '', speech: 'Shoot', slayer_target: 5 }
+          return { reasoning_summary: '', speech: 'Shoot', slayer_target: 5 }
         return passAction(request)
       },
     })
@@ -2946,7 +2981,7 @@ describe('protection and daytime triggers', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'ravenkeeper' ? 2 : request.day === 2 ? 1 : request.seat],
             }
           : passAction(request),
@@ -2976,9 +3011,9 @@ describe('protection and daytime triggers', () => {
           request.seat === 3 &&
           request.nominees.includes(1)
         )
-          return { reasoning: '', nominee: 1 }
+          return { reasoning_summary: '', nominee: 1 }
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.day === 2 ? 3 : request.seat] }
+          return { reasoning_summary: '', targets: [request.day === 2 ? 3 : request.seat] }
         return passAction(request)
       },
     })
@@ -3014,7 +3049,7 @@ describe('protection and daytime triggers', () => {
       seats,
       act: (request) =>
         request.tool === 'night_choice'
-          ? { reasoning: '', targets: [request.seat] }
+          ? { reasoning_summary: '', targets: [request.seat] }
           : passAction(request),
     })
     expect(events.at(-1)).toMatchObject({
@@ -3055,7 +3090,7 @@ describe('drunkenness and poison through the rules seam', () => {
       act: (request) => {
         if (request.tool !== 'night_choice') return passAction(request)
         return {
-          reasoning: '',
+          reasoning_summary: '',
           targets: [
             request.role === 'poisoner'
               ? request.day === 1
@@ -3104,7 +3139,9 @@ describe('drunkenness and poison through the rules seam', () => {
         return Promise.resolve('monk' as const)
       },
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [2] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [2] }
+          : passAction(request),
     })
     expect(
       requests
@@ -3172,7 +3209,7 @@ describe('drunkenness and poison through the rules seam', () => {
           act: (request) => {
             if (request.tool === 'night_choice')
               return {
-                reasoning: '',
+                reasoning_summary: '',
                 targets:
                   request.role === 'poisoner'
                     ? [impairment === 'poisoned' ? 1 : 4]
@@ -3189,8 +3226,8 @@ describe('drunkenness and poison through the rules seam', () => {
               request.seat === 2 &&
               request.nominees.includes(3)
             )
-              return { reasoning: '', nominee: 3 }
-            if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+              return { reasoning_summary: '', nominee: 3 }
+            if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
             return passAction(request)
           },
         })
@@ -3234,7 +3271,7 @@ describe('poison lifecycle interactions', () => {
         act: (request) =>
           request.tool === 'night_choice'
             ? {
-                reasoning: '',
+                reasoning_summary: '',
                 targets: [
                   request.role === 'poisoner'
                     ? mode === 'poisoned'
@@ -3257,10 +3294,10 @@ describe('poison lifecycle interactions', () => {
     const { events } = await game([], {
       seats: seatsFor(['soldier', 'chef', 'poisoner', 'scarletwoman', 'imp']),
       act: (request) => {
-        if (request.tool === 'night_choice') return { reasoning: '', targets: [4] }
+        if (request.tool === 'night_choice') return { reasoning_summary: '', targets: [4] }
         if (request.tool === 'nominate' && request.seat === 2 && request.nominees.includes(5))
-          return { reasoning: '', nominee: 5 }
-        if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          return { reasoning_summary: '', nominee: 5 }
+        if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
         return passAction(request)
       },
     })
@@ -3274,7 +3311,7 @@ describe('poison lifecycle interactions', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'poisoner' ? 1 : request.day === 2 ? 4 : request.seat],
             }
           : passAction(request),
@@ -3300,7 +3337,9 @@ describe('poison lifecycle interactions', () => {
     const { events } = await game([1, 4, 5], {
       seats,
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [1] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [1] }
+          : passAction(request),
       discretion: (id, candidates) => {
         expect(id).toBe('D8')
         expect(candidates).toContainEqual({ target: 1, role: 'drunk' })
@@ -3340,7 +3379,9 @@ describe('fixed registration and remaining Outsiders', () => {
     const { events, state, discretionCalls } = await game([2, 1, 4], {
       seats: seatsFor(['spy', 'recluse', 'fortuneteller', 'drunk', 'imp']),
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [2, 4] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [2, 4] }
+          : passAction(request),
       discretion: (id, candidates) => {
         if (id === 'D2') return Promise.resolve('soldier')
         if (id === 'D3') return Promise.resolve(3)
@@ -3407,7 +3448,9 @@ describe('Spy grimoire information', () => {
     const { events, requests, discretionCalls } = await game([2, 4, 1], {
       seats,
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [1, 3] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [1, 3] }
+          : passAction(request),
       discretion: (id) => {
         expect(id).toBe('D3')
         return Promise.resolve(2)
@@ -3458,14 +3501,14 @@ describe('Saint execution', () => {
         act: (request) => {
           if (request.tool === 'nominate' && mode !== 'night-death')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               nominee:
                 request.day === 1 && request.seat === 1 && request.nominees.includes(2) ? 2 : null,
             }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
           if (request.tool === 'night_choice')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.day === 2 && mode === 'night-death' ? 2 : request.seat],
             }
           return passAction(request)
@@ -3589,7 +3632,7 @@ describe('fixed registration across every §6.2 probe', () => {
         discretion: () => Promise.resolve(1),
         choose: (request) =>
           request.tool === 'night_choice'
-            ? { reasoning: '', targets: [2, 3] }
+            ? { reasoning_summary: '', targets: [2, 3] }
             : passAction(request),
       })
       expect(
@@ -3611,11 +3654,11 @@ describe('fixed registration across every §6.2 probe', () => {
         choose: (request) => {
           if (request.tool === 'nominate')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               nominee:
                 request.day === 1 && request.seat === 1 && request.nominees.includes(2) ? 2 : null,
             }
-          if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+          if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
           return passAction(request)
         },
       })
@@ -3644,7 +3687,9 @@ describe('fixed registration across every §6.2 probe', () => {
         const { events } = await game([1, 2, 4], {
           seats,
           choose: (request) =>
-            request.tool === 'night_choice' ? { reasoning: '', targets: [2] } : passAction(request),
+            request.tool === 'night_choice'
+              ? { reasoning_summary: '', targets: [2] }
+              : passAction(request),
         })
         expect(
           events.find((event) => event.type === 'ability.resolved' && event.seat === 1),
@@ -3668,13 +3713,13 @@ describe('fixed registration across every §6.2 probe', () => {
         act: (request) => {
           if (request.tool === 'nominate')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               nominee:
                 request.day === 1 && request.seat === 2 && request.nominees.includes(1) ? 1 : null,
             }
           if (request.tool === 'night_choice')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.day === 2 ? 2 : request.day === 3 ? 4 : request.seat],
             }
           return passAction(request)
@@ -3717,10 +3762,10 @@ describe('fixed registration across every §6.2 probe', () => {
             request.day === 1 &&
             request.seat === 1
           )
-            return { reasoning: '', speech: 'Shoot the Recluse', slayer_target: 2 }
+            return { reasoning_summary: '', speech: 'Shoot the Recluse', slayer_target: 2 }
           if (request.tool === 'night_choice')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.day === 2 ? 4 : request.day === 3 ? 2 : request.seat],
             }
           return passAction(request)
@@ -3746,7 +3791,7 @@ describe('registration never changes real roles or setup', () => {
       act: (request) => {
         if (request.tool === 'night_choice')
           return {
-            reasoning: '',
+            reasoning_summary: '',
             targets: request.role === 'fortuneteller' ? [2, 4] : [request.seat],
           }
         if (
@@ -3755,7 +3800,7 @@ describe('registration never changes real roles or setup', () => {
           request.day === 2 &&
           request.seat === 3
         )
-          return { reasoning: '', speech: 'Shoot the new Imp', slayer_target: 2 }
+          return { reasoning_summary: '', speech: 'Shoot the new Imp', slayer_target: 2 }
         return passAction(request)
       },
     })
@@ -3818,7 +3863,9 @@ describe('registration never changes real roles or setup', () => {
         return Promise.resolve('soldier')
       },
       choose: (request) =>
-        request.tool === 'night_choice' ? { reasoning: '', targets: [5] } : passAction(request),
+        request.tool === 'night_choice'
+          ? { reasoning_summary: '', targets: [5] }
+          : passAction(request),
     })
     expect(discretionCalls).toEqual(['D1', 'D2'])
     expect(
@@ -3888,7 +3935,7 @@ describe('succession interaction boundaries', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.day === 2 ? 5 : request.day === 3 ? 2 : 1],
             }
           : passAction(request),
@@ -3926,7 +3973,7 @@ describe('succession interaction boundaries', () => {
       },
       act: (request) =>
         request.tool === 'night_choice'
-          ? { reasoning: '', targets: [request.day === 2 ? 5 : 1] }
+          ? { reasoning_summary: '', targets: [request.day === 2 ? 5 : 1] }
           : passAction(request),
     })
     expect(discretionCalls).toEqual(['D14'])
@@ -3951,7 +3998,7 @@ describe('succession interaction boundaries', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'poisoner' ? (request.day <= 2 ? 4 : 2) : request.seat],
             }
           : passAction(request),
@@ -3990,14 +4037,17 @@ describe('succession interaction boundaries', () => {
       },
       act: (request) => {
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.role === 'poisoner' ? 1 : request.seat] }
+          return {
+            reasoning_summary: '',
+            targets: [request.role === 'poisoner' ? 1 : request.seat],
+          }
         if (
           request.tool === 'speak' &&
           request.kind === 'free' &&
           request.day === 2 &&
           request.seat === 4
         )
-          return { reasoning: '', speech: 'Shoot the new Imp', slayer_target: 3 }
+          return { reasoning_summary: '', speech: 'Shoot the new Imp', slayer_target: 3 }
         return passAction(request)
       },
     })
@@ -4044,7 +4094,7 @@ describe('remaining research interaction scenarios', () => {
         act: (request) => {
           if (request.tool === 'nominate')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               nominee:
                 request.day <= 2 &&
                 request.seat === (request.day === 1 ? (role === 'imp' ? 5 : 4) : 2) &&
@@ -4054,7 +4104,7 @@ describe('remaining research interaction scenarios', () => {
             }
           if (request.tool === 'night_choice')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'butler' ? 5 : request.day === 2 ? 4 : request.seat],
             }
           return passAction(request)
@@ -4081,13 +4131,13 @@ describe('remaining research interaction scenarios', () => {
         if (request.tool === 'nominate') {
           nominators.push(request.seat)
           return {
-            reasoning: '',
+            reasoning_summary: '',
             nominee:
               request.day === 2 && request.seat === 3 && request.nominees.includes(1) ? 1 : null,
           }
         }
         if (request.tool === 'night_choice')
-          return { reasoning: '', targets: [request.day === 2 ? 2 : request.seat] }
+          return { reasoning_summary: '', targets: [request.day === 2 ? 2 : request.seat] }
         return passAction(request)
       },
     })
@@ -4105,11 +4155,11 @@ describe('remaining research interaction scenarios', () => {
       choose: (request) => {
         if (request.tool === 'nominate')
           return {
-            reasoning: '',
+            reasoning_summary: '',
             nominee:
               request.day === 1 && request.seat === 5 && request.nominees.includes(1) ? 1 : null,
           }
-        if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+        if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
         return passAction(request)
       },
     })
@@ -4133,7 +4183,7 @@ describe('remaining research interaction scenarios', () => {
         act: (request) => {
           if (request.tool === 'nominate')
             return {
-              reasoning: '',
+              reasoning_summary: '',
               nominee:
                 request.seat === 1 && request.nominees.includes(2)
                   ? 2
@@ -4142,7 +4192,7 @@ describe('remaining research interaction scenarios', () => {
                     : null,
             }
           if (request.tool === 'vote')
-            return { reasoning: '', raise_hand: [1, 2, 5].includes(request.seat) }
+            return { reasoning_summary: '', raise_hand: [1, 2, 5].includes(request.seat) }
           return passAction(request)
         },
       })
@@ -4175,7 +4225,7 @@ describe('remaining research interaction scenarios', () => {
         },
         choose: (request) =>
           request.tool === 'night_choice'
-            ? { reasoning: '', targets: [1, 2] }
+            ? { reasoning_summary: '', targets: [1, 2] }
             : passAction(request),
       })
       expect(discretionCalls).toEqual(['D3'])
@@ -4200,7 +4250,7 @@ describe('remaining research interaction scenarios', () => {
       act: (request) =>
         request.tool === 'night_choice'
           ? {
-              reasoning: '',
+              reasoning_summary: '',
               targets: [request.role === 'poisoner' ? 2 : request.day === 2 ? 2 : request.seat],
             }
           : passAction(request),
@@ -4228,7 +4278,7 @@ describe('remaining research interaction scenarios', () => {
       seats,
       act: (request) =>
         request.tool === 'night_choice'
-          ? { reasoning: '', targets: [request.role === 'poisoner' ? 1 : 4] }
+          ? { reasoning_summary: '', targets: [request.role === 'poisoner' ? 1 : 4] }
           : passAction(request),
     })
     const clear = events.findIndex(

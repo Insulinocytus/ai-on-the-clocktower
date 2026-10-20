@@ -30,8 +30,8 @@ const config: GameConfig = {
   whisperLimit: 0,
   language: 'en',
   seed: 18,
-  logVersion: 2,
-  promptVersion: 2,
+  logVersion: 3,
+  promptVersion: 4,
 }
 
 describe('localized terminal game events', () => {
@@ -73,14 +73,14 @@ describe('localized terminal game events', () => {
             if (request.day !== 1) throw new Error('The endgame should finish on day one')
             if (request.tool === 'nominate')
               return {
-                reasoning: '',
+                reasoning_summary: '',
                 nominee:
                   role === 'saint' && request.seat === 2 && request.nominees.includes(1) ? 1 : null,
               }
-            if (request.tool === 'vote') return { reasoning: '', raise_hand: true }
+            if (request.tool === 'vote') return { reasoning_summary: '', raise_hand: true }
             if (request.tool === 'speak')
               return {
-                reasoning: '',
+                reasoning_summary: '',
                 speech: request.kind === 'free' ? null : 'Execute Seat 1',
                 slayer_target: null,
                 decision: 0,

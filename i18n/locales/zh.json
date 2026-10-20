@@ -111,7 +111,8 @@
     "storyteller": "说书人视角",
     "seatView": "{seat} 号视角",
     "publicOnly": "仅公开信息",
-    "reasoning": "内心推理",
+    "seatSummary": "{seat} 号的推理摘要",
+    "storytellerSummary": "说书人的推理摘要",
     "losing": "落选决策",
     "notSelected": "未选中 / pass",
     "pass": "pass（不行动）",
@@ -200,8 +201,6 @@
     "starting": "正在开局…",
     "seatCount": "座位数",
     "setupHelp": "5–15 个 AI 座位，角色池为暗流涌动全部 22 个角色，可逐项配置裁量来源。黎明公告后先私聊、再公聊，死亡座位照常参加。",
-    "reasoning": "内心推理与原始响应",
-    "noReasoning": "未返回内心推理。",
     "reconnecting": "连接已断开，正在重连并补齐事件…",
     "reasons": {
       "engine_error": "引擎错误",

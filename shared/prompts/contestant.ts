@@ -2,11 +2,11 @@ import { renderEvent } from '../event-templates'
 import { PHASE_LABELS } from '../game/phases'
 import { ROLES } from '../game/roles'
 import { foldPublic, project } from '../game/rules'
+import { firstToolCall, isAccepted, type ChatMessage } from '../game/tool-calls'
 import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
 import { contestantSystem } from './rules'
 
-export const PROMPT_VERSION = 3
-const SPEECH_DAYS = 2
+export const PROMPT_VERSION = 4
 
 export function buildContestantPrompt({
   events,
@@ -18,7 +18,7 @@ export function buildContestantPrompt({
   seat: number
   language: Language
   request: ContestantRequest
-}): { messages: [{ role: 'system'; content: string }, { role: 'user'; content: string }] } {
+}): { messages: ChatMessage[] } {
   const zh = language === 'zh'
   const observer = `seat:${String(seat)}` as Observer
   const projected = project(events, observer)
@@ -37,24 +37,24 @@ export function buildContestantPrompt({
     ? `# 你的身份\n你是 ${String(seat)} 号。\n你的角色：${role.name.zh}；${role.alignment === 'good' ? '善良' : '邪恶'}阵营。\n能力：${role.ability.zh}\n目标：帮助${role.alignment === 'good' ? '善良阵营找出并消灭恶魔' : '邪恶阵营保护恶魔，直到只剩两人存活'}。`
     : `# Your identity\nYou are Seat ${String(seat)}.\nYour character: ${role.name.en}; ${role.alignment} team.\nAbility: ${role.ability.en}\nGoal: ${role.alignment === 'good' ? 'Help good find and eliminate the Demon' : 'Help evil protect the Demon until only two players live'}.`
 
-  const lines: string[] = []
-  let eventDay = 0
+  const messages: ChatMessage[] = []
+  let facts = [zh ? '# 时间线' : '# Timeline']
   for (const event of projected) {
-    if (event.type === 'phase.started') eventDay = event.day
-    if (event.type === 'seat.memo.updated') continue
-    if (
-      (event.type === 'public.speech' || event.type === 'whisper.speech') &&
-      eventDay <= state.day - SPEECH_DAYS
-    )
+    if (event.type !== 'contestant.decision') {
+      const line = renderEvent(event, language, observer)
+      if (line) facts.push(line)
       continue
-    const line = renderEvent(event, language, observer)
-    if (line) lines.push(line)
+    }
+    const call = isAccepted(event) ? firstToolCall(event.raw) : undefined
+    if (!call) continue
+    if (facts.length) messages.push({ role: 'user', content: facts.join('\n') })
+    facts = []
+    const id = `call_${String(event.seq)}`
+    messages.push(
+      { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: call }] },
+      { role: 'tool', tool_call_id: id, content: zh ? '已提交。' : 'Submitted.' },
+    )
   }
-  const timeline = `${zh ? '# 时间线' : '# Timeline'}\n${lines.join('\n')}`
-  const memoEvent = projected.findLast(
-    (event) => event.type === 'seat.memo.updated' && event.seat === seat,
-  )
-  const memo = `${zh ? '# 你的备忘录' : '# Your memo'}\n${memoEvent?.type === 'seat.memo.updated' ? memoEvent.memo : zh ? '（空）' : '(empty)'}`
   const alive = state.seats.filter((player) => player.alive).length
   const publicSeats = state.seats
     .map((player) =>
@@ -105,8 +105,8 @@ export function buildContestantPrompt({
                   ? `回应 ${String(request.nominator)} 号的提名，给出一条非空辩护，不能 pass。`
                   : `Give one nonempty defence against Seat ${String(request.nominator)}'s nomination; you cannot pass.`
         return zh
-          ? `# 本次请求\n${purpose}\n${free ? `只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–${String(state.seats.length)}）；任何座位都可以声称开枪，否则填 null。` : 'slayer_target 必须填 null。'}reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 speak。`
-          : `# This request\n${purpose}\n${free ? `Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–${String(state.seats.length)}), otherwise null. Any seat may claim a shot.` : 'slayer_target must be null.'} Put private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall speak.`
+          ? `# 本次请求\n${purpose}\n${free ? `只有 speech 非空时才可把猎手开枪附在发言上，slayer_target 填目标座位号（1–${String(state.seats.length)}）；任何座位都可以声称开枪，否则填 null。` : 'slayer_target 必须填 null。'}\n请调用 speak。`
+          : `# This request\n${purpose}\n${free ? `Attach a claimed Slayer shot only to a nonempty speech: slayer_target is a seat number (1–${String(state.seats.length)}), otherwise null. Any seat may claim a shot.` : 'slayer_target must be null.'}\nCall speak.`
       }
       case 'vote': {
         const votes = request.votes
@@ -137,8 +137,8 @@ export function buildContestantPrompt({
           .map((target) => (zh ? `${String(target)} 号` : `Seat ${String(target)}`))
           .join(zh ? '、' : ', ')
         return zh
-          ? `# 本次请求\n第 ${String(request.day)} 夜，作为${ROLES[request.role].name.zh}选择 ${String(targetCount)} 名${targetCount === 2 ? '不同的' : ''}玩家。合法目标：${legalTargets}。${request.targets.includes(seat) ? '可以选择自己。' : '不能选择自己。'}可以选择列表中的死者，不得因目标已死而重选。\ntargets 填 ${String(targetCount)} 个合法座位号；reasoning 填内心推理；可选 memo 整份覆盖备忘录（最多 2000 字）。\n请调用 night_choice。`
-          : `# This request\nNight ${String(request.day)}: acting as ${ROLES[request.role].name.en}, choose ${String(targetCount)} ${targetCount === 2 ? 'distinct players' : 'player'}. Legal targets: ${legalTargets}. ${request.targets.includes(seat) ? 'You may choose yourself.' : 'You may not choose yourself.'} Listed dead players are legal; a dead target does not grant a new choice.\nPut ${String(targetCount)} legal seat number${targetCount === 2 ? 's' : ''} in targets and private inner reasoning in reasoning. Optional memo replaces the whole memo (at most 2000 characters).\nCall night_choice.`
+          ? `# 本次请求\n第 ${String(request.day)} 夜，作为${ROLES[request.role].name.zh}选择 ${String(targetCount)} 名${targetCount === 2 ? '不同的' : ''}玩家。合法目标：${legalTargets}。${request.targets.includes(seat) ? '可以选择自己。' : '不能选择自己。'}可以选择列表中的死者，不得因目标已死而重选。\ntargets 填 ${String(targetCount)} 个合法座位号。\n请调用 night_choice。`
+          : `# This request\nNight ${String(request.day)}: acting as ${ROLES[request.role].name.en}, choose ${String(targetCount)} ${targetCount === 2 ? 'distinct players' : 'player'}. Legal targets: ${legalTargets}. ${request.targets.includes(seat) ? 'You may choose yourself.' : 'You may not choose yourself.'} Listed dead players are legal; a dead target does not grant a new choice.\nPut ${String(targetCount)} legal seat number${targetCount === 2 ? 's' : ''} in targets.\nCall night_choice.`
       }
     }
   })()
@@ -154,7 +154,13 @@ export function buildContestantPrompt({
           config?.seatCount ?? 5,
         ),
       },
-      { role: 'user', content: [identity, timeline, memo, currentState, requestText].join('\n\n') },
+      ...messages,
+      {
+        role: 'user',
+        content: [facts.join('\n'), identity, currentState, requestText]
+          .filter(Boolean)
+          .join('\n\n'),
+      },
     ],
   }
 }
