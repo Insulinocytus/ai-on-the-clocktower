@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import { $fetch, fetch, setup, startServer, stopServer } from '@nuxt/test-utils/e2e'
 import { describe, expect, it } from 'vitest'
 import Database from 'better-sqlite3'
@@ -613,7 +614,8 @@ describe('games HTTP seam', () => {
           validation: { ok: true },
           raw: { id: 'chatcmpl-fake' },
         })
-      for (const [index, decision] of decisions.entries()) {
+      const unmatched = fake.requests.map((request) => request.body.messages)
+      for (const decision of decisions) {
         const prior = events.filter((event) => event.seq < decision.seq)
         const prompt = buildContestantPrompt({
           events: prior,
@@ -635,8 +637,11 @@ describe('games HTTP seam', () => {
           language: 'en',
           request: decision.request,
         })
-        const captured = fake.requests[index]?.body.messages as { role: string; content: string }[]
-        expect(prompt.messages).toEqual(captured)
+        const match = unmatched.findIndex((messages) =>
+          isDeepStrictEqual(messages, prompt.messages),
+        )
+        expect(match, `request for decision seq ${String(decision.seq)}`).not.toBe(-1)
+        unmatched.splice(match, 1)
         expect(repeated.messages[0]).toEqual(prompt.messages[0])
         expect(repeated.messages[1].content.split('# Your memo')[0]).toBe(
           prompt.messages[1].content.split('# Your memo')[0],
