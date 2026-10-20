@@ -5,7 +5,7 @@ import { foldPublic, project } from '../game/rules'
 import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
 import { contestantSystem } from './rules'
 
-export const PROMPT_VERSION = 2
+export const PROMPT_VERSION = 3
 const SPEECH_DAYS = 2
 
 export function buildContestantPrompt({

@@ -2,8 +2,8 @@ import type { Language, ValidationError } from '../types/game'
 
 const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
   invalid_seat_count: {
-    zh: '座位数不符合本局要求。',
-    en: 'The seat count does not match this game.',
+    zh: 'roles 的角色数量必须等于本局座位数。',
+    en: 'The number of characters in roles must equal the seat count of this game.',
   },
   duplicate_role: { zh: '角色不得重复。', en: 'Characters must not repeat.' },
   invalid_role_counts: {
@@ -104,7 +104,17 @@ export function invalidAttemptSuffix(
       ? `上次提交无效（第 ${String(attempt)} 次尝试，最多 ${String(maxAttempts)} 次）`
       : `Previous submission invalid (attempt ${String(attempt)} of at most ${String(maxAttempts)})`,
     `${zh ? '上次工具与参数原文' : 'Previous tool and verbatim arguments'}:\n${previous}`,
-    ...errors.map((error) => ERRORS[error.code][language]),
+    ...errors.flatMap((error) => [
+      ERRORS[error.code][language],
+      ...(error.issues ?? []).map((issue) => {
+        const target = `- ${issue.path}${'value' in issue ? ` = ${JSON.stringify(issue.value)}` : ''}`
+        if (!issue.allowed) return `${target}${zh ? '：' : ': '}${issue.message}`
+        const allowed = issue.allowed.join(', ')
+        return zh
+          ? `${target}：不在允许值内（${allowed}）`
+          : `${target}: not an allowed value (${allowed})`
+      }),
+    ]),
     zh ? '请按上面的请求重新调用。' : 'Call the tool again according to the request above.',
   ].join('\n')
 }

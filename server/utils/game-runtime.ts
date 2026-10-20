@@ -44,6 +44,8 @@ interface Runner {
   log: GameEvent[]
   commit: (event: GameEventInput) => GameEvent
   lastManual?: { seq: number; choice: DiscretionChoice }
+  /** Shared by every decision paused since the last resume; one retry releases them all. */
+  paused?: PromiseWithResolvers<undefined>
   pending: Map<
     number,
     {
@@ -55,7 +57,7 @@ interface Runner {
 }
 const runners = new Map<string, Runner>()
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
-const MAX_ATTEMPTS = 3
+const MAX_ATTEMPTS = 5
 const RETRY_BACKOFF_MS = 250
 
 function retryDelay(error: unknown, attempt: number): number {
@@ -68,13 +70,37 @@ function retryDelay(error: unknown, attempt: number): number {
   return RETRY_BACKOFF_MS * 2 ** (attempt - 1)
 }
 
-class ModelFailure extends Error {
-  constructor(
-    readonly actor: { seat?: number; discretion?: DiscretionId },
-    message: string,
-  ) {
-    super(message)
+async function pause(
+  runner: Runner,
+  actor: { seat: number } | { discretion: DiscretionId },
+  error: string,
+) {
+  runner.commit({ type: 'game.paused', ...actor, error })
+  runner.paused ??= Promise.withResolvers<undefined>()
+  const { promise } = runner.paused
+  const signal = runner.controller.signal
+  const { promise: aborted, reject } = Promise.withResolvers<never>()
+  const cancel = () => {
+    reject(signal.reason instanceof Error ? signal.reason : new Error('Game aborted'))
   }
+  signal.addEventListener('abort', cancel, { once: true })
+  try {
+    await Promise.race([promise, aborted])
+  } finally {
+    signal.removeEventListener('abort', cancel)
+  }
+}
+
+export function resumeGame(id: string) {
+  const game = getGame(id)
+  const runner = runners.get(id)
+  if (game.status !== 'paused' || !runner?.paused)
+    throw createError({ statusCode: 409, statusMessage: 'Game is not paused' })
+  const { resolve } = runner.paused
+  runner.paused = undefined
+  runner.commit({ type: 'game.resumed' })
+  resolve(undefined)
+  return getGame(id)
 }
 
 export function abortGame(id: string) {
@@ -234,7 +260,8 @@ export function createGame(input: z.infer<typeof gameInput>) {
         ? { seat: metadata.seat }
         : { discretion: metadata.discretion }
     const provider = getProvider(model.providerId)
-    if (!provider) throw new ModelFailure(actor, 'Provider not found')
+    if (!provider) throw new Error('Provider not found')
+    let limit = MAX_ATTEMPTS
     for (let attempt = 1; ; attempt++) {
       const start = performance.now()
       let raw: unknown
@@ -265,14 +292,26 @@ export function createGame(input: z.infer<typeof gameInput>) {
             error: message,
           },
         })
-        if (attempt === MAX_ATTEMPTS) throw new ModelFailure(actor, message)
-        await delay(retryDelay(error, attempt), undefined, { signal: runner.controller.signal })
+        if (attempt === limit) {
+          await pause(runner, actor, message)
+          limit += MAX_ATTEMPTS
+        } else {
+          const roundAttempt = attempt - limit + MAX_ATTEMPTS
+          await delay(retryDelay(error, roundAttempt), undefined, {
+            signal: runner.controller.signal,
+          })
+        }
         continue
       }
       const toolCheck = checkToolCall(raw, tools, tool)
       const parsed = toolCheck.ok
         ? validateChoice(toolCheck.arguments)
-        : { ok: false as const, errors: [{ code: toolCheck.code }] }
+        : {
+            ok: false as const,
+            errors: [
+              { code: toolCheck.code, ...(toolCheck.issues && { issues: toolCheck.issues }) },
+            ],
+          }
       const errors = parsed.ok ? [] : parsed.errors
       const valid = parsed.ok
       const usage = usageShape.safeParse(raw)
@@ -286,11 +325,14 @@ export function createGame(input: z.infer<typeof gameInput>) {
         validation: { ok: valid, errors },
       })
       if (parsed.ok) return { choice: parsed.choice, decision: decision.seq }
-      if (attempt === MAX_ATTEMPTS) throw new ModelFailure(actor, JSON.stringify(errors))
+      if (attempt === limit) {
+        await pause(runner, actor, JSON.stringify(errors))
+        limit += MAX_ATTEMPTS
+      }
       const calls = toolCheck.ok
         ? [{ name: toolCheck.name, arguments: toolCheck.rawArguments }]
         : toolCheck.calls
-      prompt.messages[1].content += `\n\n${invalidAttemptSuffix(config.language, attempt, MAX_ATTEMPTS, calls, errors)}`
+      prompt.messages[1].content += `\n\n${invalidAttemptSuffix(config.language, attempt, limit, calls, errors)}`
     }
   }
 
@@ -365,8 +407,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
       if (runner.controller.signal.aborted) return
       commit({
         type: 'game.aborted',
-        reason: error instanceof ModelFailure ? 'model_call_failed' : 'engine_error',
-        ...(error instanceof ModelFailure && error.actor),
+        reason: 'engine_error',
         error: error instanceof Error ? error.message : String(error),
       })
     })

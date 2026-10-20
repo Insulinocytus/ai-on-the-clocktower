@@ -190,6 +190,8 @@
     "waiting": "Waiting for manual discretion",
     "ended": "Ended",
     "aborted": "Aborted",
+    "paused": "Paused",
+    "resume": "Retry",
     "abort": "Abort game",
     "incompatible": "This log version cannot be replayed.",
     "live": "Live",
@@ -207,7 +209,6 @@
     "noReasoning": "No inner reasoning returned.",
     "reconnecting": "Connection interrupted. Reconnecting and restoring missing events…",
     "reasons": {
-      "model_call_failed": "Model call failed or returned invalid output",
       "engine_error": "Engine error",
       "process_restart": "Process restarted",
       "human": "Stopped by spectator",

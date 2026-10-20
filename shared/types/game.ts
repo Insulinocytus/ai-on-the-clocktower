@@ -3,7 +3,7 @@ import type { Preset } from './models'
 export const MEMO_MAX_LENGTH = 2000
 
 export type GameEndReason = 'all_demons_dead' | 'two_alive' | 'mayor' | 'saint_executed'
-type GameAbortReason = 'model_call_failed' | 'engine_error' | 'human' | 'process_restart'
+type GameAbortReason = 'engine_error' | 'human' | 'process_restart'
 export type GameReason = GameEndReason | GameAbortReason
 
 export type Language = 'en' | 'zh'
@@ -189,8 +189,16 @@ type ValidationCode =
   | 'invalid_arguments_json'
   | 'invalid_arguments'
   | 'invalid_discretion'
+/** One JSON Schema violation in tool arguments; `value` is omitted for objects and arrays. */
+export interface SchemaIssue {
+  path: string
+  message: string
+  value?: unknown
+  allowed?: unknown[]
+}
 export interface ValidationError {
   code: ValidationCode
+  issues?: SchemaIssue[]
 }
 export interface SeatState {
   seat: number
@@ -249,16 +257,10 @@ export type GameEvent =
   | Event<'game.created', GameConfig>
   | Event<'phase.started', { day: number; phase: Phase }>
   | Event<'game.ended', { winner: Alignment; reason: GameEndReason }>
-  | Event<
-      'game.aborted',
-      {
-        reason: GameAbortReason
-        seat?: number
-        discretion?: DiscretionId
-        error?: unknown
-        details?: unknown
-      }
-    >
+  | Event<'game.aborted', { reason: GameAbortReason; error?: string }>
+  | Event<'game.paused', { seat: number; error: string }>
+  | Event<'game.paused', { discretion: DiscretionId; error: string }>
+  | Event<'game.resumed', object>
   | Event<
       'contestant.decision',
       {

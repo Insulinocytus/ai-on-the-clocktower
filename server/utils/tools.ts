@@ -1,6 +1,6 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
-import type { ValidationError } from '#shared/types/game'
+import type { SchemaIssue, ValidationError } from '#shared/types/game'
 import { MEMO_MAX_LENGTH } from '#shared/types/game'
 import { ROLES } from '#shared/game/roles'
 
@@ -183,6 +183,7 @@ export type ToolCallCheck =
       ok: false
       error: string
       code: ValidationError['code']
+      issues?: SchemaIssue[]
       calls: { name: string; arguments: string }[]
     }
 
@@ -196,12 +197,11 @@ export function checkToolCall(
   const calls = parsed.success
     ? (parsed.data.choices[0]?.message.tool_calls ?? []).map((call) => call.function)
     : []
-  const fail = (code: ValidationError['code'], error: string): ToolCallCheck => ({
-    ok: false,
-    code,
-    error,
-    calls,
-  })
+  const fail = (
+    code: ValidationError['code'],
+    error: string,
+    issues?: SchemaIssue[],
+  ): ToolCallCheck => ({ ok: false, code, error, calls, ...(issues && { issues }) })
   if (!parsed.success) return fail('invalid_response', 'Response has no choices[0].message')
   const [call] = calls
   if (!call) return fail('no_tool_call', 'No tool call')
@@ -221,12 +221,21 @@ export function checkToolCall(
     return fail('invalid_arguments_json', `Arguments of ${name} are not valid JSON`)
   }
   // Each call owns its schema cache; freshly generated schemas must not accumulate across requests.
-  const ajv = new Ajv({ allowUnionTypes: true })
+  const ajv = new Ajv({ allowUnionTypes: true, verbose: true, allErrors: true })
   const validate = ajv.compile(tool.function.parameters)
   if (!validate(args)) {
     return fail(
       'invalid_arguments',
       `${name}: ${ajv.errorsText(validate.errors, { dataVar: 'arguments' })}`,
+      (validate.errors ?? []).map(({ instancePath, message = '', params, data }) => ({
+        path: instancePath || '/',
+        message:
+          'additionalProperty' in params
+            ? `${message}: ${String(params.additionalProperty)}`
+            : message,
+        ...(data !== undefined && (data === null || typeof data !== 'object') && { value: data }),
+        ...(Array.isArray(params.allowedValues) && { allowed: params.allowedValues as unknown[] }),
+      })),
     )
   }
   return { ok: true, name, arguments: args, rawArguments: call.arguments }

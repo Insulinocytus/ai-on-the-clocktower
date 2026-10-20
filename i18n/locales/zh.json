@@ -185,6 +185,8 @@
     "waiting": "等待手动裁量",
     "ended": "已结束",
     "aborted": "已终止",
+    "paused": "已暂停",
+    "resume": "重试",
     "abort": "终止对局",
     "incompatible": "日志格式版本不兼容，无法回放。",
     "live": "直播",
@@ -202,7 +204,6 @@
     "noReasoning": "未返回内心推理。",
     "reconnecting": "连接已断开，正在重连并补齐事件…",
     "reasons": {
-      "model_call_failed": "模型调用失败或输出不合法",
       "engine_error": "引擎错误",
       "process_restart": "进程重启",
       "human": "观战者终止",

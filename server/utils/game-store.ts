@@ -33,14 +33,19 @@ export function getGame(id: string): GameSummary {
   const waiting =
     pending &&
     !events.some((event) => event.type === 'discretion.resolved' && event.seq > pending.seq)
+  const paused = events.findLast(
+    (event) => event.type === 'game.paused' || event.type === 'game.resumed',
+  )
   const status =
     terminal?.type === 'game.ended'
       ? 'ended'
       : terminal?.type === 'game.aborted'
         ? 'aborted'
-        : waiting
-          ? 'waiting'
-          : 'running'
+        : paused?.type === 'game.paused'
+          ? 'paused'
+          : waiting
+            ? 'waiting'
+            : 'running'
   return {
     ...row,
     config,

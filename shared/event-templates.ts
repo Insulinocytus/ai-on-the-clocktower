@@ -111,8 +111,7 @@ function informationText(
 export function renderEvent(event: GameEvent, language: Language, observer: Observer): string {
   if (!visibleTo(event, observer)) return ''
   const zh = language === 'zh'
-  const actor =
-    'seat' in event && event.seat !== undefined ? seatName(event.seat, language, observer) : ''
+  const actor = 'seat' in event ? seatName(event.seat, language, observer) : ''
   const eventType = event.type
   switch (event.type) {
     case 'game.created':
@@ -129,8 +128,21 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
         : `Game ended: ${event.winner} wins. Reason: ${REASONS[language][event.reason]}.`
     case 'game.aborted':
       return zh
-        ? `对局已终止：${REASONS[language][event.reason]}${event.seat === undefined ? '' : `，${actor}`}${event.discretion ? `，裁量 ${event.discretion}` : ''}。错误：${JSON.stringify(event.error ?? event.details ?? null)}。`
-        : `Game aborted: ${REASONS[language][event.reason]}${event.seat === undefined ? '' : `, ${actor}`}${event.discretion ? `, discretion ${event.discretion}` : ''}. Error: ${JSON.stringify(event.error ?? event.details ?? null)}.`
+        ? `对局已终止：${REASONS[language][event.reason]}。错误：${JSON.stringify(event.error ?? null)}。`
+        : `Game aborted: ${REASONS[language][event.reason]}. Error: ${JSON.stringify(event.error ?? null)}.`
+    case 'game.paused': {
+      const who =
+        'discretion' in event
+          ? zh
+            ? `裁量 ${event.discretion}`
+            : `discretion ${event.discretion}`
+          : actor
+      return zh
+        ? `对局已暂停：${who}在重试上限内未得到合法结果。错误：${event.error}。`
+        : `Game paused: ${who} produced no valid result within the attempt limit. Error: ${event.error}.`
+    }
+    case 'game.resumed':
+      return zh ? '对局已继续：重试暂停的决策。' : 'Game resumed: retrying the paused decisions.'
     case 'contestant.decision':
       return zh
         ? `${actor}的模型决策：${event.request.tool}；第 ${String(event.attempt)} 次尝试，耗时 ${String(event.durationMs)} ms；校验：${JSON.stringify(event.validation)}。`
