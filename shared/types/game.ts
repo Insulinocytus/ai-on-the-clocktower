@@ -1,6 +1,6 @@
 import type { Preset } from './models'
 
-export const MEMO_MAX_LENGTH = 2000
+export const REASONING_SUMMARY_MAX_LENGTH = 500
 
 export type GameEndReason = 'all_demons_dead' | 'two_alive' | 'mayor' | 'saint_executed'
 type GameAbortReason = 'engine_error' | 'human' | 'process_restart'
@@ -73,9 +73,8 @@ export interface NightRequest {
   targets: number[]
 }
 interface NightChoice {
-  reasoning: string
+  reasoning_summary: string
   targets: number[]
-  memo?: string
 }
 export interface SpeechRequest {
   tool: 'speak'
@@ -88,10 +87,9 @@ export interface SpeechRequest {
   room?: { round: number; id: string; members: number[] }
 }
 export interface SpeechChoice {
-  reasoning: string
+  reasoning_summary: string
   speech: string | null
   slayer_target: number | null
-  memo?: string
   decision?: number
 }
 interface NominationRequest {
@@ -101,9 +99,8 @@ interface NominationRequest {
   nominees: number[]
 }
 interface NominationChoice {
-  reasoning: string
+  reasoning_summary: string
   nominee: number | null
-  memo?: string
 }
 interface VoteRequest {
   tool: 'vote'
@@ -118,9 +115,8 @@ interface VoteRequest {
   master?: number | null
 }
 interface VoteChoice {
-  reasoning: string
+  reasoning_summary: string
   raise_hand: boolean
-  memo?: string
 }
 interface WhisperRoom {
   id: number
@@ -135,9 +131,8 @@ interface WhisperProposalRequest {
   eligible: number[]
 }
 interface WhisperProposalChoice {
-  reasoning: string
+  reasoning_summary: string
   members: number[] | null
-  memo?: string
 }
 interface WhisperRankingRequest {
   tool: 'rank_whispers'
@@ -147,9 +142,8 @@ interface WhisperRankingRequest {
   rooms: WhisperRoom[]
 }
 interface WhisperRankingChoice {
-  reasoning: string
+  reasoning_summary: string
   ranking: number[]
-  memo?: string
 }
 export type ContestantRequest =
   | NightRequest
@@ -173,8 +167,7 @@ type ValidationCode =
   | 'invalid_demon'
   | 'unsupported_role'
   | 'invalid_targets'
-  | 'invalid_reasoning'
-  | 'invalid_memo'
+  | 'invalid_reasoning_summary'
   | 'invalid_nominee'
   | 'invalid_vote'
   | 'invalid_speech'
@@ -347,7 +340,6 @@ export type GameEvent =
         content: Pick<Grimoire, 'seats' | 'redHerring'> & { bluffs?: RoleId[] }
       }
     >
-  | Event<'seat.memo.updated', { seat: number; memo: string }>
   | Event<'night.choice', { seat: number; role: RoleId; targets: number[] }>
   | Event<'dawn.announced', { day: number; deaths: number[] }>
   | Event<'whisper.proposed', { seat: number; round: number; members: number[] | null }>

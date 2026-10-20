@@ -21,7 +21,7 @@ import type {
   SpeechRequest,
   ValidationError,
 } from '../types/game'
-import { MEMO_MAX_LENGTH } from '../types/game'
+import { REASONING_SUMMARY_MAX_LENGTH } from '../types/game'
 import { ROLES } from './roles'
 
 const ROLE_POOL = Object.values(ROLES).map((role) => role.id)
@@ -203,7 +203,7 @@ const AUDIENCES: Record<GameEvent['type'], Audience> = {
   'game.aborted': 'spectator',
   'game.paused': 'spectator',
   'game.resumed': 'spectator',
-  'contestant.decision': 'spectator',
+  'contestant.decision': 'seat',
   'storyteller.decision': 'storyteller',
   'discretion.requested': 'storyteller',
   'discretion.resolved': 'storyteller',
@@ -213,7 +213,6 @@ const AUDIENCES: Record<GameEvent['type'], Audience> = {
   'ability.resolved': 'storyteller',
   'night.death': 'storyteller',
   told: 'seat',
-  'seat.memo.updated': 'seat',
   'night.choice': 'seat',
   'dawn.announced': 'public',
   'whisper.proposed': 'spectator',
@@ -329,7 +328,6 @@ export function apply(state: Grimoire, event: GameEvent): Grimoire {
     case 'discretion.resolved':
     case 'ability.resolved':
     case 'told':
-    case 'seat.memo.updated':
     case 'night.choice':
     case 'dawn.announced':
     case 'whisper.proposed':
@@ -459,7 +457,6 @@ export function foldPublic(events: readonly GameEvent[], seatCount = 5): PublicS
       case 'ability.resolved':
       case 'night.death':
       case 'told':
-      case 'seat.memo.updated':
       case 'night.choice':
       case 'whisper.proposed':
       case 'whisper.candidates':
@@ -475,11 +472,17 @@ export function foldPublic(events: readonly GameEvent[], seatCount = 5): PublicS
   return state
 }
 
+function reasoningSummaryErrors(choice: Record<string, unknown>): ValidationError[] {
+  return typeof choice.reasoning_summary === 'string' &&
+    choice.reasoning_summary.length <= REASONING_SUMMARY_MAX_LENGTH
+    ? []
+    : [{ code: 'invalid_reasoning_summary' }]
+}
+
 export function validateNightChoice(value: unknown, request: NightRequest): ValidationError[] {
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
-  const errors: ValidationError[] = []
-  if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
+  const errors = reasoningSummaryErrors(choice)
   if (
     !Array.isArray(choice.targets) ||
     choice.targets.length !== (request.role === 'fortuneteller' ? 2 : 1) ||
@@ -494,11 +497,6 @@ export function validateNightChoice(value: unknown, request: NightRequest): Vali
   ) {
     errors.push({ code: 'invalid_targets' })
   }
-  if (
-    choice.memo !== undefined &&
-    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
-  )
-    errors.push({ code: 'invalid_memo' })
   return errors
 }
 
@@ -509,8 +507,7 @@ export function validateSpeechChoice(
 ): ValidationError[] {
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
-  const errors: ValidationError[] = []
-  if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
+  const errors = reasoningSummaryErrors(choice)
   if (
     (choice.speech !== null && typeof choice.speech !== 'string') ||
     (request.kind !== 'free' &&
@@ -529,11 +526,6 @@ export function validateSpeechChoice(
       choice.slayer_target > seatCount)
   )
     errors.push({ code: 'invalid_slayer_target' })
-  if (
-    choice.memo !== undefined &&
-    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
-  )
-    errors.push({ code: 'invalid_memo' })
   return errors
 }
 
@@ -546,13 +538,7 @@ export function validateContestantChoice(
   if (request.tool === 'speak') return validateSpeechChoice(value, request, seatCount)
   const choice =
     typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
-  const errors: ValidationError[] = []
-  if (typeof choice.reasoning !== 'string') errors.push({ code: 'invalid_reasoning' })
-  if (
-    choice.memo !== undefined &&
-    (typeof choice.memo !== 'string' || choice.memo.length > MEMO_MAX_LENGTH)
-  )
-    errors.push({ code: 'invalid_memo' })
+  const errors = reasoningSummaryErrors(choice)
   if (request.tool === 'nominate') {
     if (
       choice.nominee !== null &&
@@ -1283,7 +1269,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       const choices =
         eligible.length > 1
           ? await ports.askContestants(proposals)
-          : [{ reasoning: '', members: null }]
+          : [{ reasoning_summary: '', members: null }]
       refold()
       if (stopped()) return
       if (

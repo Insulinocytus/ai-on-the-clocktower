@@ -262,10 +262,6 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
         ? `${prefix}爪牙：${seats}；不在场的善良伪装角色：${bluffs.map((role) => ROLES[role].name.zh).join('、') || '无'}。`
         : `${prefix}Minions: ${seats}; good characters not in play as bluffs: ${bluffs.map((role) => ROLES[role].name.en).join(', ') || 'none'}.`
     }
-    case 'seat.memo.updated':
-      return zh
-        ? `${actor}整份更新备忘录：${event.memo}`
-        : `${actor}: replaced the entire memo: ${event.memo}`
     case 'night.choice':
       return zh
         ? `${actor}作为${ROLES[event.role].name.zh}选择了${seatList(event.targets, language, observer)}。`

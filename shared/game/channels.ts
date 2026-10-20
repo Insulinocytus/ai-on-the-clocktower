@@ -20,7 +20,6 @@ export function channelBlocks(events: readonly GameEvent[]): ChannelBlock[] {
   const rooms = new Map<string, ChannelBlock>()
   const allocations = new Map<string, ChannelBlock>()
   const memberships = new Map<string, number>()
-  const seatBlocks = new Map<number, ChannelBlock>()
   let day = 0
   let current: ChannelBlock | undefined
 
@@ -52,7 +51,6 @@ export function channelBlocks(events: readonly GameEvent[]): ChannelBlock[] {
       day = event.day
       current = event.phase === 'whisper' ? allocation(1, event) : create(event.phase, event)
       block = current
-      seatBlocks.clear()
     } else if ('roomId' in event) {
       const key = `${String(day)}:${event.roomId}`
       block = rooms.get(key)
@@ -73,12 +71,9 @@ export function channelBlocks(events: readonly GameEvent[]): ChannelBlock[] {
         block = allocation(request.round, event)
         current = block
       }
-      if (block) seatBlocks.set(event.seat, block)
     } else if ('round' in event) {
       block = allocation(event.round, event)
       current = block
-    } else if (event.type === 'seat.memo.updated') {
-      block = seatBlocks.get(event.seat)
     }
     block ??= current ?? blocks.at(-1) ?? create('setup', event)
     block.events.push(event)

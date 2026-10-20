@@ -1,7 +1,7 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
 import type { SchemaIssue, ValidationError } from '#shared/types/game'
-import { MEMO_MAX_LENGTH } from '#shared/types/game'
+import { REASONING_SUMMARY_MAX_LENGTH } from '#shared/types/game'
 import { ROLES } from '#shared/game/roles'
 
 export type Lang = 'zh' | 'en'
@@ -22,8 +22,8 @@ export interface Tool {
 
 const TEXT = {
   zh: {
-    reasoning: '你的内心推理。',
-    memo: '可选。填写则用它整份替换你的备忘录；不填则备忘录不变。',
+    reasoningSummary:
+      '用一两句话概括你这次的思考（最多 500 字）。之后每次决策都会回放给你自己，其他选手看不到。',
     speak: '说一句话或 pass。私聊、公聊、提名理由、辩护都用这个工具。',
     speech: '你要说出口的话；null 表示 pass。',
     slayer: '公开声称以猎手能力开枪的目标座位。只在公聊且 speech 不为空时可以填写，否则为 null。',
@@ -39,8 +39,8 @@ const TEXT = {
     targets: '选择的座位，数量按请求要求。',
   },
   en: {
-    reasoning: 'Your inner reasoning.',
-    memo: 'Optional. If given, it replaces your whole memo; if left out, your memo stays the same.',
+    reasoningSummary:
+      'One or two sentences summarising your thinking this time (at most 500 characters). Replayed to you in every later decision; other contestants cannot see it.',
     speak:
       'Say one line or pass. Used for whispers, public discussion, nomination reasons and defences.',
     speech: 'What you say out loud; null to pass.',
@@ -60,7 +60,7 @@ const TEXT = {
   },
 } satisfies Record<Lang, Record<string, string>>
 
-/** The six contestant tools, fixed for a whole game: `reasoning` first, optional `memo` last, seats as integer enums 1..N. */
+/** The six contestant tools, fixed for a whole game: `reasoning_summary` first, seats as integer enums 1..N. */
 export function contestantTools(lang: Lang, seatCount: number): Tool[] {
   const t = TEXT[lang]
   const seats = Array.from({ length: seatCount }, (_, i) => i + 1)
@@ -79,11 +79,14 @@ export function contestantTools(lang: Lang, seatCount: number): Tool[] {
       parameters: {
         type: 'object',
         properties: {
-          reasoning: { type: 'string', description: t.reasoning },
+          reasoning_summary: {
+            type: 'string',
+            maxLength: REASONING_SUMMARY_MAX_LENGTH,
+            description: t.reasoningSummary,
+          },
           ...props,
-          memo: { type: 'string', maxLength: MEMO_MAX_LENGTH, description: t.memo },
         },
-        required: ['reasoning', ...required],
+        required: ['reasoning_summary', ...required],
         additionalProperties: false,
       },
     },
@@ -136,7 +139,13 @@ export function storytellerTools(lang: Lang, seatCount: number): Tool[] {
         parameters: {
           type: 'object',
           properties: {
-            reasoning: { type: 'string', description: zh ? '你的理由。' : 'Your reasons.' },
+            reasoning_summary: {
+              type: 'string',
+              maxLength: REASONING_SUMMARY_MAX_LENGTH,
+              description: zh
+                ? '用一两句话概括你这次的思考（最多 500 字）。之后每次裁量都会回放给你。'
+                : 'One or two sentences summarising your thinking this time (at most 500 characters). Replayed to you in every later decision.',
+            },
             seats: {
               type: 'array',
               items: { type: 'integer', enum: Array.from({ length: seatCount }, (_, i) => i + 1) },
@@ -155,7 +164,7 @@ export function storytellerTools(lang: Lang, seatCount: number): Tool[] {
               description: zh ? '阵营。' : 'Team.',
             },
           },
-          required: ['reasoning'],
+          required: ['reasoning_summary'],
           additionalProperties: false,
         },
       },

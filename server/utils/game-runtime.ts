@@ -20,6 +20,7 @@ import {
   validateContestantChoice,
   validateDiscretionChoice,
 } from '#shared/game/rules'
+import type { ChatMessage } from '#shared/game/tool-calls'
 import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
@@ -246,7 +247,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
           Extract<GameEvent, { type: 'storyteller.decision' }>,
           'type' | 'discretion' | 'request'
         >,
-    prompt: { messages: [{ role: 'system'; content: string }, { role: 'user'; content: string }] },
+    prompt: { messages: ChatMessage[] },
     tools: Tool[],
     tool: string,
     validateChoice: (
@@ -332,7 +333,9 @@ export function createGame(input: z.infer<typeof gameInput>) {
       const calls = toolCheck.ok
         ? [{ name: toolCheck.name, arguments: toolCheck.rawArguments }]
         : toolCheck.calls
-      prompt.messages[1].content += `\n\n${invalidAttemptSuffix(config.language, attempt, limit, calls, errors)}`
+      const last = prompt.messages.at(-1)
+      if (last?.role !== 'user') throw new Error('Prompt must end with a user message')
+      last.content += `\n\n${invalidAttemptSuffix(config.language, attempt, limit, calls, errors)}`
     }
   }
 
@@ -365,15 +368,9 @@ export function createGame(input: z.infer<typeof gameInput>) {
     log: runner.log,
     commit,
     rng,
-    askContestants: async (batch) => {
+    askContestants: (batch) => {
       const events = runner.log.slice()
-      const choices = await Promise.all(batch.map((request) => ask(request, events)))
-      for (const [index, choice] of choices.entries()) {
-        const request = batch[index]
-        if (request && choice.memo !== undefined)
-          commit({ type: 'seat.memo.updated', seat: request.seat, memo: choice.memo })
-      }
-      return choices
+      return Promise.all(batch.map((request) => ask(request, events)))
     },
     discretion: (id, candidates, context, requestSeq) => {
       switch (config.discretions[id]) {

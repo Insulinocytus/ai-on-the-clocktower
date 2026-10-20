@@ -23,10 +23,9 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     zh: '目标数量、座位号或重复目标不符合上面的合法范围。',
     en: 'The target count, seat numbers or duplicate targets violate the legal range above.',
   },
-  invalid_reasoning: { zh: 'reasoning 必须是字符串。', en: 'reasoning must be a string.' },
-  invalid_memo: {
-    zh: 'memo 必须是最多 2000 字的字符串。',
-    en: 'memo must be a string of at most 2000 characters.',
+  invalid_reasoning_summary: {
+    zh: 'reasoning_summary 必须是最多 500 字的字符串。',
+    en: 'reasoning_summary must be a string of at most 500 characters.',
   },
   invalid_nominee: {
     zh: 'nominee 必须是今天尚未被提名的合法座位号，或 null（pass）。',
@@ -77,8 +76,8 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     en: 'The tool arguments are not valid JSON.',
   },
   invalid_arguments: {
-    zh: '工具字段不符合 schema：请检查必填字段、类型、合法座位号和 memo 的 2000 字限制，不得添加额外字段。',
-    en: 'Tool fields violate the schema: check required fields, types, legal seat numbers and the 2000-character memo limit; do not add extra fields.',
+    zh: '工具字段不符合 schema：请检查必填字段、类型、合法座位号和 reasoning_summary 的 500 字限制，不得添加额外字段。',
+    en: 'Tool fields violate the schema: check required fields, types, legal seat numbers and the 500-character reasoning_summary limit; do not add extra fields.',
   },
   invalid_discretion: {
     zh: '裁量必须符合本次请求的字段与合法候选，不能添加无关字段。',

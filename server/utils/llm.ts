@@ -1,3 +1,4 @@
+import type { ChatMessage } from '#shared/game/tool-calls'
 import type { Tool } from './tools'
 import { getProvider } from './models'
 
@@ -13,7 +14,7 @@ export interface LlmTarget {
 }
 
 export interface ChatRequest {
-  messages: { role: 'system' | 'user'; content: string }[]
+  messages: ChatMessage[]
   tools: Tool[]
   /** The tool the request asks for; forced via `tool_choice` when the preset allows it. */
   tool: string

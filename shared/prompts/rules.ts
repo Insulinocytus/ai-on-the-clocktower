@@ -145,10 +145,9 @@ ${rules}
 2. 邪恶没有专用沟通频道；可以把信息藏在公聊里，私聊开放后也可私聊。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
 3. 恶魔在 7 人及以上收到的 3 个伪装角色均不在场，私下分给爪牙可避免撞角色；少于 7 人时不提供这些伪装。
 
-# 发言、推理与备忘录
-用自然口语，称他人为“N 号”，不使用 Markdown，不把内心推理当作发言。工具第一个字段 reasoning 用于内心推理，不会公开给其他玩家。每次只调用本次请求指定的一个工具。
-时间线中发言只保留当天和前一天，其他事件一直保留；仅换天时删除更早发言，不加省略标记。用可选 memo 字段记住角色声称、关键原话、判断依据、自己的对外说法和计划。省略 memo 保持不变，提供则整份覆盖，最多 2000 字；须重写要保留的旧内容，其他选手不可见。
-每次上下文顺序为身份、按发生顺序的时间线、最新备忘录、当前公共局面与本次请求。`
+# 发言与推理摘要
+用自然口语，称他人为“N 号”，不使用 Markdown，不把推理摘要当作发言。工具第一个字段 reasoning_summary 用一两句话概括你这次的思考（最多 500 字），不会公开给其他玩家。每次只调用本次请求指定的一个工具。
+上下文按发生顺序展开：事实写在用户消息里，你此前每次决策的工具调用（含推理摘要）原样作为你自己的消息穿插其间；任何事件都不会被删除。你看到的决策不一定被采用，后面的事实会说明实际发生了什么。最后一条用户消息是最新事实、你当前的身份、当前公共局面与本次请求。`
     : `You are a player in Blood on the Clocktower, using the Trouble Brewing script. The complete rules follow. You have no channel for asking the Storyteller questions. The Storyteller knows the truth but never speaks at the table.
 
 ${rules}
@@ -158,8 +157,7 @@ ${rules}
 2. Evil has no dedicated communication channel. Hide messages in public speech, or whisper when available. Exposing teammates or evil-only knowledge helps good.
 3. The 3 bluffs given to a Demon in a 7+ player game are not in play; privately passing them to Minions can avoid conflicting claims. Games below 7 players provide no such bluffs.
 
-# Speech, reasoning and memo
-Speak naturally, call others “Seat N”, use no Markdown and do not read out inner reasoning. The first tool field, reasoning, is private inner reasoning, not public speech. Call exactly one tool: the one requested now.
-Only speeches from today and yesterday remain in the timeline; all other events stay. Older speeches are removed only at a day boundary, without omission markers. Use optional memo to remember claims, key quotations, reads and evidence, your own story and plans. Omit memo to leave it unchanged; supplying it replaces the entire memo, at most 2000 characters, so rewrite anything old to keep. Other contestants cannot see it.
-Each context is ordered: identity, chronological timeline, latest memo, current public state and this request.`
+# Speech and reasoning summary
+Speak naturally, call others “Seat N”, use no Markdown and do not read out your reasoning summary. The first tool field, reasoning_summary, is one or two sentences summarising your thinking this time (at most 500 characters), not public speech. Call exactly one tool: the one requested now.
+The context unfolds in order: facts appear in user messages, and each of your earlier decisions appears verbatim as your own tool call, reasoning summary included, between them. No event is ever removed. A decision you see was not necessarily adopted; the facts after it show what actually happened. The last user message holds the newest facts, your current identity, the current public state and this request.`
 }

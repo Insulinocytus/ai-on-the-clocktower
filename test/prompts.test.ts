@@ -36,27 +36,27 @@ const CONFIG: GameConfig = {
   whisperLimit: 0,
   language: 'en',
   seed: 18,
-  logVersion: 2,
-  promptVersion: 2,
+  logVersion: 3,
+  promptVersion: 4,
 }
 
 function pass(request: ContestantRequest): ContestantChoice {
   switch (request.tool) {
     case 'night_choice':
       return {
-        reasoning: 'Choose',
+        reasoning_summary: 'Choose',
         targets: request.targets.slice(0, request.role === 'fortuneteller' ? 2 : 1),
       }
     case 'speak':
-      return { reasoning: 'Pass', speech: null, slayer_target: null }
+      return { reasoning_summary: 'Pass', speech: null, slayer_target: null }
     case 'nominate':
-      return { reasoning: 'Pass', nominee: null }
+      return { reasoning_summary: 'Pass', nominee: null }
     case 'vote':
-      return { reasoning: 'Pass', raise_hand: false }
+      return { reasoning_summary: 'Pass', raise_hand: false }
     case 'propose_whisper':
-      return { reasoning: 'Pass', members: null }
+      return { reasoning_summary: 'Pass', members: null }
     case 'rank_whispers':
-      return { reasoning: 'Accept', ranking: request.rooms.map((room) => room.id) }
+      return { reasoning_summary: 'Accept', ranking: request.rooms.map((room) => room.id) }
   }
 }
 
@@ -117,12 +117,14 @@ describe('prompts at the scripted game seam', () => {
         config: { language },
         ask(request, ports) {
           if (request.tool === 'speak' && request.kind === 'free' && !user) {
-            user = buildContestantPrompt({
+            const message = buildContestantPrompt({
               events: ports.log,
               seat: request.seat,
               language,
               request,
-            }).messages[1].content
+            }).messages.at(-1)
+            if (message?.role !== 'user') throw new Error('Expected the current request last')
+            user = message.content
             void ports.commit({ type: 'game.aborted', reason: 'human' })
           }
           return pass(request)
@@ -135,7 +137,7 @@ describe('prompts at the scripted game seam', () => {
   )
 
   it.each(['zh', 'en'] as const)(
-    'retains day-one speeches for the storyteller on night three in %s without extending contestant memory',
+    'retains day-one speeches for the storyteller and contestant on night three in %s',
     async (language) => {
       const roles: RoleId[] = ['soldier', 'empath', 'chef', 'poisoner', 'imp']
       let log: readonly GameEvent[] = []
@@ -160,22 +162,24 @@ describe('prompts at the scripted game seam', () => {
         ask(request, ports) {
           log = ports.log
           if (request.tool === 'night_choice')
-            return { reasoning: 'Choose', targets: [request.role === 'poisoner' ? 2 : 1] }
+            return { reasoning_summary: 'Choose', targets: [request.role === 'poisoner' ? 2 : 1] }
           if (request.tool === 'propose_whisper' && request.day === 1 && request.seat === 1)
-            return { reasoning: 'Invite', members: [2] }
+            return { reasoning_summary: 'Invite', members: [2] }
           if (request.tool === 'speak' && request.seat === 1) {
             if (request.day === 3 && request.kind === 'free') {
-              contestant = buildContestantPrompt({
+              const message = buildContestantPrompt({
                 events: log,
                 seat: request.seat,
                 language,
                 request,
-              }).messages[1].content
+              }).messages.at(-1)
+              if (message?.role !== 'user') throw new Error('Expected the current request last')
+              contestant = message.content
               void ports.commit({ type: 'game.aborted', reason: 'human' })
             }
             if (request.day <= 2)
               return {
-                reasoning: 'Share',
+                reasoning_summary: 'Share',
                 speech:
                   request.kind === 'whisper'
                     ? 'DAY_ONE_WHISPER'
@@ -189,7 +193,7 @@ describe('prompts at the scripted game seam', () => {
       expect(state.aborted).toBe(true)
       for (const speech of ['DAY_ONE_WHISPER', 'DAY_1_PUBLIC']) {
         expect(storyteller).toContain(speech)
-        expect(contestant).not.toContain(speech)
+        expect(contestant).toContain(speech)
       }
       expect(contestant).toContain('DAY_2_PUBLIC')
     },
@@ -197,14 +201,14 @@ describe('prompts at the scripted game seam', () => {
 
   it.each([
     {
-      arguments: '{"reasoning":"FIRST_REASON","speech":"First","nominee":2}',
-      reasoning: 'FIRST_REASON',
+      arguments: '{"reasoning_summary":"FIRST_REASON","speech":"First","nominee":2}',
+      reasoningSummary: 'FIRST_REASON',
     },
-    { arguments: '{invalid JSON', reasoning: undefined },
-    { arguments: '{"reasoning":42}', reasoning: undefined },
+    { arguments: '{invalid JSON', reasoningSummary: undefined },
+    { arguments: '{"reasoning_summary":42}', reasoningSummary: undefined },
   ])(
     'keeps spectator argument validation for $arguments',
-    async ({ arguments: args, reasoning }) => {
+    async ({ arguments: args, reasoningSummary }) => {
       let captured = false
       const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
         ask(request, ports) {
@@ -219,8 +223,13 @@ describe('prompts at the scripted game seam', () => {
                   {
                     message: {
                       tool_calls: [
-                        { function: { arguments: args } },
-                        { function: { arguments: '{"reasoning":"SECOND_REASON"}' } },
+                        { function: { name: 'speak', arguments: args } },
+                        {
+                          function: {
+                            name: 'speak',
+                            arguments: '{"reasoning_summary":"SECOND_REASON"}',
+                          },
+                        },
                       ],
                     },
                   },
@@ -239,7 +248,8 @@ describe('prompts at the scripted game seam', () => {
       })
       const row = spectatorRows(events, true).find((row) => row.losing)
       expect(row).toBeDefined()
-      expect(row?.reasoning).toBe(reasoning)
+      expect(row?.event.type).toBe('contestant.decision')
+      expect(row?.reasoningSummary).toBe(reasoningSummary)
     },
   )
 })

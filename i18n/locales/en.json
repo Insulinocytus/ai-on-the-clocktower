@@ -116,7 +116,8 @@
     "storyteller": "Storyteller view",
     "seatView": "Seat {seat} view",
     "publicOnly": "Public information only",
-    "reasoning": "Inner reasoning",
+    "seatSummary": "Seat {seat} reasoning summary",
+    "storytellerSummary": "Storyteller reasoning summary",
     "losing": "Unselected decisions",
     "notSelected": "Not selected / pass",
     "pass": "Pass",
@@ -205,8 +206,6 @@
     "starting": "Starting…",
     "seatCount": "Seats",
     "setupHelp": "Choose 5–15 AI seats from all 22 Trouble Brewing characters and configure each discretion source. After dawn, living and dead seats may whisper, then join public discussion.",
-    "reasoning": "Inner reasoning and raw response",
-    "noReasoning": "No inner reasoning returned.",
     "reconnecting": "Connection interrupted. Reconnecting and restoring missing events…",
     "reasons": {
       "engine_error": "Engine error",

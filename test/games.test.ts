@@ -67,13 +67,13 @@ async function nightProvider() {
     (request) => {
       const input = gameRequest.parse(request.body)
       const name = input.tool_choice.function.name
-      const user = input.messages[1].content
+      const user = input.messages.at(-1)?.content ?? ''
       const args = action(name, user)
       if (name === 'night_choice' && /as Imp|作为小恶魔/.test(currentRequestText(user))) return
       return {
         kind: 'toolCall',
         name,
-        arguments: JSON.stringify({ reasoning: 'Legal action', ...args }),
+        arguments: JSON.stringify({ reasoning_summary: 'Legal action', ...args }),
       }
     },
     (request) => {
@@ -83,8 +83,8 @@ async function nightProvider() {
         kind: 'toolCall',
         name,
         arguments: JSON.stringify({
-          reasoning: 'Recovered',
-          ...action(name, input.messages[1].content),
+          reasoning_summary: 'Recovered',
+          ...action(name, input.messages.at(-1)?.content ?? ''),
         }),
       }
     },
@@ -96,17 +96,29 @@ async function nightProvider() {
         const input = gameRequest.parse(request.body)
         return (
           input.tool_choice.function.name === 'night_choice' &&
-          /as Imp|作为小恶魔/.test(currentRequestText(input.messages[1].content))
+          /as Imp|作为小恶魔/.test(currentRequestText(input.messages.at(-1)?.content ?? ''))
         )
       })
     },
   }
 }
 const gameRequest = z.object({
-  messages: z.tuple([
-    z.object({ role: z.literal('system'), content: z.string() }),
-    z.object({ role: z.literal('user'), content: z.string() }),
-  ]),
+  messages: z.array(
+    z.object({
+      role: z.enum(['system', 'user', 'assistant', 'tool']),
+      content: z.string().nullable(),
+      tool_calls: z
+        .array(
+          z.object({
+            id: z.string(),
+            type: z.literal('function'),
+            function: z.object({ name: z.string(), arguments: z.string() }),
+          }),
+        )
+        .optional(),
+      tool_call_id: z.string().optional(),
+    }),
+  ),
   tool_choice: toolChoice,
 })
 
@@ -312,7 +324,7 @@ describe('games HTTP seam', () => {
         expect.objectContaining({ discretion: 'D1', source: 'manual', choice }),
       ])
       expect(resolved[0]).not.toHaveProperty('decision')
-      expect(resolved[0]).not.toHaveProperty('reasoning')
+      expect(resolved[0]).not.toHaveProperty('reasoningSummary')
       expect(events.some((event) => event.type === 'storyteller.decision')).toBe(false)
       const pending = events.findLast((event) => event.type === 'discretion.requested')
       if (pending?.type !== 'discretion.requested' || !Array.isArray(pending.candidates))
@@ -338,8 +350,8 @@ describe('games HTTP seam', () => {
         kind: 'toolCall',
         name,
         arguments: JSON.stringify({
-          reasoning: 'Legal action',
-          ...action(name, input.messages[1].content),
+          reasoning_summary: 'Legal action',
+          ...action(name, input.messages.at(-1)?.content ?? ''),
         }),
       }
     })
@@ -448,7 +460,7 @@ describe('games HTTP seam', () => {
             kind: 'toolCall',
             name,
             arguments: JSON.stringify({
-              reasoning: 'Balance the game',
+              reasoning_summary: 'Balance the game',
               roles: [
                 ['soldier', 'chef', 'empath', 'scarlet_woman', 'fortune_teller'],
                 ['imp'],
@@ -461,8 +473,8 @@ describe('games HTTP seam', () => {
           kind: 'toolCall',
           name,
           arguments: JSON.stringify({
-            reasoning: 'Private contestant thought',
-            ...action(name, input.messages[1].content),
+            reasoning_summary: 'Private contestant thought',
+            ...action(name, input.messages.at(-1)?.content ?? ''),
           }),
         }
       })
@@ -506,27 +518,37 @@ describe('games HTTP seam', () => {
         expect(requests).toHaveLength(3)
         const first = gameRequest.parse(requests[0]?.body)
         const second = gameRequest.parse(requests[1]?.body)
-        expect(second.messages[0]).toEqual(first.messages[0])
-        expect(second.messages[1].content.startsWith(first.messages[1].content)).toBe(true)
-        expect(second.messages[1].content).toContain(
+        expect(second.messages.slice(0, -1)).toEqual(first.messages.slice(0, -1))
+        expect(
+          second.messages.at(-1)?.content?.startsWith(first.messages.at(-1)?.content ?? ''),
+        ).toBe(true)
+        expect(second.messages.at(-1)?.content).toContain(
           language === 'zh' ? '上次提交无效' : 'Previous submission invalid',
         )
-        expect(second.messages[1].content).toMatch(/\/roles\/3 = "scarlet_woman".*scarletwoman/)
-        expect(second.messages[1].content).toMatch(/\/roles\/4 = "fortune_teller".*fortuneteller/)
+        expect(second.messages.at(-1)?.content).toMatch(
+          /\/roles\/3 = "scarlet_woman".*scarletwoman/,
+        )
+        expect(second.messages.at(-1)?.content).toMatch(
+          /\/roles\/4 = "fortune_teller".*fortuneteller/,
+        )
         expect(requests[1]?.body.tools).toEqual(requests[0]?.body.tools)
         const tools = requests[0]?.body.tools as {
           function: { parameters: { properties: Record<string, unknown>; required: string[] } }
         }[]
         expect(tools).toHaveLength(1)
         expect(Object.keys(tools[0]?.function.parameters.properties ?? {})).toEqual([
-          'reasoning',
+          'reasoning_summary',
           'seats',
           'roles',
           'number',
           'answer',
           'alignment',
         ])
-        expect(tools[0]?.function.parameters.required).toEqual(['reasoning'])
+        expect(tools[0]?.function.parameters.required).toEqual(['reasoning_summary'])
+        expect(tools[0]?.function.parameters.properties.reasoning_summary).toMatchObject({
+          type: 'string',
+          maxLength: 500,
+        })
         for (const observer of ['public', 'seat:1'])
           expect(
             (await $fetch<GameEvent[]>(`/api/games/${game.id}/events?observer=${observer}`)).some(
@@ -563,8 +585,7 @@ describe('games HTTP seam', () => {
     const fake = await startFakeProvider((request) => {
       const choice = toolChoice.parse(request.body.tool_choice)
       const name = choice.function.name
-      const messages = request.body.messages as { role: string; content: string }[]
-      const user = messages[1]?.content ?? ''
+      const user = gameRequest.parse(request.body).messages.at(-1)?.content ?? ''
       const args = action(name, user)
       if (name === 'nominate' && !nominated && !/Your character: (Virgin|Imp);/.test(user)) {
         args.nominee = Number(/You are Seat (\d+)\./.exec(user)?.[1])
@@ -578,9 +599,8 @@ describe('games HTTP seam', () => {
         kind: 'toolCall',
         name,
         arguments: JSON.stringify({
-          reasoning: 'Choose a legal action.',
+          reasoning_summary: 'Choose a legal action.',
           ...args,
-          memo: 'Historical registration: registers as Monk; registers as Poisoner.',
         }),
       }
     })
@@ -609,8 +629,8 @@ describe('games HTTP seam', () => {
         type: 'game.created',
         seatCount,
         language: 'en',
-        logVersion: 2,
-        promptVersion: 3,
+        logVersion: 3,
+        promptVersion: 4,
         speechLimit: 10,
         storyteller: null,
       })
@@ -626,7 +646,14 @@ describe('games HTTP seam', () => {
           validation: { ok: true },
           raw: { id: 'chatcmpl-fake' },
         })
-      const unmatched = fake.requests.map((request) => request.body.messages)
+      const unmatched = fake.requests.map((request) => gameRequest.parse(request.body))
+      const previousRequests = new Map<
+        number,
+        {
+          messages: z.infer<typeof gameRequest>['messages']
+          decision: (typeof decisions)[number]
+        }
+      >()
       for (const decision of decisions) {
         const prior = events.filter((event) => event.seq < decision.seq)
         const prompt = buildContestantPrompt({
@@ -635,41 +662,58 @@ describe('games HTTP seam', () => {
           language: 'en',
           request: decision.request,
         })
-        const repeated = buildContestantPrompt({
-          events: [
-            ...prior,
-            {
-              seq: decision.seq,
-              type: 'seat.memo.updated',
-              seat: decision.seat,
-              memo: 'Changed memo within the same day',
-            },
-          ],
-          seat: decision.seat,
-          language: 'en',
-          request: decision.request,
-        })
-        const match = unmatched.findIndex((messages) =>
-          isDeepStrictEqual(messages, prompt.messages),
+        const match = unmatched.findIndex((request) =>
+          isDeepStrictEqual(request.messages, prompt.messages),
         )
         expect(match, `request for decision seq ${String(decision.seq)}`).not.toBe(-1)
-        unmatched.splice(match, 1)
-        expect(repeated.messages[0]).toEqual(prompt.messages[0])
-        expect(repeated.messages[1].content.split('# Your memo')[0]).toBe(
-          prompt.messages[1].content.split('# Your memo')[0],
-        )
+        const matched = unmatched.splice(match, 1)[0]
+        if (!matched) throw new Error('Missing matched provider request')
+        const messages = matched.messages
+        const previous = previousRequests.get(decision.seat)
+        if (previous) {
+          const earlier = previous.messages
+          expect(messages.slice(0, earlier.length - 1)).toEqual(earlier.slice(0, -1))
+          const raw = z
+            .object({
+              choices: z.array(
+                z.object({
+                  message: z.object({
+                    tool_calls: z.array(
+                      z.object({
+                        function: z.object({ name: z.string(), arguments: z.string() }),
+                      }),
+                    ),
+                  }),
+                }),
+              ),
+            })
+            .parse(previous.decision.raw)
+          expect(messages).toContainEqual({
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: `call_${String(previous.decision.seq)}`,
+                type: 'function',
+                function: raw.choices[0]?.message.tool_calls[0]?.function,
+              },
+            ],
+          })
+        }
+        previousRequests.set(decision.seat, { messages, decision })
       }
       const first = fake.requests[0]?.body
       expect(first?.tools).toHaveLength(6)
       for (const request of fake.requests) {
         const messages = request.body.messages as { role: string; content: string }[]
-        expect(messages.map((message) => message.role)).toEqual(['system', 'user'])
+        expect(messages[0]?.role).toBe('system')
+        expect(messages.at(-1)?.role).toBe('user')
         expect(messages[0]?.content).toContain('Death is not elimination')
         expect(messages[0]?.content).toContain('Saint')
         expect(messages[1]?.content).not.toContain('Game preset')
         expect(messages[1]?.content).not.toContain('fake-model')
         const choice = toolChoice.parse(request.body.tool_choice)
-        expect(messages[1]?.content).toContain(`Call ${choice.function.name}.`)
+        expect(messages.at(-1)?.content).toContain(`Call ${choice.function.name}.`)
         expect(request.body).not.toHaveProperty('temperature')
         expect(request.body.tools).toEqual(first?.tools)
       }
@@ -716,9 +760,9 @@ describe('games HTTP seam', () => {
     }
   })
 
-  it('recovers from invalid arguments without changing the original prompt prefix or applying memo', async () => {
+  it('recovers from invalid arguments without changing the original prompt prefix', async () => {
     const fake = await nightProvider()
-    const invalid = '{ "reasoning": "retry", "targets": [], "memo": "INVALID MEMO" }'
+    const invalid = '{ "reasoning_summary": "retry", "targets": [] }'
     try {
       fake.script({ kind: 'toolCall', name: 'night_choice', arguments: invalid })
       const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
@@ -745,14 +789,11 @@ describe('games HTTP seam', () => {
         { attempt: 1, validation: { ok: false, errors: [{ code: 'invalid_targets' }] } },
         { attempt: 2, validation: { ok: true } },
       ])
-      expect(
-        events.some((event) => event.type === 'seat.memo.updated' && event.memo === 'INVALID MEMO'),
-      ).toBe(false)
       const first = fake.requests[0]?.body.messages as { role: string; content: string }[]
       const second = fake.requests[1]?.body.messages as { role: string; content: string }[]
-      expect(second[0]).toEqual(first[0])
-      expect(second[1]?.content.startsWith(first[1]?.content ?? '')).toBe(true)
-      const suffix = second[1]?.content.slice(first[1]?.content.length)
+      expect(second.slice(0, -1)).toEqual(first.slice(0, -1))
+      expect(second.at(-1)?.content.startsWith(first.at(-1)?.content ?? '')).toBe(true)
+      const suffix = second.at(-1)?.content.slice(first.at(-1)?.content.length)
       expect(suffix).toContain('上次提交无效（第 1 次尝试，最多 5 次）')
       expect(suffix).toContain('night_choice')
       expect(suffix).toContain(invalid)
@@ -769,7 +810,7 @@ describe('games HTTP seam', () => {
     ['unknown tool', { kind: 'toolCall', name: 'invented', arguments: '{}' }, 'unknown'],
     [
       'wrong tool',
-      { kind: 'toolCall', name: 'vote', arguments: '{"reasoning":"r","raise_hand":true}' },
+      { kind: 'toolCall', name: 'vote', arguments: '{"reasoning_summary":"r","raise_hand":true}' },
       'wrong tool',
     ],
     [
@@ -779,7 +820,11 @@ describe('games HTTP seam', () => {
     ],
     [
       'invalid fields',
-      { kind: 'toolCall', name: 'night_choice', arguments: '{"reasoning":"r","targets":[99]}' },
+      {
+        kind: 'toolCall',
+        name: 'night_choice',
+        arguments: '{"reasoning_summary":"r","targets":[99]}',
+      },
       'schema',
     ],
     ['invalid response', { kind: 'raw', body: {} }, 'choices[0].message'],
@@ -795,13 +840,13 @@ describe('games HTTP seam', () => {
                   {
                     function: {
                       name: 'night_choice',
-                      arguments: '{"reasoning":"a","targets":[1]}',
+                      arguments: '{"reasoning_summary":"a","targets":[1]}',
                     },
                   },
                   {
                     function: {
                       name: 'night_choice',
-                      arguments: '{"reasoning":"b","targets":[2]}',
+                      arguments: '{"reasoning_summary":"b","targets":[2]}',
                     },
                   },
                 ],
@@ -833,9 +878,9 @@ describe('games HTTP seam', () => {
         .toBe('ended')
       const first = fake.requests[0]?.body.messages as { role: string; content: string }[]
       const retried = fake.requests[1]?.body.messages as { role: string; content: string }[]
-      expect(retried[0]).toEqual(first[0])
-      expect(retried[1]?.content.startsWith(first[1]?.content ?? '')).toBe(true)
-      const suffix = retried[1]?.content.slice(first[1]?.content.length)
+      expect(retried.slice(0, -1)).toEqual(first.slice(0, -1))
+      expect(retried.at(-1)?.content.startsWith(first.at(-1)?.content ?? '')).toBe(true)
+      const suffix = retried.at(-1)?.content.slice(first.at(-1)?.content.length)
       expect(suffix).toContain('Previous submission invalid (attempt 1 of at most 5)')
       expect(suffix).toContain(explanation)
       if (step.kind === 'toolCall') expect(suffix).toContain(step.arguments)
@@ -910,94 +955,6 @@ describe('games HTTP seam', () => {
     },
   )
 
-  it.each(['zh', 'en'] as const)(
-    'replaces only accepted seat memos, keeps them out of the timeline, and projects them privately (%s)',
-    async (language) => {
-      const original = '记'.repeat(2000)
-      const memos = [undefined, original, undefined, 'Keep only this claim.', '']
-      let turn = 0
-      const scriptedRequests: string[] = []
-      const decide = gameActions()
-      const fake = await startFakeProvider((request) => {
-        const input = gameRequest.parse(request.body)
-        const name = input.tool_choice.function.name
-        const user = input.messages[1].content
-        const ownSeat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
-        if (!ownSeat) throw new Error('Missing contestant seat')
-        const action = decide(name, user)
-        if (name === 'speak') {
-          action.speech = 'Continue the discussion.'
-          if (ownSeat === 1) {
-            scriptedRequests.push(user)
-            const accepted = turn < memos.length
-            action.memo = accepted ? memos[turn] : 'Rejected'
-            if (!accepted) action.speech = 42
-            turn++
-          }
-        }
-        return {
-          kind: 'toolCall',
-          name,
-          arguments: JSON.stringify({
-            reasoning: 'Exercise memo updates before any deaths.',
-            ...action,
-          }),
-        }
-      })
-      try {
-        const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)
-        const opened = await $fetch<GameSummary>('/api/games', {
-          method: 'POST',
-          body: {
-            discretions: randomDiscretions,
-            presets: Array.from({ length: 5 }, () => model.id),
-            language,
-            whisperLimit: 0,
-          },
-        })
-        await expect
-          .poll(async () => (await $fetch<GameSummary>(`/api/games/${opened.id}`)).status, {
-            timeout: 10000,
-          })
-          .toBe('paused')
-        const events = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`)
-        const memos = events.filter((event) => event.type === 'seat.memo.updated')
-        expect(memos.map((event) => event.memo)).toEqual([original, 'Keep only this claim.', ''])
-        const seat = memos[0]?.seat
-        expect(seat).toBeTypeOf('number')
-        expect(memos.every((event) => event.seat === seat)).toBe(true)
-        for (const observer of [
-          'spectator',
-          'storyteller',
-          `seat:${String(seat)}`,
-          'public',
-          ...[1, 2, 3, 4, 5]
-            .filter((other) => other !== seat)
-            .map((other) => `seat:${String(other)}`),
-        ]) {
-          const projected = await $fetch<GameEvent[]>(`/api/games/${opened.id}/events`, {
-            query: { observer },
-          })
-          expect(projected.filter((event) => event.type === 'seat.memo.updated')).toEqual(
-            ['spectator', 'storyteller', `seat:${String(seat)}`].includes(observer) ? memos : [],
-          )
-        }
-        const memoHeading = language === 'zh' ? '# 你的备忘录\n' : '# Your memo\n'
-        const stateHeading = language === 'zh' ? '# 当前公共局面' : '# Current public state'
-        const contents = scriptedRequests.map((user) => {
-          const [prefix, suffix] = user.split(memoHeading)
-          expect(prefix).not.toContain(original)
-          expect(prefix).not.toContain('Keep only this claim.')
-          expect(prefix).not.toContain('Rejected')
-          return suffix?.split(stateHeading)[0]?.trim()
-        })
-        expect(contents.slice(2, 6)).toEqual([original, original, 'Keep only this claim.', ''])
-      } finally {
-        await fake.close()
-      }
-    },
-  )
-
   it('shares the attempt limit across invalid output and transport failures, then aborts the pause as human', async () => {
     const fake = await nightProvider()
     try {
@@ -1005,14 +962,14 @@ describe('games HTTP seam', () => {
         {
           kind: 'toolCall',
           name: 'night_choice',
-          arguments: '{"reasoning":"r","targets":[],"memo":"INVALID"}',
+          arguments: '{"reasoning_summary":"r","targets":[]}',
         },
         { kind: 'serverError', status: 503 },
         { kind: 'toolCall', name: 'night_choice', arguments: '{ invalid arguments' },
         {
           kind: 'toolCall',
           name: 'night_choice',
-          arguments: '{"reasoning":"r","targets":[]}',
+          arguments: '{"reasoning_summary":"r","targets":[]}',
         },
         { kind: 'toolCall', name: 'night_choice', arguments: '{ last invalid arguments' },
       )
@@ -1046,13 +1003,9 @@ describe('games HTTP seam', () => {
       ])
       expect(fake.requests).toHaveLength(5)
       expect(fake.requests[2]?.body).toEqual(fake.requests[1]?.body)
-      expect(
-        events.some(
-          (event) =>
-            (event.type === 'night.choice' && event.role === 'imp') ||
-            event.type === 'seat.memo.updated',
-        ),
-      ).toBe(false)
+      expect(events.some((event) => event.type === 'night.choice' && event.role === 'imp')).toBe(
+        false,
+      )
       expect(events.at(-1)).toMatchObject({
         type: 'game.paused',
         seat: expect.any(Number) as unknown,
@@ -1103,7 +1056,11 @@ describe('games HTTP seam', () => {
     ['invalid output', { kind: 'text', content: 'No tool call' }],
     [
       'semantic failure',
-      { kind: 'toolCall', name: 'night_choice', arguments: '{"reasoning":"r","targets":[]}' },
+      {
+        kind: 'toolCall',
+        name: 'night_choice',
+        arguments: '{"reasoning_summary":"r","targets":[]}',
+      },
     ],
   ] as const)(
     'pauses after five %s attempts, preserving the failing seat and error, then resumes on retry',
@@ -1155,8 +1112,9 @@ describe('games HTTP seam', () => {
         } else {
           const second = fake.requests[1]?.body.messages as { content: string }[]
           const third = fake.requests[2]?.body.messages as { content: string }[]
-          expect(third[1]?.content.startsWith(second[1]?.content ?? '')).toBe(true)
-          expect(third[1]?.content).toContain('上次提交无效（第 2 次尝试，最多 5 次）')
+          expect(third.slice(0, -1)).toEqual(second.slice(0, -1))
+          expect(third.at(-1)?.content.startsWith(second.at(-1)?.content ?? '')).toBe(true)
+          expect(third.at(-1)?.content).toContain('上次提交无效（第 2 次尝试，最多 5 次）')
         }
         const after = events.at(-3)?.seq ?? 0
         const response = await fetch(`/api/games/${opened.id}/stream?after=0`, {
@@ -1211,7 +1169,7 @@ describe('games HTTP seam', () => {
           expect(gap).toBeLessThan(2000)
         } else {
           const sixth = fake.requests[5]?.body.messages as { content: string }[]
-          expect(sixth[1]?.content).toContain('上次提交无效（第 5 次尝试，最多 10 次）')
+          expect(sixth.at(-1)?.content).toContain('上次提交无效（第 5 次尝试，最多 10 次）')
         }
         expect((await fetch(`/api/games/${opened.id}/resume`, { method: 'POST' })).status).toBe(409)
       } finally {
@@ -1308,7 +1266,7 @@ describe('games HTTP seam', () => {
         {
           kind: 'toolCall',
           name: 'speak',
-          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          arguments: '{"reasoning_summary":"r","speech":null,"slayer_target":null}',
           waitFor: gate.promise,
         },
         { kind: 'hang' },
@@ -1367,7 +1325,7 @@ describe('games HTTP seam', () => {
         {
           kind: 'toolCall',
           name: 'speak',
-          arguments: '{"reasoning":"r","speech":null,"slayer_target":null}',
+          arguments: '{"reasoning_summary":"r","speech":null,"slayer_target":null}',
           waitFor: gate.promise,
         },
       )
@@ -1520,7 +1478,7 @@ it.each([0, -1, 1.5, '2', null])(
   },
 )
 
-it('isolates public batches, logs decisions immediately, and trims old speech only at day boundaries', async () => {
+it('isolates public batches, logs decisions immediately, and retains old speech across days', async () => {
   let release: (() => void) | undefined
   const pending = new Promise<void>((resolve) => {
     release = resolve
@@ -1531,7 +1489,7 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
   const action = gameActions()
   const fake = await startFakeProvider(async (request) => {
     const input = gameRequest.parse(request.body)
-    const user = input.messages[1].content
+    const user = input.messages.at(-1)?.content ?? ''
     const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
     const day = Number(/# Current public state\nDay (\d+);/.exec(user)?.[1])
     const role = /Your character: ([^;]+);/.exec(user)?.[1] ?? ''
@@ -1542,7 +1500,7 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
       return {
         kind: 'toolCall',
         name: tool,
-        arguments: JSON.stringify({ reasoning: 'Pass', ...defaults }),
+        arguments: JSON.stringify({ reasoning_summary: 'Pass', ...defaults }),
       }
     if (tool === 'night_choice') {
       const victims = [...roles]
@@ -1552,7 +1510,7 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
         kind: 'toolCall',
         name: tool,
         arguments: JSON.stringify({
-          reasoning: 'Advance the night.',
+          reasoning_summary: 'Advance the night.',
           targets:
             role === 'Imp'
               ? [day <= 3 ? victims[0] : seat]
@@ -1571,15 +1529,18 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
       seat,
       day,
       tool,
-      prefix: user.split('# Your memo')[0] ?? '',
-      system: input.messages[0].content,
+      prefix: input.messages
+        .filter((message) => message.role === 'user')
+        .map((message) => message.content?.split('# Your identity')[0])
+        .join('\n'),
+      system: input.messages[0]?.content ?? '',
     })
     const key = `${String(day)}:${String(seat)}`
     const offer = (offers.get(key) ?? 0) + 1
     offers.set(key, offer)
     if (day === 1 && seat === 5 && offer === 1) await pending
     const args = {
-      reasoning: 'Private offer, not spoken.',
+      reasoning_summary: 'Private offer, not spoken.',
       speech: `SPEECH-D${String(day)}-S${String(seat)}-O${String(offer)}`,
       slayer_target: null,
     }
@@ -1650,7 +1611,7 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
         expect(request.prefix.startsWith(previous.prefix.trimEnd())).toBe(true)
       if (request.day === 2) expect(request.prefix).toContain('SPEECH-D1-')
       if (request.day === 3) {
-        expect(request.prefix).not.toContain('SPEECH-D1-')
+        expect(request.prefix).toContain('SPEECH-D1-')
         expect(request.prefix).toContain('SPEECH-D2-')
         expect(request.prefix).toContain('Public discussion')
       }
@@ -1677,12 +1638,12 @@ it('isolates public batches, logs decisions immediately, and trims old speech on
   }
 })
 
-it('updates pass and unselected public-speech memos but rejects invalid-attempt memos', async () => {
+it('records accepted pass and unselected public-speech decisions and rejects invalid shots', async () => {
   const action = gameActions()
   const attempts = new Map<number, number>()
   const fake = await startFakeProvider((request) => {
     const input = gameRequest.parse(request.body)
-    const user = input.messages[1].content
+    const user = input.messages.at(-1)?.content ?? ''
     const tool = input.tool_choice.function.name
     const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
     const args = action(tool, user)
@@ -1690,7 +1651,7 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
       return {
         kind: 'toolCall',
         name: tool,
-        arguments: JSON.stringify({ reasoning: 'Advance', ...args }),
+        arguments: JSON.stringify({ reasoning_summary: 'Advance', ...args }),
       }
     const attempt = (attempts.get(seat) ?? 0) + 1
     attempts.set(seat, attempt)
@@ -1699,19 +1660,9 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
       kind: 'toolCall',
       name: tool,
       arguments: JSON.stringify({
-        reasoning: 'Keep my own notes even if I do not speak',
+        reasoning_summary: 'Choose whether to speak',
         speech: firstOffer ? `Unselected-or-selected offer from Seat ${String(seat)}` : null,
         slayer_target: seat === 4 && attempt === 1 ? 1 : null,
-        memo:
-          seat === 4 && attempt === 1
-            ? 'INVALID ATTEMPT MEMO'
-            : firstOffer
-              ? `Offer memo ${String(seat)}`
-              : seat === 3 && attempt === 1
-                ? 'Pass memo'
-                : seat === 4 && attempt === 2
-                  ? 'Recovered pass memo'
-                  : undefined,
       }),
     }
   })
@@ -1739,17 +1690,13 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
     if (!selected) throw new Error('Missing selected speech')
     const unselected = selected.seat === 1 ? 2 : 1
     expect(selected.seat).toBeOneOf([1, 2])
-    expect(events.filter((event) => event.type === 'seat.memo.updated')).toEqual([
-      expect.objectContaining({ seat: 1, memo: 'Offer memo 1' }),
-      expect.objectContaining({ seat: 2, memo: 'Offer memo 2' }),
-      expect.objectContaining({ seat: 3, memo: 'Pass memo' }),
-      expect.objectContaining({ seat: 4, memo: 'Recovered pass memo' }),
-    ])
-    expect(
-      events
-        .filter((event) => event.type === 'seat.memo.updated')
-        .every((event) => event.seq < selected.seq),
-    ).toBe(true)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'contestant.decision',
+        seat: 3,
+        validation: { ok: true, errors: [] },
+      }),
+    )
     expect(events).toContainEqual(
       expect.objectContaining({
         type: 'contestant.decision',
@@ -1770,7 +1717,7 @@ it('updates pass and unselected public-speech memos but rejects invalid-attempt 
   }
 })
 
-it('retries only the failing public seat and commits speech and memos after the whole batch succeeds', async () => {
+it('retries only the failing public seat and commits speech after the whole batch succeeds', async () => {
   let release: (() => void) | undefined
   const pending = new Promise<void>((resolve) => {
     release = resolve
@@ -1779,7 +1726,7 @@ it('retries only the failing public seat and commits speech and memos after the 
   const attempts = new Map<number, number>()
   const fake = await startFakeProvider(async (request) => {
     const input = gameRequest.parse(request.body)
-    const user = input.messages[1].content
+    const user = input.messages.at(-1)?.content ?? ''
     const tool = input.tool_choice.function.name
     const seat = Number(/You are Seat (\d+)\./.exec(user)?.[1])
     const args = action(tool, user)
@@ -1787,7 +1734,7 @@ it('retries only the failing public seat and commits speech and memos after the 
       return {
         kind: 'toolCall',
         name: tool,
-        arguments: JSON.stringify({ reasoning: 'Advance', ...args }),
+        arguments: JSON.stringify({ reasoning_summary: 'Advance', ...args }),
       }
     const firstBatch =
       user.includes('# Current public state\nDay 1;') && !user.includes('Recovered public claim.')
@@ -1795,7 +1742,7 @@ it('retries only the failing public seat and commits speech and memos after the 
       return {
         kind: 'toolCall',
         name: tool,
-        arguments: '{"reasoning":"Pass","speech":null,"slayer_target":null}',
+        arguments: '{"reasoning_summary":"Pass","speech":null,"slayer_target":null}',
       }
     const attempt = (attempts.get(seat) ?? 0) + 1
     attempts.set(seat, attempt)
@@ -1804,11 +1751,9 @@ it('retries only the failing public seat and commits speech and memos after the 
       kind: 'toolCall',
       name: tool,
       arguments: JSON.stringify({
-        reasoning: 'Answer my own request independently',
+        reasoning_summary: 'Answer my own request independently',
         speech: seat === 5 && attempt === 2 ? 'Recovered public claim.' : null,
         slayer_target: seat === 5 && attempt === 1 ? 1 : null,
-        memo:
-          seat === 5 && attempt === 1 ? 'INVALID RETRY MEMO' : `Valid batch memo ${String(seat)}`,
       }),
     }
   })
@@ -1836,11 +1781,7 @@ it('retries only the failing public seat and commits speech and memos after the 
       .toBe(5)
     const blocked = await log()
     expect([1, 2, 3, 4, 5].map((seat) => attempts.get(seat))).toEqual([1, 1, 1, 1, 2])
-    expect(
-      blocked.filter(
-        (event) => event.type === 'seat.memo.updated' || event.type === 'public.speech',
-      ),
-    ).toEqual([])
+    expect(blocked.filter((event) => event.type === 'public.speech')).toEqual([])
     expect(blocked.at(-1)?.type).not.toBe('game.aborted')
     release?.()
     await expect
@@ -1867,10 +1808,9 @@ it('retries only the failing public seat and commits speech and memos after the 
                 {
                   function: {
                     arguments: JSON.stringify({
-                      reasoning: 'Answer my own request independently',
+                      reasoning_summary: 'Answer my own request independently',
                       speech: 'Recovered public claim.',
                       slayer_target: null,
-                      memo: 'Valid batch memo 5',
                     }),
                   },
                 },
@@ -1880,17 +1820,6 @@ it('retries only the failing public seat and commits speech and memos after the 
         ],
       },
     })
-    const memos = events.filter((event) => event.type === 'seat.memo.updated')
-    expect(memos.map((event) => [event.seat, event.memo])).toEqual([
-      [1, 'Valid batch memo 1'],
-      [2, 'Valid batch memo 2'],
-      [3, 'Valid batch memo 3'],
-      [4, 'Valid batch memo 4'],
-      [5, 'Valid batch memo 5'],
-    ])
-    expect(
-      memos.every((event) => event.seq > (successful?.seq ?? Infinity) && event.seq < speech.seq),
-    ).toBe(true)
   } finally {
     release?.()
     await fake.close()
@@ -1920,7 +1849,7 @@ it.each(['en', 'zh'] as const)(
     const fake = await startFakeProvider((request) => {
       const input = gameRequest.parse(request.body)
       const name = input.tool_choice.function.name
-      const user = input.messages[1].content
+      const user = input.messages.at(-1)?.content ?? ''
       const seat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
       let args = action(name, user)
       if (name === 'propose_whisper') {
@@ -1945,7 +1874,7 @@ it.each(['en', 'zh'] as const)(
       return {
         kind: 'toolCall',
         name,
-        arguments: JSON.stringify({ reasoning: 'Private reasoning', ...args }),
+        arguments: JSON.stringify({ reasoning_summary: 'Private thought', ...args }),
       }
     })
     try {
@@ -2016,9 +1945,11 @@ it.each(['en', 'zh'] as const)(
       }
       const requests = fake.requests.map((request) => gameRequest.parse(request.body))
       for (const request of requests) {
-        const user = request.messages[1].content
+        const user = request.messages.at(-1)?.content ?? ''
         const seat = Number(/(?:You are Seat |你是 )(\d+)/.exec(user)?.[1])
-        expect(user).not.toContain(seat <= 2 ? 'Room secret B' : 'Room secret A')
+        expect(JSON.stringify(request.messages)).not.toContain(
+          seat <= 2 ? 'Room secret B' : 'Room secret A',
+        )
         if (request.tool_choice.function.name === 'propose_whisper')
           expect(user).toContain(language === 'en' ? 'room entries remaining' : '本阶段还可进入')
         if (request.tool_choice.function.name === 'rank_whispers')
@@ -2039,9 +1970,9 @@ it('defaults to three private room entries and leaves a no-room round for public
   const fake = await startFakeProvider((request) => {
     const input = gameRequest.parse(request.body)
     const name = input.tool_choice.function.name
-    const user = input.messages[1].content
+    const user = input.messages.at(-1)?.content ?? ''
     const args = action(name, user)
-    return { kind: 'toolCall', name, arguments: JSON.stringify({ reasoning: '', ...args }) }
+    return { kind: 'toolCall', name, arguments: JSON.stringify({ reasoning_summary: '', ...args }) }
   })
   try {
     const model = await preset('CLOCKTOWER_GAME_KEY', fake.baseUrl)

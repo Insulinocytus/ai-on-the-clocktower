@@ -10,12 +10,12 @@ const PROMPT: Record<Lang, { system: string; user: string }> = {
   zh: {
     system:
       '你是《血染钟楼》（暗流涌动剧本）中的一名玩家。这是开局前的连通性测试：只需按要求调用工具。',
-    user: '请调用 speak：reasoning 填一句话说明你在做什么，speech 填一句打招呼的话，slayer_target 填 null。',
+    user: '请调用 speak：reasoning_summary 填一句话说明你在做什么，speech 填一句打招呼的话，slayer_target 填 null。',
   },
   en: {
     system:
       'You are a player in a game of Blood on the Clocktower, using the Trouble Brewing script. This is a connectivity check before the game: just call the tool as asked.',
-    user: 'Call speak: put one sentence on what you are doing in reasoning, a one-line greeting in speech, and null in slayer_target.',
+    user: 'Call speak: put one sentence on what you are doing in reasoning_summary, a one-line greeting in speech, and null in slayer_target.',
   },
 }
 

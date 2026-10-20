@@ -9,7 +9,6 @@ const props = defineProps<{
   blockKey: string | undefined
   following: boolean
   observer: Observer
-  reasoning: boolean
   focused: boolean
 }>()
 defineEmits<{ clearFocus: [] }>()
@@ -46,7 +45,6 @@ watch(
             :key="`${observer}:${String(row.event.seq)}`"
             :row="row"
             :observer="observer"
-            :reasoning="reasoning"
           />
         </ol>
       </section>

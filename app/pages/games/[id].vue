@@ -21,7 +21,6 @@ const selectedKey = ref<string>()
 const aborting = ref(false)
 const resuming = ref(false)
 const observer = ref<Observer>('spectator')
-const showReasoning = ref(true)
 const showLosing = ref(false)
 const focusedSeat = ref<number>()
 let generation = 0
@@ -339,7 +338,6 @@ onUnmounted(() => {
       <SpectatorControls
         v-if="game.replayable"
         v-model:observer="observer"
-        v-model:reasoning="showReasoning"
         v-model:losing="showLosing"
         :seat-count="game.config.seatCount"
       />
@@ -373,7 +371,6 @@ onUnmounted(() => {
           :block-key="selected?.key"
           :following="following"
           :observer="observer"
-          :reasoning="showReasoning"
           :focused="focusedSeat !== undefined"
           @clear-focus="focusedSeat = undefined"
         />

@@ -137,7 +137,11 @@ describe('trial call', () => {
     return { result, requests: fake.requests.slice(before) }
   }
 
-  const speak = JSON.stringify({ reasoning: 'r', speech: 'Hello, table.', slayer_target: null })
+  const speak = JSON.stringify({
+    reasoning_summary: 'r',
+    speech: 'Hello, table.',
+    slayer_target: null,
+  })
 
   it('sends the six tools with forced tool_choice and merged extra_body, and reports a valid tool call', async () => {
     fake.script({ kind: 'toolCall', name: 'speak', arguments: speak })
@@ -174,11 +178,13 @@ describe('trial call', () => {
     ])
     for (const { function: fn } of tools) {
       const keys = Object.keys(fn.parameters.properties)
-      expect(keys[0], fn.name).toBe('reasoning')
-      expect(keys.at(-1), fn.name).toBe('memo')
-      expect(fn.parameters.properties.memo).toMatchObject({ type: 'string', maxLength: 2000 })
-      expect(fn.parameters.required).toContain('reasoning')
-      expect(fn.parameters.required).not.toContain('memo')
+      expect(keys[0], fn.name).toBe('reasoning_summary')
+      expect(fn.parameters.properties.reasoning_summary).toMatchObject({
+        type: 'string',
+        maxLength: 500,
+      })
+      expect(fn.parameters.required).toContain('reasoning_summary')
+      expect(fn.parameters.properties).not.toHaveProperty('memo')
     }
     const seats = [1, 2, 3, 4, 5]
     const props = (name: string) =>
@@ -214,27 +220,29 @@ describe('trial call', () => {
     ['an unknown tool', { kind: 'toolCall', name: 'shout', arguments: speak }],
     [
       'a different valid game tool than requested',
-      { kind: 'toolCall', name: 'vote', arguments: '{"reasoning":"r","raise_hand":true}' },
+      { kind: 'toolCall', name: 'vote', arguments: '{"reasoning_summary":"r","raise_hand":true}' },
     ],
-    ['malformed arguments', { kind: 'toolCall', name: 'speak', arguments: '{"reasoning": ' }],
+    [
+      'malformed arguments',
+      { kind: 'toolCall', name: 'speak', arguments: '{"reasoning_summary": ' },
+    ],
     [
       'a seat outside 1..N',
       {
         kind: 'toolCall',
         name: 'speak',
-        arguments: '{"reasoning":"r","speech":"hi","slayer_target":6}',
+        arguments: '{"reasoning_summary":"r","speech":"hi","slayer_target":6}',
       },
     ],
     [
-      'a memo over 2000 characters',
+      'a reasoning summary over 500 characters',
       {
         kind: 'toolCall',
         name: 'speak',
         arguments: JSON.stringify({
-          reasoning: 'r',
+          reasoning_summary: 'x'.repeat(501),
           speech: 'hi',
           slayer_target: null,
-          memo: 'x'.repeat(2001),
         }),
       },
     ],
