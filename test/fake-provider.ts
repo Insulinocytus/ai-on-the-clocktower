@@ -5,18 +5,23 @@ import type { AddressInfo } from 'node:net'
 /** One scripted reply of the fake OpenAI-compatible provider, consumed in order per request. */
 type FakeStep =
   /** A tool call; `arguments` is sent verbatim, so it may be malformed JSON. */
-  | { kind: 'toolCall'; name: string; arguments: string }
+  | { kind: 'toolCall'; name: string; arguments: string; waitFor?: Promise<void> }
   /** Plain assistant text and no tool call. */
   | { kind: 'text'; content: string }
-  | { kind: 'rateLimit'; retryAfterSec: number }
+  | { kind: 'rateLimit'; retryAfterSec: number; retryAfter?: string }
   | { kind: 'serverError'; status: number }
   /** Never answers; the connection stays open until the caller gives up or the provider closes. */
   | { kind: 'hang' }
+  | { kind: 'raw'; body: unknown }
+  | { kind: 'disconnect' }
+  | { kind: 'truncated' }
 
 interface RecordedRequest {
   path: string
   headers: IncomingHttpHeaders
   body: Record<string, unknown>
+  receivedAt: number
+  closed: boolean
 }
 
 export interface FakeProvider {
@@ -37,7 +42,10 @@ const completion = (message: Record<string, unknown>) => ({
 })
 
 /** A local stand-in for an OpenAI-compatible Chat Completions endpoint that answers from a script. */
-export async function startFakeProvider(): Promise<FakeProvider> {
+export async function startFakeProvider(
+  responder?: (request: RecordedRequest) => FakeStep | undefined | Promise<FakeStep | undefined>,
+  fallback?: (request: RecordedRequest) => FakeStep | undefined,
+): Promise<FakeProvider> {
   const steps: FakeStep[] = []
   const requests: RecordedRequest[] = []
 
@@ -45,12 +53,17 @@ export async function startFakeProvider(): Promise<FakeProvider> {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
-      requests.push({
+      const request: RecordedRequest = {
         path: req.url ?? '',
         headers: req.headers,
         body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
+        receivedAt: Date.now(),
+        closed: false,
+      }
+      requests.push(request)
+      res.once('close', () => {
+        request.closed = true
       })
-      const step = steps.shift()
       const json = (status: number, body: unknown, headers: Record<string, string> = {}) => {
         res.writeHead(status, { 'content-type': 'application/json', ...headers })
         res.end(JSON.stringify(body))
@@ -59,42 +72,66 @@ export async function startFakeProvider(): Promise<FakeProvider> {
         json(404, { error: { message: `unexpected path ${req.url ?? ''}` } })
         return
       }
-      if (!step) {
-        json(500, { error: { message: 'fake provider: no scripted step left' } })
-        return
-      }
-      switch (step.kind) {
-        case 'toolCall':
-          json(
-            200,
-            completion({
-              content: null,
-              tool_calls: [
-                {
-                  id: 'call_fake',
-                  type: 'function',
-                  function: { name: step.name, arguments: step.arguments },
-                },
-              ],
-            }),
-          )
-          return
-        case 'text':
-          json(200, completion({ content: step.content }))
-          return
-        case 'rateLimit':
-          json(
-            429,
-            { error: { message: 'rate limited' } },
-            { 'retry-after': String(step.retryAfterSec) },
-          )
-          return
-        case 'serverError':
-          json(step.status, { error: { message: 'upstream error' } })
-          return
-        case 'hang':
-          return
-      }
+      void Promise.resolve()
+        .then(() => responder?.(request))
+        .then((reply) => {
+          const step = reply ?? steps.shift() ?? fallback?.(request)
+          if (!step) {
+            json(500, { error: { message: 'fake provider: no scripted step left' } })
+            return
+          }
+          switch (step.kind) {
+            case 'toolCall': {
+              const respond = () => {
+                json(
+                  200,
+                  completion({
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'call_fake',
+                        type: 'function',
+                        function: { name: step.name, arguments: step.arguments },
+                      },
+                    ],
+                  }),
+                )
+              }
+              if (step.waitFor) void step.waitFor.then(respond)
+              else respond()
+              return
+            }
+            case 'text':
+              json(200, completion({ content: step.content }))
+              return
+            case 'rateLimit':
+              json(
+                429,
+                { error: { message: 'rate limited' } },
+                { 'retry-after': step.retryAfter ?? String(step.retryAfterSec) },
+              )
+              return
+            case 'serverError':
+              json(step.status, { error: { message: 'upstream error' } })
+              return
+            case 'hang':
+              return
+            case 'raw':
+              json(200, step.body)
+              return
+            case 'disconnect':
+              req.socket.destroy()
+              return
+            case 'truncated':
+              res.writeHead(200, { 'content-type': 'application/json', 'content-length': '1000' })
+              res.write('{"choices":[')
+              res.destroy()
+              return
+          }
+        })
+        .catch((error: unknown) => {
+          json(500, { error: { message: String(error) } })
+        })
     })
   })
 
