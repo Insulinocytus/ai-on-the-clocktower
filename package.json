@@ -5,20 +5,6 @@
   "engines": {
     "node": ">=24"
   },
-  "scripts": {
-    "build": "nuxt build",
-    "dev": "nuxt dev",
-    "start": "node scripts/start.mjs",
-    "prepare": "nuxt prepare && simple-git-hooks",
-    "typecheck": "nuxt typecheck",
-    "lint": "eslint . --max-warnings 0",
-    "format": "prettier . --write",
-    "test": "vitest run",
-    "check": "prettier . --check && nuxt typecheck && eslint . --max-warnings 0 && knip && vitest run"
-  },
-  "simple-git-hooks": {
-    "pre-commit": "pnpm check"
-  },
   "dependencies": {
     "@lucide/vue": "^1.59.0",
     "@nuxtjs/i18n": "^10.6.0",
@@ -47,7 +33,6 @@
     "eslint": "^10.13.0",
     "knip": "^6.41.0",
     "prettier": "^3.9.10",
-    "simple-git-hooks": "^2.14.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2",
     "vitest": "^5.0.5",

@@ -14,14 +14,14 @@
 mise install
 pnpm install
 cp .env.example .env   # 填入各提供商的 API key
-pnpm dev               # http://127.0.0.1:3000
+mise run dev          # http://127.0.0.1:3000
 ```
 
 生产运行：
 
 ```sh
-pnpm build
-pnpm start             # 读取 .env，默认只监听 127.0.0.1:3000
+mise run build
+mise run start        # 读取 .env，默认只监听 127.0.0.1:3000
 ```
 
 可用环境变量见 [`.env.example`](.env.example)。数据库默认在 `.data/app.db`。
@@ -109,11 +109,11 @@ HTTP：`POST /api/games` 接受 `{ presets: [id, id, id, id, id], language: "zh"
 ## 开发
 
 ```sh
-pnpm check   # prettier --check → nuxt typecheck → eslint → knip → vitest
-pnpm format  # prettier --write
+mise run check    # nuxt prepare 后并行跑 prettier --check、vue-tsc、eslint、knip、vitest
+mise run format   # prettier --write
 ```
 
-`pnpm install` 会通过 `simple-git-hooks` 安装 pre-commit hook，提交前自动跑 `pnpm check`；pull request 上 GitHub Actions 同样跑 `pnpm check`。
+所有任务定义在 `mise.toml` 的 `[tasks]` 里（`mise tasks` 可列出）。`mise install` 会通过 mise 的 `postinstall` hook 写入 git pre-commit hook，提交前自动跑 `mise run check`；已 `mise activate` 的 shell 进入项目目录时会自动执行 `mise install`。pull request 上 GitHub Actions 同样跑 `mise run check`。
 
 测试缝为规则和应用两处：`test/rules.test.ts` 用脚本化 `Ports` 驱动 `runGame` 并核对事件、折叠和逐格受众；应用测试用 `@nuxt/test-utils` 构建并启动整个应用，经 HTTP API 驱动。`test/fake-provider.ts` 是按脚本返回 tool call、非法输出、429 + Retry-After、5xx 或超时的本地假 OpenAI 兼容提供商；`test/games.test.ts` 包含整局烟雾测试。界面不写自动化测试。
 

@@ -1,5 +1,3 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
-  // vue-tsc is invoked internally by `nuxt typecheck`, never imported.
-  "ignoreDependencies": ["vue-tsc"],
 }
