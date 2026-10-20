@@ -11,8 +11,7 @@
 需要 [mise](https://mise.jdx.dev/)：仓库根的 `mise.toml` 固定 Node 与 pnpm 版本。
 
 ```sh
-mise install
-pnpm install
+mise run setup        # 安装工具与依赖，并写入 git hooks
 cp .env.example .env   # 填入各提供商的 API key
 mise run dev          # http://127.0.0.1:3000
 ```
@@ -113,7 +112,7 @@ mise run check    # nuxt prepare 后并行跑 prettier --check、vue-tsc、eslin
 mise run format   # prettier --write
 ```
 
-所有任务定义在 `mise.toml` 的 `[tasks]` 里（`mise tasks` 可列出）。`mise install` 会通过 mise 的 `postinstall` hook 写入 git pre-commit hook，提交前自动跑 `mise run check`；已 `mise activate` 的 shell 进入项目目录时会自动执行 `mise install`。pull request 上 GitHub Actions 同样跑 `mise run check`。
+所有任务定义在 `mise.toml` 的 `[tasks]` 里（`mise tasks` 可列出）。clone 后执行一次 `mise run setup`：安装工具与依赖，并写入两个 git hook——pre-commit 在提交前跑 `mise run check`；post-checkout 在 `git worktree add`、`git switch`/`checkout` 后重跑 `mise run setup`，新 worktree 因此自动就绪。pull request 上 GitHub Actions 同样跑 `mise run check`。
 
 测试缝为规则和应用两处：`test/rules.test.ts` 用脚本化 `Ports` 驱动 `runGame` 并核对事件、折叠和逐格受众；应用测试用 `@nuxt/test-utils` 构建并启动整个应用，经 HTTP API 驱动。`test/fake-provider.ts` 是按脚本返回 tool call、非法输出、429 + Retry-After、5xx 或超时的本地假 OpenAI 兼容提供商；`test/games.test.ts` 包含整局烟雾测试。界面不写自动化测试。
 
