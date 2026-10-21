@@ -23,7 +23,7 @@ export interface Tool {
 const TEXT = {
   zh: {
     reasoningSummary:
-      '用一两句话概括你这次的思考（最多 500 字）。之后每次决策都会回放给你自己，其他选手看不到。',
+      '用一两句话概括你这次的思考（最多 500 字）。这次决策被采用（含 pass）后，之后每次决策都会带给你自己，其他选手看不到；落选的发言或提名不会带给你。',
     speak: '说一句话或 pass。私聊、公聊、提名理由、辩护都用这个工具。',
     speech: '你要说出口的话；null 表示 pass。',
     slayer: '公开声称以猎手能力开枪的目标座位。只在公聊且 speech 不为空时可以填写，否则为 null。',
@@ -40,7 +40,7 @@ const TEXT = {
   },
   en: {
     reasoningSummary:
-      'One or two sentences summarising your thinking this time (at most 500 characters). Replayed to you in every later decision; other contestants cannot see it.',
+      'One or two sentences summarising your thinking this time (at most 500 characters). Once this decision is adopted (passes included), it is shown to you in every later decision; other contestants cannot see it. Unselected speeches or nominations are not shown again.',
     speak:
       'Say one line or pass. Used for whispers, public discussion, nomination reasons and defences.',
     speech: 'What you say out loud; null to pass.',
@@ -143,8 +143,8 @@ export function storytellerTools(lang: Lang, seatCount: number): Tool[] {
               type: 'string',
               maxLength: REASONING_SUMMARY_MAX_LENGTH,
               description: zh
-                ? '用一两句话概括你这次的思考（最多 500 字）。之后每次裁量都会回放给你。'
-                : 'One or two sentences summarising your thinking this time (at most 500 characters). Replayed to you in every later decision.',
+                ? '用一两句话概括你这次的思考（最多 500 字）。之后每次裁量都会带给你，失败的尝试除外。'
+                : 'One or two sentences summarising your thinking this time (at most 500 characters). Shown to you in every later decision, except failed attempts.',
             },
             seats: {
               type: 'array',

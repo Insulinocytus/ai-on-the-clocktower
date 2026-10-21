@@ -119,7 +119,7 @@
     "seatSummary": "Seat {seat} reasoning summary",
     "storytellerSummary": "Storyteller reasoning summary",
     "losing": "Unselected decisions",
-    "notSelected": "Not selected / pass",
+    "notSelected": "Not selected",
     "pass": "Pass",
     "proposedNomination": "Proposed nomination: Seat {seat}",
     "falseInfo": "This information is false",

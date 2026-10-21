@@ -1,7 +1,7 @@
 import { renderEvent } from '../event-templates'
 import { ROLES } from '../game/roles'
 import { project, setupCounts, validateDiscretionChoice } from '../game/rules'
-import { firstToolCall } from '../game/tool-calls'
+import { firstToolCall, isAccepted } from '../game/tool-calls'
 import type {
   DiscretionCandidates,
   DiscretionChoice,
@@ -277,6 +277,7 @@ export function buildStorytellerPrompt(
   const lines: string[] = []
   for (const event of projected) {
     if (event.type === 'contestant.decision' || event.type === 'discretion.requested') continue
+    if (event.type === 'storyteller.decision' && !isAccepted(event)) continue
     lines.push(renderEvent(event, language, 'storyteller'))
     if (event.type === 'storyteller.decision') {
       const args = firstToolCall(event.raw)?.arguments

@@ -114,7 +114,7 @@
     "seatSummary": "{seat} 号的推理摘要",
     "storytellerSummary": "说书人的推理摘要",
     "losing": "落选决策",
-    "notSelected": "未选中 / pass",
+    "notSelected": "未选中",
     "pass": "pass（不行动）",
     "proposedNomination": "提议提名：{seat} 号",
     "falseInfo": "此信息为假",

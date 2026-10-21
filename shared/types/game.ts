@@ -63,7 +63,6 @@ export interface GameConfig {
   language: Language
   seed: number
   logVersion: number
-  promptVersion: number
 }
 export interface NightRequest {
   tool: 'night_choice'
