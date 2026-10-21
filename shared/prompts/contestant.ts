@@ -2,11 +2,11 @@ import { renderEvent } from '../event-templates'
 import { PHASE_LABELS } from '../game/phases'
 import { ROLES } from '../game/roles'
 import { foldPublic, project } from '../game/rules'
-import { firstToolCall, isAccepted, type ChatMessage } from '../game/tool-calls'
+import { adoptedDecisions, firstToolCall, isAccepted, type ChatMessage } from '../game/tool-calls'
 import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
 import { contestantSystem } from './rules'
 
-export const PROMPT_VERSION = 4
+export const PROMPT_VERSION = 5
 
 export function buildContestantPrompt({
   events,
@@ -38,6 +38,7 @@ export function buildContestantPrompt({
     : `# Your identity\nYou are Seat ${String(seat)}.\nYour character: ${role.name.en}; ${role.alignment} team.\nAbility: ${role.ability.en}\nGoal: ${role.alignment === 'good' ? 'Help good find and eliminate the Demon' : 'Help evil protect the Demon until only two players live'}.`
 
   const messages: ChatMessage[] = []
+  const adopted = adoptedDecisions(projected)
   let facts = [zh ? '# 时间线' : '# Timeline']
   for (const event of projected) {
     if (event.type !== 'contestant.decision') {
@@ -52,7 +53,17 @@ export function buildContestantPrompt({
     const id = `call_${String(event.seq)}`
     messages.push(
       { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: call }] },
-      { role: 'tool', tool_call_id: id, content: zh ? '已提交。' : 'Submitted.' },
+      {
+        role: 'tool',
+        tool_call_id: id,
+        content: adopted.has(event.seq)
+          ? zh
+            ? '已提交。'
+            : 'Submitted.'
+          : zh
+            ? '未被采用：这次提交没有生效，也没有人看到。'
+            : 'Not adopted: this submission had no effect and nobody saw it.',
+      },
     )
   }
   const alive = state.seats.filter((player) => player.alive).length

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { GameEvent } from '../types/game'
 import type { ChannelBlock } from './channels'
-import { firstToolCall, isAccepted } from './tool-calls'
+import { adoptedDecisions, firstToolCall, isAccepted } from './tool-calls'
 
 type Decision = Extract<GameEvent, { type: 'contestant.decision' | 'storyteller.decision' }>
 const argumentsShape = z.object({
@@ -33,8 +33,7 @@ export interface SpectatorRow {
 
 // Input is the observer's projected prefix, never the future or another audience's log.
 export function spectatorRows(events: readonly GameEvent[], losing: boolean): SpectatorRow[] {
-  const pending = new Map<string, Decision>()
-  const used = new Set<number>()
+  const used = adoptedDecisions(events)
   const resolutions = new Map<number, Extract<GameEvent, { type: 'ability.resolved' }>>()
   const falseInformation = new Map<
     number,
@@ -42,32 +41,6 @@ export function spectatorRows(events: readonly GameEvent[], losing: boolean): Sp
   >()
 
   for (const event of events) {
-    if (event.type === 'contestant.decision' || event.type === 'storyteller.decision') {
-      if (event.type === 'contestant.decision' && isAccepted(event))
-        pending.set(`${event.request.tool}:${String(event.seat)}`, event)
-      continue
-    }
-    if ('decision' in event && event.decision) used.add(event.decision)
-    else {
-      const action =
-        event.type === 'night.choice'
-          ? ['night_choice', event.seat]
-          : event.type === 'nomination'
-            ? ['nominate', event.nominator]
-            : event.type === 'vote'
-              ? ['vote', event.seat]
-              : event.type === 'whisper.proposed'
-                ? ['propose_whisper', event.seat]
-                : event.type === 'whisper.ranked'
-                  ? ['rank_whispers', event.seat]
-                  : undefined
-      if (action) {
-        const key = `${String(action[0])}:${String(action[1])}`
-        const decision = pending.get(key)
-        if (decision) used.add(decision.seq)
-        pending.delete(key)
-      }
-    }
     if (event.type === 'ability.resolved') resolutions.set(event.seat, event)
     if (event.type === 'told' && event.kind === 'ability') {
       const resolution = resolutions.get(event.seat)

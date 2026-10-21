@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRng, runGame } from '../shared/game/rules'
 import { spectatorRows } from '../shared/game/spectator'
+import type { ChatMessage } from '../shared/game/tool-calls'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
 import { buildStorytellerPrompt } from '../shared/prompts/storyteller'
 import type {
@@ -196,6 +197,75 @@ describe('prompts at the scripted game seam', () => {
         expect(contestant).toContain(speech)
       }
       expect(contestant).toContain('DAY_2_PUBLIC')
+    },
+  )
+
+  it.each([
+    { language: 'zh', adopted: '已提交。', rejected: '未被采用：这次提交没有生效，也没有人看到。' },
+    {
+      language: 'en',
+      adopted: 'Submitted.',
+      rejected: 'Not adopted: this submission had no effect and nobody saw it.',
+    },
+  ] as const)(
+    'replays unselected speeches as not adopted in $language',
+    async ({ language, adopted, rejected }) => {
+      const prompts: ChatMessage[][] = []
+      let count = 0
+      const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+        config: { language },
+        ask(request, ports) {
+          if (request.tool === 'nominate') {
+            prompts.push(
+              buildContestantPrompt({ events: ports.log, seat: request.seat, language, request })
+                .messages,
+            )
+            if (prompts.length === 5) void ports.commit({ type: 'game.aborted', reason: 'human' })
+          }
+          const choice =
+            request.tool === 'speak' && request.kind === 'free'
+              ? { reasoning_summary: 'Say', speech: `SAY_${String(++count)}`, slayer_target: null }
+              : pass(request)
+          void ports.commit({
+            type: 'contestant.decision',
+            seat: request.seat,
+            request,
+            raw: {
+              choices: [
+                {
+                  message: {
+                    tool_calls: [
+                      { function: { name: request.tool, arguments: JSON.stringify(choice) } },
+                    ],
+                  },
+                },
+              ],
+            },
+            model: 'script',
+            usage: null,
+            durationMs: 0,
+            attempt: 1,
+            validation: { ok: true, errors: [] },
+          })
+          return request.tool === 'speak' ? { ...choice, decision: ports.log.length } : choice
+        },
+      })
+      const spoken = new Set(
+        events.flatMap((event) => (event.type === 'public.speech' ? [event.speech] : [])),
+      )
+      const replies = prompts.flatMap((messages) =>
+        messages.flatMap((message, index) => {
+          const call = message.role === 'assistant' ? message.tool_calls[0]?.function : undefined
+          const reply = messages[index + 1]
+          if (call?.name !== 'speak' || reply?.role !== 'tool') return []
+          const { speech } = JSON.parse(call.arguments) as { speech: string | null }
+          return speech ? [{ speech, reply: reply.content }] : []
+        }),
+      )
+      expect(prompts).toHaveLength(5)
+      expect(replies.some(({ speech }) => !spoken.has(speech))).toBe(true)
+      for (const { speech, reply } of replies)
+        expect(reply).toBe(spoken.has(speech) ? adopted : rejected)
     },
   )
 
