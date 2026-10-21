@@ -630,7 +630,7 @@ describe('games HTTP seam', () => {
         seatCount,
         language: 'en',
         logVersion: 3,
-        promptVersion: 5,
+        promptVersion: 4,
         speechLimit: 10,
         storyteller: null,
       })
