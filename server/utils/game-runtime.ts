@@ -21,7 +21,7 @@ import {
   validateDiscretionChoice,
 } from '#shared/game/rules'
 import type { ChatMessage } from '#shared/game/tool-calls'
-import { PROMPT_VERSION, buildContestantPrompt } from '#shared/prompts/contestant'
+import { buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
 import { getPreset, getProvider } from './models'
@@ -217,7 +217,6 @@ export function createGame(input: z.infer<typeof gameInput>) {
     language: input.language,
     seed: randomBytes(4).readUInt32LE(),
     logVersion: LOG_VERSION,
-    promptVersion: PROMPT_VERSION,
   }
   const id = randomUUID()
   const runner: Runner = {

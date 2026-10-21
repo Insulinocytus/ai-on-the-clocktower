@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createRng, runGame } from '../shared/game/rules'
 import { spectatorRows } from '../shared/game/spectator'
+import type { ChatMessage } from '../shared/game/tool-calls'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
 import { buildStorytellerPrompt } from '../shared/prompts/storyteller'
 import type {
@@ -37,7 +38,6 @@ const CONFIG: GameConfig = {
   language: 'en',
   seed: 18,
   logVersion: 3,
-  promptVersion: 4,
 }
 
 function pass(request: ContestantRequest): ContestantChoice {
@@ -58,6 +58,29 @@ function pass(request: ContestantRequest): ContestantChoice {
     case 'rank_whispers':
       return { reasoning_summary: 'Accept', ranking: request.rooms.map((room) => room.id) }
   }
+}
+
+function decide(ports: Ports, request: ContestantRequest, choice: ContestantChoice) {
+  void ports.commit({
+    type: 'contestant.decision',
+    seat: request.seat,
+    request,
+    raw: {
+      choices: [
+        {
+          message: {
+            tool_calls: [{ function: { name: request.tool, arguments: JSON.stringify(choice) } }],
+          },
+        },
+      ],
+    },
+    model: 'script',
+    usage: null,
+    durationMs: 0,
+    attempt: 1,
+    validation: { ok: true, errors: [] },
+  })
+  return request.tool === 'speak' ? { ...choice, decision: ports.log.length } : choice
 }
 
 async function script(
@@ -198,6 +221,81 @@ describe('prompts at the scripted game seam', () => {
       expect(contestant).toContain('DAY_2_PUBLIC')
     },
   )
+
+  it.each(['zh', 'en'] as const)(
+    'does not carry unselected speeches forward into contestant prompts in %s',
+    async (language) => {
+      const prompts: ChatMessage[][] = []
+      let count = 0
+      const { events } = await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+        config: { language },
+        ask(request, ports) {
+          if (request.tool === 'nominate') {
+            prompts.push(
+              buildContestantPrompt({ events: ports.log, seat: request.seat, language, request })
+                .messages,
+            )
+            if (prompts.length === 5) void ports.commit({ type: 'game.aborted', reason: 'human' })
+          }
+          const choice =
+            request.tool === 'speak' && request.kind === 'free'
+              ? { reasoning_summary: 'Say', speech: `SAY_${String(++count)}_`, slayer_target: null }
+              : pass(request)
+          return decide(ports, request, choice)
+        },
+      })
+      const spoken = new Set(
+        events.flatMap((event) => (event.type === 'public.speech' ? [event.speech] : [])),
+      )
+      const offered = Array.from({ length: count }, (_, index) => `SAY_${String(index + 1)}_`)
+      const unselected = offered.filter((speech) => !spoken.has(speech))
+      const carried = prompts.flatMap((messages) =>
+        messages.flatMap((message) =>
+          message.role === 'assistant'
+            ? message.tool_calls.map((call) => call.function.arguments)
+            : [],
+        ),
+      )
+      expect(prompts).toHaveLength(5)
+      expect(unselected.length).toBeGreaterThan(0)
+      for (const speech of spoken) expect(carried.join()).toContain(speech)
+      for (const messages of prompts)
+        for (const speech of unselected) expect(JSON.stringify(messages)).not.toContain(speech)
+    },
+  )
+
+  it('carries passes, whisper proposals and rankings forward into contestant prompts', async () => {
+    let prompt = ''
+    let seat = 0
+    const adopted: { seat: number; tool: string; summary: string }[] = []
+    await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+      config: { whisperLimit: 1 },
+      ask(request, ports) {
+        if (request.tool === 'nominate' && request.day === 2 && !prompt) {
+          seat = request.seat
+          prompt = JSON.stringify(
+            buildContestantPrompt({ events: ports.log, seat, language: 'en', request }).messages,
+          )
+          void ports.commit({ type: 'game.aborted', reason: 'human' })
+        }
+        const summary = `ADOPTED_${String(ports.log.length)}_`
+        if (request.day === 1) adopted.push({ seat: request.seat, tool: request.tool, summary })
+        const choice =
+          request.tool === 'propose_whisper'
+            ? {
+                reasoning_summary: summary,
+                members: request.eligible.filter((other) => other !== request.seat).slice(0, 1),
+              }
+            : { ...pass(request), reasoning_summary: summary }
+        return decide(ports, request, choice)
+      },
+    })
+    const own = adopted.filter((entry) => entry.seat === seat)
+    expect(new Set(own.map((entry) => entry.tool))).toEqual(
+      new Set(['propose_whisper', 'rank_whispers', 'speak', 'nominate']),
+    )
+    for (const { summary } of own) expect(prompt).toContain(summary)
+  })
 
   it.each([
     {

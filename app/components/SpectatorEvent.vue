@@ -31,12 +31,12 @@ const { t, locale } = useI18n()
           {{ row.reasoningSummary }}
         </p>
         <p
-          v-if="row.losing && row.speech !== undefined"
+          v-if="row.speech !== undefined"
           class="mt-1 whitespace-pre-wrap break-words text-sm leading-7"
         >
           {{ row.speech === null ? t('spectator.pass') : row.speech }}
         </p>
-        <p v-if="row.losing && row.nominee !== undefined" class="mt-1 text-sm">
+        <p v-if="row.nominee !== undefined" class="mt-1 text-sm">
           {{
             row.nominee === null
               ? t('spectator.pass')

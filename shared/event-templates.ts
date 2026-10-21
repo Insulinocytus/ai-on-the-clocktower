@@ -116,8 +116,8 @@ export function renderEvent(event: GameEvent, language: Language, observer: Obse
   switch (event.type) {
     case 'game.created':
       return zh
-        ? `创建 ${String(event.seatCount)} 人对局；语言：${event.language === 'zh' ? '中文' : '英文'}；种子：${String(event.seed)}；日志版本：${String(event.logVersion)}；提示词版本：${String(event.promptVersion)}。座位模型：${event.seats.map((seat, index) => `${String(seat.seat ?? index + 1)} 号 ${seat.name}（${seat.model}）`).join('；')}。`
-        : `Created a ${String(event.seatCount)}-player game; language: ${event.language === 'zh' ? 'Chinese' : 'English'}; seed: ${String(event.seed)}; log version: ${String(event.logVersion)}; prompt version: ${String(event.promptVersion)}. Seat models: ${event.seats.map((seat, index) => `Seat ${String(seat.seat ?? index + 1)}: ${seat.name} (${seat.model})`).join('; ')}.`
+        ? `创建 ${String(event.seatCount)} 人对局；语言：${event.language === 'zh' ? '中文' : '英文'}；种子：${String(event.seed)}；日志版本：${String(event.logVersion)}。座位模型：${event.seats.map((seat, index) => `${String(seat.seat ?? index + 1)} 号 ${seat.name}（${seat.model}）`).join('；')}。`
+        : `Created a ${String(event.seatCount)}-player game; language: ${event.language === 'zh' ? 'Chinese' : 'English'}; seed: ${String(event.seed)}; log version: ${String(event.logVersion)}. Seat models: ${event.seats.map((seat, index) => `Seat ${String(seat.seat ?? index + 1)}: ${seat.name} (${seat.model})`).join('; ')}.`
     case 'phase.started':
       return zh
         ? `第 ${String(event.day)} 天：${PHASE_LABELS[event.phase].zh}开始。`

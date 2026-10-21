@@ -92,7 +92,7 @@ describe('spectator presentation of projected logs', () => {
     ).toEqual([[6], [8]])
   })
 
-  it('shows adopted summaries before effects, dims only losing decisions, and marks false tells only in their projected prefix', () => {
+  it('shows adopted summaries and passes before effects, dims only losing decisions, and marks false tells only in their projected prefix', () => {
     const decision = (seq: number, seat: number, speech: string | null): GameEvent => ({
       seq,
       type: 'contestant.decision',
@@ -140,15 +140,17 @@ describe('spectator presentation of projected logs', () => {
       { seq: 6, type: 'told', seat: 1, kind: 'ability', content: { role: 'chef', result: 1 } },
     ]
     const rows = spectatorRows(project(events, 'spectator'), false)
-    expect(rows.map((row) => row.event.seq)).toEqual([1, 4, 5, 6])
+    expect(rows.map((row) => row.event.seq)).toEqual([1, 3, 4, 5, 6])
     expect(rows[0]).toMatchObject({ reasoningSummary: 'Reason 1', losing: false })
-    expect(rows[1]?.reasoningSummary).toBeUndefined()
-    expect(rows[3]).toMatchObject({ falseInfo: true, falseReason: 'poisoned' })
+    expect(rows[0]?.speech).toBeUndefined()
+    expect(rows[1]).toMatchObject({ reasoningSummary: 'Reason 3', speech: null, losing: false })
+    expect(rows[2]?.reasoningSummary).toBeUndefined()
+    expect(rows[4]).toMatchObject({ falseInfo: true, falseReason: 'poisoned' })
     expect(
       spectatorRows(events, true)
         .filter((row) => row.losing)
         .map((row) => row.speech),
-    ).toEqual(['Not selected', null])
+    ).toEqual(['Not selected'])
     expect(spectatorRows(project(events, 'seat:1'), true)).toEqual([
       expect.objectContaining({ event: events[0], reasoningSummary: 'Reason 1', losing: false }),
       expect.objectContaining({ event: events[3] }),
@@ -658,7 +660,6 @@ const CONFIG: GameConfig = {
   language: 'en',
   seed: 18,
   logVersion: 2,
-  promptVersion: 2,
 }
 const ORDER: RoleId[] = ['soldier', 'chef', 'empath', 'scarletwoman', 'imp']
 
@@ -909,7 +910,7 @@ describe('storyteller context at the rules seam', () => {
   })
 
   it.each(['zh', 'en'] as const)(
-    'projects spoken content and storyteller decisions, but not contestant decisions in %s',
+    'projects spoken content and adopted storyteller decisions, but not contestant decisions in %s',
     async (language) => {
       const { events } = await game([5, 4])
       const append = (event: GameEventInput) => events.push({ ...event, seq: events.length + 1 })
@@ -948,7 +949,7 @@ describe('storyteller context at the rules seam', () => {
                   {
                     function: {
                       name: 'decide',
-                      arguments: '{"reasoning_summary":"PRIOR_REASON","answer":true}',
+                      arguments: '{"reasoning_summary":"FAILED_REASON","answer":"yes"}',
                     },
                   },
                 ],
@@ -960,6 +961,32 @@ describe('storyteller context at the rules seam', () => {
         usage: null,
         durationMs: 1,
         attempt: 1,
+        validation: { ok: false, errors: [{ code: 'invalid_arguments' }] },
+      })
+      append({
+        type: 'storyteller.decision',
+        discretion: 'D12',
+        request: {},
+        raw: {
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: 'decide',
+                      arguments: '{"reasoning_summary":"PRIOR_REASON","answer":true}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        model: 'HIDDEN_STORYTELLER_MODEL',
+        usage: null,
+        durationMs: 1,
+        attempt: 2,
         validation: { ok: true },
       })
       const context = {
@@ -979,6 +1006,7 @@ describe('storyteller context at the rules seam', () => {
       for (const hidden of [
         'HIDDEN_THOUGHT',
         'HIDDEN_UNSELECTED',
+        'FAILED_REASON',
         'HIDDEN_MODEL',
         'HIDDEN_STORYTELLER_MODEL',
         '123456',

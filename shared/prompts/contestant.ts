@@ -2,11 +2,9 @@ import { renderEvent } from '../event-templates'
 import { PHASE_LABELS } from '../game/phases'
 import { ROLES } from '../game/roles'
 import { foldPublic, project } from '../game/rules'
-import { firstToolCall, isAccepted, type ChatMessage } from '../game/tool-calls'
+import { adoptedDecisions, firstToolCall, type ChatMessage } from '../game/tool-calls'
 import type { ContestantRequest, GameEvent, Language, Observer } from '../types/game'
 import { contestantSystem } from './rules'
-
-export const PROMPT_VERSION = 4
 
 export function buildContestantPrompt({
   events,
@@ -38,6 +36,8 @@ export function buildContestantPrompt({
     : `# Your identity\nYou are Seat ${String(seat)}.\nYour character: ${role.name.en}; ${role.alignment} team.\nAbility: ${role.ability.en}\nGoal: ${role.alignment === 'good' ? 'Help good find and eliminate the Demon' : 'Help evil protect the Demon until only two players live'}.`
 
   const messages: ChatMessage[] = []
+  // Full log: some effect events (whisper proposals, rankings) are hidden from the seat itself.
+  const adopted = adoptedDecisions(events)
   let facts = [zh ? '# 时间线' : '# Timeline']
   for (const event of projected) {
     if (event.type !== 'contestant.decision') {
@@ -45,7 +45,7 @@ export function buildContestantPrompt({
       if (line) facts.push(line)
       continue
     }
-    const call = isAccepted(event) ? firstToolCall(event.raw) : undefined
+    const call = adopted.has(event.seq) ? firstToolCall(event.raw) : undefined
     if (!call) continue
     if (facts.length) messages.push({ role: 'user', content: facts.join('\n') })
     facts = []

@@ -31,7 +31,6 @@ const config: GameConfig = {
   language: 'en',
   seed: 18,
   logVersion: 3,
-  promptVersion: 4,
 }
 
 describe('localized terminal game events', () => {
