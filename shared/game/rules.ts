@@ -1257,7 +1257,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
       const eligible = state.seats
         .map((seat) => seat.seat)
         .filter((seat) => (remaining.get(seat) ?? 0) > 0)
-      if (!eligible.length) break
+      if (eligible.length < 2) break
       const proposals: ContestantRequest[] = eligible.map((seat) => ({
         tool: 'propose_whisper',
         seat,
@@ -1266,10 +1266,7 @@ export async function runGame(ports: Ports): Promise<Grimoire> {
         remaining: remaining.get(seat) ?? 0,
         eligible,
       }))
-      const choices =
-        eligible.length > 1
-          ? await ports.askContestants(proposals)
-          : [{ reasoning_summary: '', members: null }]
+      const choices = await ports.askContestants(proposals)
       refold()
       if (stopped()) return
       if (

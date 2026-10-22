@@ -2219,9 +2219,29 @@ describe('whispers through the rules seam', () => {
     expect(
       requests.filter((request) => request.tool === 'rank_whispers').map((request) => request.seat),
     ).toEqual([1, 2, 3])
-    expect(project(events, 'storyteller').some((event) => event.type === 'whisper.ranked')).toBe(
-      false,
+  })
+
+  it('publishes only whisper proposals a seat actually made, even when one seat has allowance left', async () => {
+    const { events, requests } = await whispers((request) => {
+      if (request.tool === 'propose_whisper')
+        return {
+          reasoning_summary: 'Pair',
+          members:
+            request.seat === 5 ? null : [request.seat % 2 ? request.seat + 1 : request.seat - 1],
+        }
+      if (request.tool === 'rank_whispers')
+        return { reasoning_summary: 'Accept', ranking: request.rooms.map((room) => room.id) }
+      return { reasoning_summary: 'Pass', speech: null, slayer_target: null }
+    })
+    const asked = requests.flatMap((request) =>
+      request.tool === 'propose_whisper' ? [[request.seat, request.round]] : [],
     )
+    expect(
+      events.flatMap((event) =>
+        event.type === 'whisper.proposed' ? [[event.seat, event.round]] : [],
+      ),
+    ).toEqual(asked)
+    expect(asked).toEqual([1, 2, 3, 4, 5].map((seat) => [seat, 1]))
   })
 })
 

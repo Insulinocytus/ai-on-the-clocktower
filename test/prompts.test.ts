@@ -297,7 +297,7 @@ describe('prompts at the scripted game seam', () => {
     for (const { summary } of own) expect(prompt).toContain(summary)
   })
 
-  it("shows every seat's whisper proposals, but not their reasoning, to a ranking seat", async () => {
+  it("shows every seat's whisper proposals, but not their reasoning summaries, to a ranking seat", async () => {
     let prompt = ''
     await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
       config: { whisperLimit: 1 },
