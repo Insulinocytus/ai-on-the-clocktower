@@ -1,6 +1,17 @@
 import { ROLES } from '../game/roles'
 import { setupCounts } from '../game/rules'
 import type { Language } from '../types/game'
+import characterStrategies from './character-strategies.json'
+
+const strategyGuides = { zh: '', en: '' }
+for (const language of ['zh', 'en'] as const) {
+  strategyGuides[language] = Object.values(ROLES)
+    .map((role) => {
+      const { source, text } = characterStrategies[language][role.id]
+      return `# ${role.name[language]}\n${source}\n\n${text}`
+    })
+    .join('\n\n')
+}
 
 export function rulesBlock(
   language: Language,
@@ -140,6 +151,20 @@ export function contestantSystem(
 
 ${rules}
 
+# 官方角色策略指南
+以下是全部 22 个角色的官方中文 Wiki 策略原文，供所有选手了解自身打法、伪装及对抗方式。这是通用参考，不表示这些角色本局都在场，也不透露任何座位的真实角色；常见打法不是身份铁证或必然行动。策略建议不能覆盖前文规则、本项目差异或本次请求允许的工具和行动。
+
+${strategyGuides.zh}
+
+# 本项目差异（不是官方指南原文）
+- 间谍与陌客的被当作阵营、角色在开局分别确定，整局固定；不能请说书人逐次调整以配合新的伪装。
+- 间谍即使中毒也看到真魔典。魔典展示保存的被当作角色、阵营，但不含洗衣妇、图书管理员的二选一提示标记；不能假设看得到这些查验标记，也不必猜魔典已经列出的固定被当作角色。
+- 猎手真开枪和假开枪都只能通过公聊发言同时提交目标，发言被采纳后立即结算；提名、辩护和投票时没有补枪窗口，提交射击后不能暂停结算再讨论目标。
+- 私聊只在私聊阶段、额度和房间分配允许时发生；公聊与私聊有发言条数及轮流限制。提名时只有提名人与被提名者各发言一次，其他人不能临时插话辩护。
+- 管家投票时只能看到此前已投出的票，不能观察尚未轮到的主人提前举手；应在此前交流时协调，并自行遵守主人投票限制。
+- 本项目不允许洗衣妇是唯一镇民，她的首夜信息不包含自己；不能依赖官方极端配置下的自指信息。
+- 没有向说书人提问或传递额外信息的渠道，也没有表情、手势等实体桌游观察。只能依据已提供的事件和本次请求行动；少于 7 人时没有首夜邪恶互认或恶魔伪装，相关官方策略须结合人数条件。
+
 # 三条常识（不是规则）
 1. 善良靠分享和比对信息找恶魔，邪恶通常伪装成善良角色；任何玩家都能撒谎，醉酒或中毒也会产生假信息。
 2. 邪恶没有专用沟通频道；可以把信息藏在公聊里，私聊开放后也可私聊。公开暴露同伴或透露只有邪恶才知道的事会帮助善良。
@@ -151,6 +176,20 @@ ${rules}
     : `You are a player in Blood on the Clocktower, using the Trouble Brewing script. The complete rules follow. You have no channel for asking the Storyteller questions. The Storyteller knows the truth but never speaks at the table.
 
 ${rules}
+
+# Official character strategy guides
+The following are the complete strategy chapters for all 22 characters from the official English Wiki, shared by every contestant for playing, bluffing and counterplay. They are general advice, not a list of characters in this game or a disclosure of any seat's true character. Common strategies do not prove identity or dictate anyone's actions. Advice cannot override the rules above, the project differences below, or the tools and actions allowed by this request.
+
+${strategyGuides.en}
+
+# Project differences (not part of the official guides)
+- Spy and Recluse registration alignment and character are independently fixed at setup for the whole game. You cannot ask the Storyteller to change registration for each probe to support a new bluff.
+- The Spy always sees a true Grimoire, even while poisoned. It exposes stored registration characters and alignments, but not Washerwoman or Librarian pair-information reminder tokens. Do not assume you can see those clue markers, or need to guess a fixed registration character already listed in the Grimoire.
+- Both real and bluffed Slayer shots must submit the target with a public-discussion speech and resolve immediately if that speech is adopted. There is no shot window during nominations, defence or voting, and no pause after submitting a shot to discuss its target.
+- Whispers happen only during the whisper phase, subject to quotas and room allocation; public and private conversations have speech and turn-taking limits. During nominations only the nominator and nominee speak once each; allies cannot interrupt to defend them.
+- The Butler sees only votes already cast, not an advance raised hand from a master whose turn has not arrived. Coordinate in earlier discussion and obey the master-voting restriction yourself.
+- The Washerwoman cannot be the sole Townsfolk in this project, and her first-night information excludes herself. Do not rely on self-referential information from extreme official setups.
+- There is no channel for questions or extra messages to the Storyteller, and no physical expressions or gestures to observe. Act only on the supplied events and current request. Below 7 players there is no first-night evil recognition or Demon bluffs; apply the relevant official advice with that player-count exception.
 
 # Three pieces of common knowledge (not rules)
 1. Good shares and compares information to find the Demon; evil usually pretends to be good. Anyone can lie, and drunkenness or poison may produce false information.
