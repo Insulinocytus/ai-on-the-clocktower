@@ -67,7 +67,7 @@ ${characters}
 # 一天的流程
 完整规则的流程：黎明 → 私聊 → 公聊 → 提名 → 处决（如有）→ 入夜；每天最多一次处决，处决后白天立即结束。
 本局黎明公告后先进行私聊（次数为 0 时跳过），再公聊，然后进入提名阶段，依次结算提名理由、辩护、投票与处决，再入夜。首夜小恶魔不杀人，其他夜晚选择一个目标。
-黎明只公布昨夜死者（可为空），不公布死因或角色。私聊房间成员名单公开，内容仅成员可见；每轮先提议房间、合并相同成员构成，再给包含自己的候选房间排序。未获全员排入的房间删除；其余按全体成员排名之和从小到大分配，平局用种子随机，成员都未被分走的房间才成立，不会缩小房间。各房间并行对话，只有进入成立的房间才扣次数。每人每个私聊阶段最多进入 ${String(whisperLimit)} 个房间，0 表示跳过；某轮没有房间成立或所有人次数用完则结束私聊。
+黎明只公布昨夜死者（可为空），不公布死因或角色。私聊提议（谁提议了哪些成员，或选择不私聊）与私聊房间成员名单公开，私聊排序不公开，私聊内容仅成员可见；每轮先提议房间、合并相同成员构成，再给包含自己的候选房间排序。未获全员排入的房间删除；其余按全体成员排名之和从小到大分配，平局用种子随机，成员都未被分走的房间才成立，不会缩小房间。各房间并行对话，只有进入成立的房间才扣次数。每人每个私聊阶段最多进入 ${String(whisperLimit)} 个房间，0 表示跳过；某轮没有房间成立，或还有次数的人不足两人，则结束私聊。
 私聊和公聊都同时询问所有可接话者（不是刚发言者且仍有剩余条数）说话或 pass，剩余发言条数多者优先，平局用对局种子随机。每次只实际发出一条，落选发言不算说过；刚发言者不能连续发言，每人每段对话最多 ${String(speechLimit)} 条。所有可接话者 pass 或无人可接话时结束。
 
 # 提名、投票、处决
@@ -114,7 +114,7 @@ Abilities resolve immediately. Players who die before their wake do not wake, ex
 # Day flow
 The full flow is dawn → whispers → public discussion → nominations → execution, if any → night. At most one execution occurs per day; it ends the day immediately.
 After dawn this game has whispers (skipped when the room allowance is 0), then public discussion, followed by nominations: nomination reason, defense, voting and execution, then night. The Imp does not kill on the first night; on other nights they choose one target.
-Dawn announces only who died last night, possibly nobody, never the cause or character. Whisper membership is public, but content is private to members. Each round players propose rooms, merge identical membership, then rank candidate rooms containing themselves. Remove rooms omitted by any member; allocate the rest by ascending sum of all members' ranks, with seeded random ties. A room forms only if no member has been assigned elsewhere; rooms never shrink. Formed rooms converse in parallel; only entering a formed room spends an entry. Each player may enter ${String(whisperLimit)} rooms per whisper phase; 0 skips the phase. No rooms forming, or everyone exhausting their allowance, ends the phase.
+Dawn announces only who died last night, possibly nobody, never the cause or character. Whisper proposals (who proposed which members, or declined) and whisper membership are public; whisper rankings are not, and content is private to members. Each round players propose rooms, merge identical membership, then rank candidate rooms containing themselves. Remove rooms omitted by any member; allocate the rest by ascending sum of all members' ranks, with seeded random ties. A room forms only if no member has been assigned elsewhere; rooms never shrink. Formed rooms converse in parallel; only entering a formed room spends an entry. Each player may enter ${String(whisperLimit)} rooms per whisper phase; 0 skips the phase. No rooms forming, or fewer than two players with entries left, ends the phase.
 In public or private conversations, all eligible speakers (not the previous speaker, with speeches remaining) simultaneously offer a speech or pass. More remaining speeches takes priority, with seeded random ties. Only one speech is actually spoken; rejected speeches were not said. No consecutive speeches by the same player; at most ${String(speechLimit)} per player per conversation. End when all eligible speakers pass or nobody is eligible.
 
 # Nominations, votes and execution

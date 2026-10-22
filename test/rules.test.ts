@@ -409,6 +409,7 @@ const PUBLIC_TYPES = [
   'phase.started',
   'game.ended',
   'dawn.announced',
+  'whisper.proposed',
   'whisper.room.opened',
   'public.speech',
   'slayer.resolved',
@@ -436,13 +437,7 @@ const SEAT_TYPES = [
   'whisper.speech',
   'whisper.room.closed',
 ]
-const SPECTATOR_TYPES = [
-  'game.created',
-  'game.aborted',
-  'whisper.proposed',
-  'whisper.ranked',
-  'future.unknown',
-]
+const SPECTATOR_TYPES = ['game.created', 'game.aborted', 'whisper.ranked', 'future.unknown']
 const OBSERVERS: Observer[] = ['spectator', 'storyteller', 'seat:1', 'seat:2', 'seat:3', 'public']
 
 describe('whole-event audience matrix', () => {
@@ -1001,7 +996,7 @@ describe('storyteller context at the rules seam', () => {
         context,
       )
       const user = prompt.messages[1].content
-      for (const visible of ['ACTUAL_WHISPER', 'ACTUAL_PUBLIC', 'PRIOR_REASON'])
+      for (const visible of ['ACTUAL_WHISPER', 'ACTUAL_PUBLIC', 'PRIOR_REASON', '123456'])
         expect(user).toContain(visible)
       for (const hidden of [
         'HIDDEN_THOUGHT',
@@ -1009,7 +1004,6 @@ describe('storyteller context at the rules seam', () => {
         'FAILED_REASON',
         'HIDDEN_MODEL',
         'HIDDEN_STORYTELLER_MODEL',
-        '123456',
         '987654',
       ])
         expect(user).not.toContain(hidden)
@@ -2225,11 +2219,29 @@ describe('whispers through the rules seam', () => {
     expect(
       requests.filter((request) => request.tool === 'rank_whispers').map((request) => request.seat),
     ).toEqual([1, 2, 3])
+  })
+
+  it('publishes only whisper proposals a seat actually made, even when one seat has allowance left', async () => {
+    const { events, requests } = await whispers((request) => {
+      if (request.tool === 'propose_whisper')
+        return {
+          reasoning_summary: 'Pair',
+          members:
+            request.seat === 5 ? null : [request.seat % 2 ? request.seat + 1 : request.seat - 1],
+        }
+      if (request.tool === 'rank_whispers')
+        return { reasoning_summary: 'Accept', ranking: request.rooms.map((room) => room.id) }
+      return { reasoning_summary: 'Pass', speech: null, slayer_target: null }
+    })
+    const asked = requests.flatMap((request) =>
+      request.tool === 'propose_whisper' ? [[request.seat, request.round]] : [],
+    )
     expect(
-      project(events, 'storyteller').some(
-        (event) => event.type === 'whisper.proposed' || event.type === 'whisper.ranked',
+      events.flatMap((event) =>
+        event.type === 'whisper.proposed' ? [[event.seat, event.round]] : [],
       ),
-    ).toBe(false)
+    ).toEqual(asked)
+    expect(asked).toEqual([1, 2, 3, 4, 5].map((seat) => [seat, 1]))
   })
 })
 

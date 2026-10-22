@@ -4,7 +4,7 @@ import type { SpectatorRow } from '#shared/game/spectator'
 import type { Observer } from '#shared/types/game'
 
 const props = defineProps<{
-  groups: { key: string; title: string; rows: SpectatorRow[]; muted: boolean }[]
+  groups: { key: string; title: string; rows: SpectatorRow[] }[]
   title: string
   blockKey: string | undefined
   following: boolean
@@ -35,7 +35,7 @@ watch(
       </Button>
     </header>
     <div ref="feed" class="min-h-0 flex-1 overflow-y-auto px-5" aria-live="polite">
-      <section v-for="group in groups" :key="group.key" :class="group.muted ? 'opacity-55' : ''">
+      <section v-for="group in groups" :key="group.key">
         <h3 v-if="focused" class="sticky top-0 border-b bg-white py-3 text-sm font-medium">
           {{ group.title }}
         </h3>
