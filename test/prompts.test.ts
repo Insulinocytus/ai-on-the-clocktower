@@ -297,6 +297,32 @@ describe('prompts at the scripted game seam', () => {
     for (const { summary } of own) expect(prompt).toContain(summary)
   })
 
+  it("shows every seat's whisper proposals, but not their reasoning, to a ranking seat", async () => {
+    let prompt = ''
+    await script(['soldier', 'empath', 'chef', 'poisoner', 'imp'], {
+      config: { whisperLimit: 1 },
+      ask(request, ports) {
+        if (request.tool === 'rank_whispers' && request.seat === 2) {
+          prompt = JSON.stringify(
+            buildContestantPrompt({ events: ports.log, seat: 2, language: 'en', request }).messages,
+          )
+          void ports.commit({ type: 'game.aborted', reason: 'human' })
+        }
+        const members = request.seat === 1 ? [2] : request.seat === 3 ? [4] : null
+        const choice =
+          request.tool === 'propose_whisper'
+            ? { reasoning_summary: `SECRET_${String(request.seat)}_`, members }
+            : { ...pass(request), reasoning_summary: `SECRET_${String(request.seat)}_` }
+        return decide(ports, request, choice)
+      },
+    })
+    expect(prompt).toContain('Seat 1: proposed whisper members in round 1: Seat 1, You.')
+    expect(prompt).toContain('Seat 3: proposed whisper members in round 1: Seat 3, Seat 4.')
+    expect(prompt).toContain('Seat 5: chose not to whisper in round 1.')
+    expect(prompt).toContain('SECRET_2_')
+    for (const seat of [1, 3, 4, 5]) expect(prompt).not.toContain(`SECRET_${String(seat)}_`)
+  })
+
   it.each([
     {
       arguments: '{"reasoning_summary":"FIRST_REASON","speech":"First","nominee":2}',

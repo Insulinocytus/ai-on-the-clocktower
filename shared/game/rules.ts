@@ -215,7 +215,7 @@ const AUDIENCES: Record<GameEvent['type'], Audience> = {
   told: 'seat',
   'night.choice': 'seat',
   'dawn.announced': 'public',
-  'whisper.proposed': 'spectator',
+  'whisper.proposed': 'public',
   'whisper.candidates': 'seat',
   'whisper.ranked': 'spectator',
   'whisper.room.opened': 'public',
