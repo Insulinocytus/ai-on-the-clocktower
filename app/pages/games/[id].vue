@@ -129,18 +129,16 @@ function connectManual() {
 }
 
 const blocks = computed(() =>
-  channelBlocks(events.value)
-    .filter((block) => showLosing.value || block.kind !== 'allocation')
-    .map((block) => ({
-      ...block,
-      title:
-        block.kind === 'room'
-          ? t('spectator.blocks.room', { members: block.members?.join(', ') ?? '' }) +
-            ((block.occurrence ?? 1) > 1 ? t('spectator.roundSuffix', { round: block.round }) : '')
-          : block.kind === 'allocation'
-            ? t('spectator.blocks.allocation', { round: block.round })
-            : t(`spectator.blocks.${block.kind}`),
-    })),
+  channelBlocks(events.value).map((block) => ({
+    ...block,
+    title:
+      block.kind === 'room'
+        ? t('spectator.blocks.room', { members: block.members?.join(', ') ?? '' }) +
+          ((block.occurrence ?? 1) > 1 ? t('spectator.roundSuffix', { round: block.round }) : '')
+        : block.kind === 'allocation'
+          ? t('spectator.blocks.allocation', { round: block.round })
+          : t(`spectator.blocks.${block.kind}`),
+  })),
 )
 const latest = computed(() =>
   blocks.value.reduce<(typeof blocks.value)[number] | undefined>(
@@ -178,7 +176,6 @@ const groups = computed(() => {
   return shown.map((block) => ({
     key: block.key,
     title: block.title,
-    muted: block.kind === 'allocation',
     rows: block.events.flatMap((event) => {
       const row = rows.value.get(event.seq)
       return row ? [row] : []

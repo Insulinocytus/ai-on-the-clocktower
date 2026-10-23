@@ -1682,11 +1682,7 @@ it.each(['en', 'zh'] as const)(
             ),
           ).toBe(true)
         else expect(speech.length).toBeGreaterThan(0)
-        expect(
-          projection.some(
-            (event) => event.type === 'whisper.proposed' || event.type === 'whisper.ranked',
-          ),
-        ).toBe(false)
+        expect(projection.some((event) => event.type === 'whisper.ranked')).toBe(false)
       }
       const requests = fake.requests.map((request) => gameRequest.parse(request.body))
       for (const request of requests) {

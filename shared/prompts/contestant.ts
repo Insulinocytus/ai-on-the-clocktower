@@ -36,7 +36,7 @@ export function buildContestantPrompt({
     : `# Your identity\nYou are Seat ${String(seat)}.\nYour character: ${role.name.en}; ${role.alignment} team.\nAbility: ${role.ability.en}\nGoal: ${role.alignment === 'good' ? 'Help good find and eliminate the Demon' : 'Help evil protect the Demon until only two players live'}.`
 
   const messages: ChatMessage[] = []
-  // Full log: some effect events (whisper proposals, rankings) are hidden from the seat itself.
+  // Full log: whisper rankings are hidden from the seat itself.
   const adopted = adoptedDecisions(events)
   let facts = [zh ? '# 时间线' : '# Timeline']
   for (const event of projected) {
