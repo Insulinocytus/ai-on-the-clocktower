@@ -1976,3 +1976,64 @@ it.each(['within', 'after'] as const)(
     }
   },
 )
+
+it.each(['propose_whisper', 'rank_whispers', 'nominate'] as const)(
+  'continues a partially recorded %s batch without repeating completed decisions',
+  async (checkpoint) => {
+    const action = gameActions()
+    let refreshed = false
+    const fake = await startFakeProvider((request) => {
+      const input = gameRequest.parse(request.body)
+      const name = input.tool_choice.function.name
+      const user = input.messages.at(-1)?.content ?? ''
+      const seat = Number(/You are Seat (\d+)/.exec(user)?.[1])
+      let args = action(name, user)
+      if (name === 'propose_whisper')
+        args = { members: seat <= 4 ? [seat % 2 ? seat + 1 : seat - 1] : null }
+      if (name === 'rank_whispers') args = { ranking: [seat <= 2 ? 1 : 2] }
+      if (!refreshed && name === checkpoint && seat !== (checkpoint === 'rank_whispers' ? 4 : 5))
+        return { kind: 'hang' }
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning_summary: 'Partial batch', ...args }),
+      }
+    })
+    let id: string | undefined
+    try {
+      const model = await preset('replay-batches', fake.baseUrl)
+      const game = await createGame({
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        discretions: randomDiscretions,
+        whisperLimit: 1,
+        speechLimit: 1,
+      })
+      id = game.id
+      await expect
+        .poll(
+          async () =>
+            (await gameEvents(game.id)).filter(
+              (event) => event.type === 'contestant.decision' && event.request.tool === checkpoint,
+            ).length,
+        )
+        .toBe(1)
+      await resetGameRunnersForTest()
+      const before = await gameEvents(game.id)
+      const requestsBefore = fake.requests.length
+      refreshed = true
+      await resumeGame(game.id)
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('ended')
+      const after = await gameEvents(game.id)
+      expect(after.slice(0, before.length)).toEqual(before)
+      expect(fake.requests.length - requestsBefore).toBe(
+        after.slice(before.length).filter((event) => event.type === 'contestant.decision').length,
+      )
+    } finally {
+      if (id) await abortGame(id)
+      await fake.close()
+    }
+  },
+)

@@ -229,10 +229,32 @@ it('appends human termination after the full history when aborted during recover
     language: 'en',
   })
   await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  const setup = (await gameEvents(game.id)).find((event) => event.type === 'discretion.requested')
+  if (!setup) throw new Error('Missing setup request')
+  await submitManualDiscretion(game.id, setup.seq, [
+    'chef',
+    'empath',
+    'fortuneteller',
+    'poisoner',
+    'imp',
+  ])
+  await expect
+    .poll(async () =>
+      (await gameEvents(game.id)).some(
+        (event) => event.type === 'discretion.requested' && event.discretion === 'D3',
+      ),
+    )
+    .toBe(true)
   await resetGameRunnersForTest()
   const before = await gameEvents(game.id)
-  const resuming = resumeGame(game.id)
-  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  let recovered = false
+  const resuming = resumeGame(game.id).then(() => {
+    recovered = true
+  })
+  while ((await getGame(game.id)).status === 'paused') {
+    /* Wait for runner acquisition. */
+  }
+  expect(recovered).toBe(false)
   expect(await abortGame(game.id)).toMatchObject({ status: 'aborted', reason: 'human' })
   await resuming
   const after = await gameEvents(game.id)
