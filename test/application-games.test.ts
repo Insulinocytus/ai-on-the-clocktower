@@ -3,8 +3,6 @@ import { expect, it, vi } from 'vitest'
 import {
   abortGame,
   createGame,
-  createPreset,
-  createProvider,
   gameEvents,
   getGame,
   listGames,
@@ -16,55 +14,13 @@ import {
 import { DISCRETION_IDS } from '../shared/game/rules'
 import type { GameEvent } from '../shared/types/game'
 import { inTransaction, requestResult } from '../app/api/storage'
+import { preset } from './game-fixtures'
 
-it('preserves existing model records while adding game storage to version one', async () => {
-  const request = indexedDB.open('ai-on-the-clocktower', 1)
-  request.onupgradeneeded = () => {
-    request.result.createObjectStore('providers', { keyPath: 'id', autoIncrement: true })
-    const presets = request.result.createObjectStore('presets', {
-      keyPath: 'id',
-      autoIncrement: true,
-    })
-    presets.createIndex('providerId', 'providerId')
-  }
-  const db = await requestResult(request)
-  const transaction = db.transaction(['providers', 'presets'], 'readwrite')
-  await requestResult(
-    transaction.objectStore('providers').add({
-      id: 41,
-      name: 'Existing',
-      baseUrl: 'http://127.0.0.1:1/v1',
-      apiKey: 'secret',
-      timeoutSec: 300,
-      maxConcurrency: 5,
-    }),
-  )
-  await requestResult(
-    transaction.objectStore('presets').add({
-      id: 73,
-      name: 'Existing',
-      providerId: 41,
-      model: 'existing-model',
-      forceToolChoice: true,
-      extraBody: '{}',
-    }),
-  )
-  db.close()
-  const game = await createGame({ presets: [73, 73, 73, 73, 73], language: 'en' })
-  expect(game.config.seats).toHaveLength(5)
-  for (const [index, seat] of game.config.seats.entries()) {
-    expect(seat).toMatchObject({ id: 73, providerId: 41, model: 'existing-model', seat: index + 1 })
-  }
-  await abortGame(game.id)
-})
-
+const subscriptionError = (error: unknown) => {
+  throw error
+}
 it('creates a persisted game and waits for manual discretion before human termination', async () => {
-  const provider = await createProvider({
-    name: 'Game provider',
-    baseUrl: 'http://127.0.0.1:1/v1',
-    apiKey: 'secret',
-  })
-  const model = await createPreset({ name: 'Game model', providerId: provider.id, model: 'test' })
+  const model = await preset('secret')
   const game = await createGame({
     presets: Array.from({ length: 5 }, () => model.id),
     language: 'en',
@@ -83,16 +39,7 @@ it('creates a persisted game and waits for manual discretion before human termin
 })
 
 it('backfills after seq and projects new events independently for each subscriber', async () => {
-  const provider = await createProvider({
-    name: 'Subscriptions',
-    baseUrl: 'http://127.0.0.1:1/v1',
-    apiKey: 'secret',
-  })
-  const model = await createPreset({
-    name: 'Subscriptions',
-    providerId: provider.id,
-    model: 'test',
-  })
+  const model = await preset('secret')
   const game = await createGame({
     presets: Array.from({ length: 5 }, () => model.id),
     language: 'en',
@@ -110,10 +57,16 @@ it('backfills after seq and projects new events independently for each subscribe
     const history = await gameEvents(game.id)
     const request = history.find((event) => event.type === 'discretion.requested')
     if (!request) throw new Error('Missing manual setup')
-    unsubscribe.push(await subscribeGame(game.id, 'spectator', 1, (event) => all.push(event)))
-    expect(all).toEqual(history.slice(1))
-    unsubscribe.push(await subscribeGame(game.id, 'seat:1', 1, (event) => seat.push(event)))
-    unsubscribe.push(await subscribeGame(game.id, 'public', 1, (event) => publicEvents.push(event)))
+    unsubscribe.push(
+      subscribeGame(game.id, 'spectator', 1, (event) => all.push(event), subscriptionError),
+    )
+    await expect.poll(() => all).toEqual(history.slice(1))
+    unsubscribe.push(
+      subscribeGame(game.id, 'seat:1', 1, (event) => seat.push(event), subscriptionError),
+    )
+    unsubscribe.push(
+      subscribeGame(game.id, 'public', 1, (event) => publicEvents.push(event), subscriptionError),
+    )
     expect(seat).not.toContainEqual(expect.objectContaining({ type: 'discretion.requested' }))
     await submitManualDiscretion(game.id, request.seq, [
       'chef',
@@ -144,12 +97,7 @@ it('backfills after seq and projects new events independently for each subscribe
 })
 
 it('lists incompatible games but refuses both history and subscriptions', async () => {
-  const provider = await createProvider({
-    name: 'Old engine',
-    baseUrl: 'http://127.0.0.1:1/v1',
-    apiKey: 'secret',
-  })
-  const model = await createPreset({ name: 'Old engine', providerId: provider.id, model: 'test' })
+  const model = await preset('secret')
   const game = await createGame({
     presets: Array.from({ length: 5 }, () => model.id),
     language: 'en',
@@ -169,18 +117,16 @@ it('lists incompatible games but refuses both history and subscriptions', async 
     expect.objectContaining({ id: game.id, compatible: false }),
   )
   await expect(gameEvents(game.id)).rejects.toThrow('Incompatible engine version')
-  await expect(subscribeGame(game.id, 'spectator', 0, vi.fn())).rejects.toThrow(
-    'Incompatible engine version',
-  )
+  const failed = vi.fn<(error: unknown) => void>()
+  const unsubscribe = subscribeGame(game.id, 'spectator', 0, vi.fn(), failed)
+  await expect
+    .poll(() => failed.mock.calls[0]?.[0])
+    .toEqual(new Error('Incompatible engine version'))
+  unsubscribe()
 })
 
 it('restores the same manual wait after a refresh without rewriting history', async () => {
-  const provider = await createProvider({
-    name: 'Replay',
-    baseUrl: 'http://127.0.0.1:1/v1',
-    apiKey: 'secret',
-  })
-  const model = await createPreset({ name: 'Replay', providerId: provider.id, model: 'test' })
+  const model = await preset('secret')
   const game = await createGame({
     presets: Array.from({ length: 5 }, () => model.id),
     language: 'en',
@@ -219,16 +165,7 @@ it('restores the same manual wait after a refresh without rewriting history', as
 it.each(['event', 'version'] as const)(
   'rejects %s divergence instead of running an incompatible history',
   async (change) => {
-    const provider = await createProvider({
-      name: 'Replay safety',
-      baseUrl: 'http://127.0.0.1:1/v1',
-      apiKey: 'secret',
-    })
-    const model = await createPreset({
-      name: 'Replay safety',
-      providerId: provider.id,
-      model: 'test',
-    })
+    const model = await preset('secret')
     const game = await createGame({
       presets: Array.from({ length: 5 }, () => model.id),
       language: 'en',
@@ -266,3 +203,55 @@ it.each(['event', 'version'] as const)(
     }
   },
 )
+
+it('starts only one runner when a page-closed game is resumed twice concurrently', async () => {
+  const model = await preset('secret')
+  const game = await createGame({
+    presets: Array.from({ length: 5 }, () => model.id),
+    language: 'en',
+  })
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  await resetGameRunnersForTest()
+  const before = await gameEvents(game.id)
+  try {
+    await Promise.all([resumeGame(game.id), resumeGame(game.id)])
+    expect(await getGame(game.id)).toMatchObject({ status: 'waiting' })
+    expect(await gameEvents(game.id)).toEqual(before)
+  } finally {
+    await abortGame(game.id)
+  }
+})
+
+it('appends human termination after the full history when aborted during recovery', async () => {
+  const model = await preset('secret')
+  const game = await createGame({
+    presets: Array.from({ length: 5 }, () => model.id),
+    language: 'en',
+  })
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  await resetGameRunnersForTest()
+  const before = await gameEvents(game.id)
+  const resuming = resumeGame(game.id)
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  expect(await abortGame(game.id)).toMatchObject({ status: 'aborted', reason: 'human' })
+  await resuming
+  const after = await gameEvents(game.id)
+  expect(after.slice(0, before.length)).toEqual(before)
+  expect(after.slice(before.length)).toEqual([
+    { type: 'game.aborted', reason: 'human', seq: before.length + 1 },
+  ])
+})
+
+it('returns subscription cancellation immediately and cancels pending history delivery', async () => {
+  const model = await preset('secret')
+  const game = await createGame({
+    presets: Array.from({ length: 5 }, () => model.id),
+    language: 'en',
+  })
+  const received = vi.fn()
+  const unsubscribe = subscribeGame(game.id, 'spectator', 0, received, subscriptionError)
+  expect(unsubscribe).toBeTypeOf('function')
+  unsubscribe()
+  await abortGame(game.id)
+  expect(received).not.toHaveBeenCalled()
+})

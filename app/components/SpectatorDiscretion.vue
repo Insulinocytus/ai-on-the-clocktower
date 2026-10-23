@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { submitManualDiscretion } from '@/api'
+import { ManualDiscretionConflictError, submitManualDiscretion } from '@/api'
 import { ROLES } from '#shared/game/roles'
 import { fold } from '#shared/game/rules'
 import type { GameConfig, GameEvent, RoleId } from '#shared/types/game'
@@ -76,9 +76,8 @@ async function submit() {
     await submitManualDiscretion(props.gameId, props.request.seq, choice.value)
     emit('submitted')
   } catch (cause) {
-    const failure = cause as { data?: { status?: string; choice?: unknown } }
-    if (failure.data?.status !== undefined) {
-      const accepted = failure.data.choice
+    if (cause instanceof ManualDiscretionConflictError) {
+      const accepted = cause.data.choice
       toast.info(
         t('manual.conflict', {
           choice: accepted === undefined ? t('manual.expired') : describe(accepted),

@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import { checkToolCall, contestantTools, type Lang } from '../../shared/game/tools'
-import type { Preset, TrialResult } from '../../shared/types/models'
-import type { Provider } from './index'
+import type { TrialResult } from '../../shared/types/models'
+import { requireModelRecord } from './index'
 import { chatCompletion, LlmCallError } from './llm'
-import { inTransaction, requestResult } from './storage'
+import { inTransaction } from './storage'
 
 const PROMPT: Record<Lang, { system: string; user: string }> = {
   zh: {
@@ -31,16 +31,8 @@ export async function trialPreset(
     ['presets', 'providers'],
     'readonly',
     async (transaction) => {
-      const preset = await requestResult(
-        transaction.objectStore('presets').get(id) as IDBRequest<Preset | undefined>,
-      )
-      if (!preset) throw new Error('Not found')
-      const provider = await requestResult(
-        transaction.objectStore('providers').get(preset.providerId) as IDBRequest<
-          Provider | undefined
-        >,
-      )
-      if (!provider) throw new Error('Provider not found')
+      const preset = await requireModelRecord('presets', id, transaction)
+      const provider = await requireModelRecord('providers', preset.providerId, transaction)
       return { preset, provider }
     },
   )

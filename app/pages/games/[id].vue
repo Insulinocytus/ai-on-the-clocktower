@@ -91,22 +91,30 @@ async function catchUpManual() {
     if (!disposed) error.value = apiErrorMessage(cause)
   }
 }
-async function connectManual() {
+function connectManual() {
   if (replay.value || !game.value?.compatible) return
   try {
-    const stop = await subscribeGame(id, 'spectator', 0, (event) => {
-      if (disposed) return
-      mergeManual([event])
-      if (
-        event.type === 'discretion.requested' ||
-        event.type === 'discretion.resolved' ||
-        event.type === 'game.ended' ||
-        event.type === 'game.aborted' ||
-        event.type === 'game.paused' ||
-        event.type === 'game.resumed'
-      )
-        void refresh()
-    })
+    const stop = subscribeGame(
+      id,
+      'spectator',
+      0,
+      (event) => {
+        if (disposed) return
+        mergeManual([event])
+        if (
+          event.type === 'discretion.requested' ||
+          event.type === 'discretion.resolved' ||
+          event.type === 'game.ended' ||
+          event.type === 'game.aborted' ||
+          event.type === 'game.paused' ||
+          event.type === 'game.resumed'
+        )
+          void refresh()
+      },
+      (cause) => {
+        if (!disposed) error.value = apiErrorMessage(cause)
+      },
+    )
     if (
       disposed ||
       manualEvents.value.some(
@@ -250,9 +258,17 @@ async function connect() {
     return
   }
   try {
-    const stop = await subscribeGame(id, observer.value, 0, (event) => {
-      if (current === generation) merge([event])
-    })
+    const stop = subscribeGame(
+      id,
+      observer.value,
+      0,
+      (event) => {
+        if (current === generation) merge([event])
+      },
+      (cause) => {
+        if (current === generation) error.value = apiErrorMessage(cause)
+      },
+    )
     if (
       current !== generation ||
       events.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
@@ -265,7 +281,7 @@ async function connect() {
 }
 onMounted(() => {
   void connect()
-  void connectManual()
+  connectManual()
 })
 watch(observer, connect)
 onUnmounted(() => {
@@ -346,11 +362,12 @@ onUnmounted(() => {
         role="alert"
         class="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-5 py-2 text-sm text-amber-900"
       >
-        <ul class="flex-1 space-y-1">
+        <ul v-if="pauses.length" class="flex-1 space-y-1">
           <li v-for="entry in pauses" :key="entry.seq" class="break-all">
             {{ renderEvent(entry, locale === 'zh' ? 'zh' : 'en', 'spectator') }}
           </li>
         </ul>
+        <p v-else class="flex-1">{{ t('games.pageClosedPause') }}</p>
         <Button size="sm" :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
       </div>
       <SpectatorControls

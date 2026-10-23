@@ -10,10 +10,13 @@ export {
   resumeGame,
   submitManualDiscretion,
   resetGameRunnersForTest,
+  ManualDiscretionConflictError,
 } from './game-runner'
 
 export async function initializeApplication(): Promise<void> {
-  await Promise.all([openDatabase(), navigator.storage.persist()])
+  await openDatabase()
+  // Persistence permission is optional; it must not block application startup.
+  void navigator.storage.persist().catch(() => false)
 }
 
 const providerInput = z.object({
@@ -27,6 +30,29 @@ const providerInput = z.object({
 export type Provider = z.infer<typeof providerInput> & { id: number }
 
 const idInput = z.object({ id: z.int() })
+
+interface ModelRecords {
+  providers: Provider
+  presets: Preset
+}
+
+export async function requireModelRecord<Store extends keyof ModelRecords>(
+  store: Store,
+  id: number,
+  transaction?: IDBTransaction,
+  missing: string | (() => Error) = store === 'providers' ? 'Provider not found' : 'Not found',
+): Promise<ModelRecords[Store]> {
+  if (!transaction) {
+    return inTransaction(store, 'readonly', (transaction) =>
+      requireModelRecord(store, id, transaction, missing),
+    )
+  }
+  const record = await requestResult(
+    transaction.objectStore(store).get(id) as IDBRequest<ModelRecords[Store] | undefined>,
+  )
+  if (!record) throw typeof missing === 'string' ? new Error(missing) : missing()
+  return record
+}
 
 function isJsonObject(text: string): boolean {
   try {
@@ -67,7 +93,7 @@ export async function updateProvider(id: number, input: unknown): Promise<Provid
   const provider = { ...providerInput.parse(input), id }
   return inTransaction('providers', 'readwrite', async (transaction) => {
     const store = transaction.objectStore('providers')
-    if (!(await requestResult(store.getKey(id)))) throw new Error('Not found')
+    await requireModelRecord('providers', id, transaction, 'Not found')
     await requestResult(store.put(provider))
     return provider
   })
@@ -77,7 +103,7 @@ export async function deleteProvider(id: number): Promise<void> {
   idInput.parse({ id })
   return inTransaction(['providers', 'presets'], 'readwrite', async (transaction) => {
     const store = transaction.objectStore('providers')
-    if (!(await requestResult(store.getKey(id)))) throw new Error('Not found')
+    await requireModelRecord('providers', id, transaction, 'Not found')
     const presets = transaction.objectStore('presets')
     const ids = await requestResult<IDBValidKey[]>(presets.index('providerId').getAllKeys(id))
     await Promise.all(ids.map((key) => requestResult(presets.delete(key))))
@@ -88,9 +114,12 @@ export async function deleteProvider(id: number): Promise<void> {
 export async function createPreset(input: unknown): Promise<Preset> {
   const preset = presetInput.parse(input)
   return inTransaction(['providers', 'presets'], 'readwrite', async (transaction) => {
-    if (!(await requestResult(transaction.objectStore('providers').getKey(preset.providerId)))) {
-      throw new Error(`Provider ${String(preset.providerId)} does not exist`)
-    }
+    await requireModelRecord(
+      'providers',
+      preset.providerId,
+      transaction,
+      `Provider ${String(preset.providerId)} does not exist`,
+    )
     const id = await requestResult(transaction.objectStore('presets').add(preset))
     return { ...preset, id: Number(id) }
   })
@@ -106,11 +135,14 @@ export async function updatePreset(id: number, input: unknown): Promise<Preset> 
   idInput.parse({ id })
   const preset = { ...presetInput.parse(input), id }
   return inTransaction(['providers', 'presets'], 'readwrite', async (transaction) => {
-    if (!(await requestResult(transaction.objectStore('providers').getKey(preset.providerId)))) {
-      throw new Error(`Provider ${String(preset.providerId)} does not exist`)
-    }
+    await requireModelRecord(
+      'providers',
+      preset.providerId,
+      transaction,
+      `Provider ${String(preset.providerId)} does not exist`,
+    )
     const store = transaction.objectStore('presets')
-    if (!(await requestResult(store.getKey(id)))) throw new Error('Not found')
+    await requireModelRecord('presets', id, transaction)
     await requestResult(store.put(preset))
     return preset
   })
@@ -120,7 +152,7 @@ export async function deletePreset(id: number): Promise<void> {
   idInput.parse({ id })
   return inTransaction('presets', 'readwrite', async (transaction) => {
     const store = transaction.objectStore('presets')
-    if (!(await requestResult(store.getKey(id)))) throw new Error('Not found')
+    await requireModelRecord('presets', id, transaction)
     await requestResult(store.delete(id))
   })
 }

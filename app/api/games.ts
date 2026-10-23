@@ -2,10 +2,10 @@ import { z } from 'zod'
 import { DISCRETION_IDS } from '../../shared/game/rules'
 import { ENGINE_VERSION } from '../../shared/game/version'
 import type { GameConfig } from '../../shared/types/game'
-import type { Preset } from '../../shared/types/models'
 import { getGame, insertGame } from './game-store'
 import { startGameRunner } from './game-runner'
-import { inTransaction, requestResult } from './storage'
+import { requireModelRecord } from './index'
+import { inTransaction } from './storage'
 
 const gameInput = z.object({
   presets: z.array(z.int()).min(5).max(15),
@@ -29,13 +29,9 @@ export async function createGame(value: unknown) {
     ['presets', 'providers'],
     'readonly',
     async (transaction) => {
-      async function preset(id: number): Promise<Preset> {
-        const model = await requestResult(
-          transaction.objectStore('presets').get(id) as IDBRequest<Preset | undefined>,
-        )
-        if (!model) throw new Error('Not found')
-        if (!(await requestResult(transaction.objectStore('providers').getKey(model.providerId))))
-          throw new Error('Provider not found')
+      async function preset(id: number) {
+        const model = await requireModelRecord('presets', id, transaction)
+        await requireModelRecord('providers', model.providerId, transaction)
         return model
       }
       const seats = await Promise.all(

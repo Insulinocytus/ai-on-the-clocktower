@@ -46,7 +46,7 @@ depends = ["nuxt:prepare"]
 run = "eslint . --max-warnings 0"
 
 [tasks.test]
-depends = ["nuxt:prepare"]
+wait_for = ["nuxt:prepare"]
 run = "vitest run"
 
 [tasks."check:format"]

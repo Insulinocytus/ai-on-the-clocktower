@@ -1,7 +1,6 @@
 import type { ChatMessage } from '../../shared/game/tool-calls'
 import type { Tool } from '../../shared/game/tools'
-import type { Provider } from './index'
-import { inTransaction, requestResult } from './storage'
+import { requireModelRecord } from './index'
 
 export interface LlmTarget {
   providerId: number
@@ -51,20 +50,17 @@ async function drainProvider(id: number, queue: ProviderQueue): Promise<void> {
   }
   queue.draining = true
   try {
-    const provider = await inTransaction('providers', 'readonly', (transaction) =>
-      requestResult(
-        transaction.objectStore('providers').get(id) as IDBRequest<Provider | undefined>,
-      ),
+    const provider = await requireModelRecord(
+      'providers',
+      id,
+      undefined,
+      () => new LlmCallError('Provider not found'),
     )
     while (queue.waiting.length) {
-      if (provider && queue.active >= provider.maxConcurrency) break
+      if (queue.active >= provider.maxConcurrency) break
       const waiter = queue.waiting.shift()
       if (!waiter) break
       waiter.signal?.removeEventListener('abort', waiter.cancel)
-      if (!provider) {
-        waiter.reject(new LlmCallError('Provider not found'))
-        continue
-      }
       queue.active++
       waiter.resolve(() => {
         queue.active--

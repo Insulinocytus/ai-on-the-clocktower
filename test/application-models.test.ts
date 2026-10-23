@@ -8,9 +8,11 @@ import {
   initializeApplication,
   listPresets,
   listProviders,
+  requireModelRecord,
   updatePreset,
   updateProvider,
 } from '../app/api'
+import { inTransaction } from '../app/api/storage'
 
 const SECRET = 'sk-test-secret-value'
 
@@ -27,6 +29,26 @@ describe('application providers', () => {
     expect(created).not.toHaveProperty('apiKeyEnv')
     expect(created).not.toHaveProperty('apiKeySet')
     expect(await listProviders()).toContainEqual(created)
+  })
+
+  it('reads model records within transactions and only constructs missing-record errors on failure', async () => {
+    const provider = await createProvider(providerInput)
+    const preset = await createPreset({ name: 'Lookup', providerId: provider.id, model: 'm' })
+    const missing = new Error('Missing model')
+    const makeError = vi.fn(() => missing)
+    expect(await requireModelRecord('providers', provider.id, undefined, makeError)).toEqual(
+      provider,
+    )
+    expect(makeError).not.toHaveBeenCalled()
+    expect(
+      await inTransaction('presets', 'readonly', (transaction) =>
+        requireModelRecord('presets', preset.id, transaction),
+      ),
+    ).toEqual(preset)
+    await expect(requireModelRecord('providers', -1)).rejects.toThrow('Provider not found')
+    await expect(requireModelRecord('presets', -1)).rejects.toThrow('Not found')
+    await expect(requireModelRecord('providers', -1, undefined, makeError)).rejects.toBe(missing)
+    expect(makeError).toHaveBeenCalledOnce()
   })
 
   it('updates and deletes providers, rejecting missing records', async () => {
@@ -81,6 +103,19 @@ describe('application providers', () => {
       await expect(deletePreset(id)).rejects.toMatchObject(issues)
     },
   )
+
+  it('keeps storage usable when persistent storage permission fails', async () => {
+    vi.stubGlobal('navigator', {
+      storage: { persist: vi.fn().mockRejectedValue(new Error('Permission denied')) },
+    })
+    try {
+      await initializeApplication()
+      const provider = await createProvider({ ...providerInput, name: 'Without persistence' })
+      expect(await listProviders()).toContainEqual(provider)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 
   it('requests persistent storage at startup and retains providers and presets after module reload', async () => {
     const persist = vi.fn().mockResolvedValue(false)

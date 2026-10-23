@@ -21,8 +21,7 @@ import type { ChatMessage } from '../../shared/game/tool-calls'
 import { buildContestantPrompt } from '../../shared/prompts/contestant'
 import { invalidAttemptSuffix } from '../../shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '../../shared/prompts/storyteller'
-import type { Provider } from './index'
-import { inTransaction, requestResult } from './storage'
+import { requireModelRecord } from './index'
 import { chatCompletion, LlmCallError } from './llm'
 import {
   checkToolCall,
@@ -40,7 +39,7 @@ interface Runner {
   ready: PromiseWithResolvers<undefined>
   done?: Promise<void>
   lastManual?: { seq: number; choice: DiscretionChoice }
-  /** Shared by every decision paused since the last resume; one retry releases them all. */
+  /** Shared by every decision paused since the last resume; one resume releases them all. */
   paused?: PromiseWithResolvers<undefined>
   pending: Map<
     number,
@@ -68,6 +67,20 @@ export async function resetGameRunnersForTest(): Promise<void> {
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
 const MAX_ATTEMPTS = 5
 const RETRY_BACKOFF_MS = 250
+
+export class ManualDiscretionConflictError extends Error {
+  constructor(readonly data: { status: string; choice?: DiscretionChoice }) {
+    super('Manual discretion is no longer pending')
+    this.name = 'ManualDiscretionConflictError'
+  }
+}
+
+class DiscretionValidationError extends Error {
+  constructor(readonly data: { errors: ValidationError[] }) {
+    super('Illegal discretion choice')
+    this.name = 'DiscretionValidationError'
+  }
+}
 
 function retryDelay(error: unknown, attempt: number): number {
   if (error instanceof LlmCallError && error.retryAfter?.trim()) {
@@ -145,20 +158,17 @@ export async function submitManualDiscretion(id: string, seq: number, choice: un
               event.discretion === request.discretion,
           )
         : undefined
-    throw Object.assign(new Error('Manual discretion is no longer pending'), {
-      data: {
-        ...(runner?.lastManual?.seq === seq
-          ? { choice: runner.lastManual.choice }
-          : resolved?.type === 'discretion.resolved'
-            ? { choice: resolved.choice }
-            : {}),
-        status: game.status,
-      },
+    throw new ManualDiscretionConflictError({
+      ...(runner?.lastManual?.seq === seq
+        ? { choice: runner.lastManual.choice }
+        : resolved?.type === 'discretion.resolved'
+          ? { choice: resolved.choice as DiscretionChoice }
+          : {}),
+      status: game.status,
     })
   }
   const errors = validateDiscretionChoice(choice, pending.candidates, pending.seatCount)
-  if (errors.length)
-    throw Object.assign(new Error('Illegal discretion choice'), { data: { errors } })
+  if (errors.length) throw new DiscretionValidationError({ errors })
   choice = z.json().parse(choice)
   runner.pending.delete(seq)
   runner.lastManual = { seq, choice: choice as DiscretionChoice }
@@ -196,6 +206,8 @@ export function startGameRunner(
   config: GameConfig,
   history: GameEvent[],
 ): Promise<void> {
+  const existing = runners.get(id)
+  if (existing) return existing.ready.promise
   let cursor = 1
   const runner: Runner = {
     controller: new AbortController(),
@@ -206,6 +218,7 @@ export function startGameRunner(
     commit(event) {
       const write = runner.writes.then(async () => {
         runner.controller.signal.throwIfAborted()
+        if (runner.log.length < history.length) runner.log.push(...history.slice(runner.log.length))
         if (event.type === 'game.ended' || event.type === 'game.aborted') runner.controller.abort()
         const stored: GameEvent = { ...event, seq: runner.log.length + 1 }
         await appendGameEvent(id, stored)
@@ -218,20 +231,56 @@ export function startGameRunner(
   }
   runners.set(id, runner)
   const commit = runner.commit
-  const runtimeEvent = (event: GameEvent) =>
-    event.type === 'contestant.decision' ||
-    event.type === 'storyteller.decision' ||
-    event.type === 'game.paused' ||
-    event.type === 'game.resumed'
-  function readRuntime(): GameEvent[] {
-    const events: GameEvent[] = []
-    for (let event = history[cursor]; event && runtimeEvent(event); event = history[cursor]) {
-      cursor++
-      runner.log.push(event)
-      events.push(event)
+  const waiting: {
+    matches: (event: GameEvent) => boolean
+    resolve: (event: GameEvent | undefined) => void
+    reject: (error: Error) => void
+  }[] = []
+  let scheduled: ReturnType<typeof setTimeout> | undefined
+  function advance() {
+    scheduled = undefined
+    if (runner.controller.signal.aborted) return
+    let next = history[cursor]
+    while (next?.type === 'game.paused' || next?.type === 'game.resumed') {
+      runner.log.push(next)
+      next = history[++cursor]
     }
-    return events
+    if (!next) {
+      for (const pending of waiting.splice(0)) pending.resolve(undefined)
+      return
+    }
+    const index = waiting.findIndex((pending) => pending.matches(next))
+    if (index < 0) {
+      const error = new Error(
+        `Replay divergence at seq ${String(next.seq)}: unexpected ${next.type}`,
+      )
+      for (const pending of waiting.splice(0)) pending.reject(error)
+      return
+    }
+    const pending = waiting.splice(index, 1)[0]
+    if (!pending) throw new Error('Missing recorded operation')
+    cursor++
+    runner.log.push(next)
+    pending.resolve(next)
+    if (waiting.length) scheduled = setTimeout(advance, 0)
   }
+  function recordedEvent(matches: (event: GameEvent) => boolean): Promise<GameEvent | undefined> {
+    runner.controller.signal.throwIfAborted()
+    if (cursor >= history.length) return Promise.resolve(undefined)
+    const pending = Promise.withResolvers<GameEvent | undefined>()
+    waiting.push({ matches, resolve: pending.resolve, reject: pending.reject })
+    // Let the released engine continuation consume rng and enqueue its commit before the next turn.
+    scheduled ??= setTimeout(advance, 0)
+    return pending.promise
+  }
+  runner.controller.signal.addEventListener(
+    'abort',
+    () => {
+      clearTimeout(scheduled)
+      for (const pending of waiting.splice(0)) pending.reject(new Error('Game aborted'))
+    },
+    { once: true },
+  )
   let continuing: Promise<unknown> | undefined
   async function live() {
     if (cursor < history.length)
@@ -246,18 +295,11 @@ export function startGameRunner(
   }
   async function engineCommit(event: GameEventInput): Promise<GameEvent> {
     runner.controller.signal.throwIfAborted()
-    const unclaimed = readRuntime().find((entry) => entry.type.endsWith('.decision'))
-    if (unclaimed)
-      throw new Error(`Replay divergence at seq ${String(unclaimed.seq)}: unexpected decision`)
-    const expected = history[cursor]
+    const expected = await recordedEvent((entry) => {
+      const { seq: _seq, ...input } = entry
+      return sameValue(input, event)
+    })
     if (expected) {
-      const { seq, ...input } = expected
-      if (!sameValue(input, event))
-        throw new Error(
-          `Replay divergence at seq ${String(seq)}: expected ${JSON.stringify(input)}, received ${JSON.stringify(event)}`,
-        )
-      cursor++
-      runner.log.push(expected)
       return expected
     }
     await live()
@@ -284,31 +326,31 @@ export function startGameRunner(
     ) =>
       | { ok: true; choice: ContestantChoice | DiscretionChoice }
       | { ok: false; errors: ValidationError[] },
-    replay: GameEvent[],
   ) {
     const actor =
       metadata.type === 'contestant.decision'
         ? { seat: metadata.seat }
         : { discretion: metadata.discretion }
-    const attempts = replay.filter(
-      (
-        event,
-      ): event is Extract<GameEvent, { type: 'contestant.decision' | 'storyteller.decision' }> =>
-        event.type === metadata.type &&
-        (event.type !== 'contestant.decision' ||
-          (metadata.type === 'contestant.decision' && event.seat === metadata.seat)) &&
-        (event.type !== 'storyteller.decision' ||
-          (metadata.type === 'storyteller.decision' && event.discretion === metadata.discretion)) &&
-        sameValue(event.request, metadata.request),
-    )
     let limit = MAX_ATTEMPTS
     for (let attempt = 1; ; attempt++) {
-      const recorded = attempts[attempt - 1]
+      const entry = await recordedEvent(
+        (event) =>
+          event.type === metadata.type &&
+          (event.type !== 'contestant.decision' ||
+            (metadata.type === 'contestant.decision' && event.seat === metadata.seat)) &&
+          (event.type !== 'storyteller.decision' ||
+            (metadata.type === 'storyteller.decision' &&
+              event.discretion === metadata.discretion)) &&
+          sameValue(event.request, metadata.request) &&
+          event.attempt === attempt,
+      )
+      const recorded =
+        entry?.type === 'contestant.decision' || entry?.type === 'storyteller.decision'
+          ? entry
+          : undefined
       const validation = recorded
         ? z.object({ ok: z.boolean(), code: z.string().optional() }).parse(recorded.validation)
         : undefined
-      if (recorded && recorded.attempt !== attempt)
-        throw new Error(`Replay divergence at seq ${String(recorded.seq)}: unexpected attempt`)
       if (validation?.code === 'call_failed') {
         if (attempt === limit) limit += MAX_ATTEMPTS
         continue
@@ -319,14 +361,7 @@ export function startGameRunner(
       }
       const provider = recorded
         ? undefined
-        : await inTransaction('providers', 'readonly', (transaction) =>
-            requestResult(
-              transaction.objectStore('providers').get(model.providerId) as IDBRequest<
-                Provider | undefined
-              >,
-            ),
-          )
-      if (!recorded && !provider) throw new Error('Provider not found')
+        : await requireModelRecord('providers', model.providerId)
       const start = performance.now()
       let raw: unknown
       try {
@@ -411,7 +446,6 @@ export function startGameRunner(
   async function ask(
     request: ContestantRequest,
     events: readonly GameEvent[],
-    replay: GameEvent[],
   ): Promise<ContestantChoice> {
     const model = config.seats[request.seat - 1]
     if (!model) throw new Error('Unknown contestant seat')
@@ -427,7 +461,6 @@ export function startGameRunner(
           ? { ok: false, errors }
           : { ok: true, choice: value as ContestantChoice }
       },
-      replay,
     )
     return { ...(result.choice as ContestantChoice), decision: result.decision }
   }
@@ -441,20 +474,7 @@ export function startGameRunner(
     rng,
     askContestants: (batch) => {
       const events = runner.log.slice()
-      const replay = readRuntime()
-      for (const event of replay) {
-        if (
-          event.type.endsWith('.decision') &&
-          (event.type !== 'contestant.decision' ||
-            !batch.some(
-              (request) => request.seat === event.seat && sameValue(request, event.request),
-            ))
-        )
-          throw new Error(
-            `Replay divergence at seq ${String(event.seq)}: unexpected contestant request`,
-          )
-      }
-      return Promise.all(batch.map((request) => ask(request, events, replay)))
+      return Promise.all(batch.map((request) => ask(request, events)))
     },
     discretion: (id, candidates, context, requestSeq) => {
       switch (config.discretions[id]) {
@@ -474,7 +494,6 @@ export function startGameRunner(
             discretionTools,
             'decide',
             (value) => parseStorytellerChoice(value, id, candidates, config.seatCount),
-            readRuntime(),
           ).then((result) => ({
             choice: result.choice as DiscretionChoice,
             decision: result.decision,

@@ -115,18 +115,21 @@ export async function gameEvents(
   return project(await storedGameEvents(id, after), observer)
 }
 
-export async function subscribeGame(
+export function subscribeGame(
   id: string,
   observer: Observer,
   after: number,
   listener: Listener,
-): Promise<() => void> {
+  onError: (error: unknown) => void,
+): () => void {
   eventsInput.parse({ observer, after })
-  if (!(await getGame(id)).compatible) throw new Error('Incompatible engine version')
+  idInput.parse(id)
   const buffered: GameEvent[] = []
   let catchingUp = true
   let cursor = after
+  let cancelled = false
   const deliver = (event: GameEvent) => {
+    if (cancelled) return
     if (event.seq <= cursor) return
     cursor = event.seq
     if (visibleTo(event, observer)) listener(structuredClone(event))
@@ -143,15 +146,18 @@ export async function subscribeGame(
   subscribers.add(receive)
   const unsubscribe = () => {
     subscribers.delete(receive)
+    cancelled = true
     if (subscribers.size === 0 && listeners.get(id) === subscribers) listeners.delete(id)
   }
-  try {
+  void (async () => {
+    if (!(await getGame(id)).compatible) throw new Error('Incompatible engine version')
     for (const event of await storedGameEvents(id, after)) deliver(event)
     for (const event of buffered) deliver(event)
     catchingUp = false
-    return unsubscribe
-  } catch (error) {
+  })().catch((error: unknown) => {
+    if (cancelled) return
     unsubscribe()
-    throw error
-  }
+    onError(error)
+  })
+  return unsubscribe
 }

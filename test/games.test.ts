@@ -22,6 +22,7 @@ import {
 import type { GameEvent } from '../shared/types/game'
 import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
+import { preset } from './game-fixtures'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
 
 const toolChoice = z.object({ function: z.object({ name: z.string() }) })
@@ -164,27 +165,6 @@ function gameActions() {
         throw new Error(`Unexpected fixture tool: ${name}`)
     }
   }
-}
-
-async function preset(
-  apiKey: string,
-  baseUrl = 'http://127.0.0.1:1/v1',
-  timeoutSec = 300,
-  maxConcurrency = 5,
-) {
-  const provider = await createProvider({
-    name: 'Game provider',
-    baseUrl,
-    apiKey,
-    timeoutSec,
-    maxConcurrency,
-  })
-  return createPreset({
-    name: 'Game preset',
-    providerId: provider.id,
-    model: 'fake-model',
-    forceToolChoice: true,
-  })
 }
 
 describe('games application seam', () => {
@@ -986,11 +966,20 @@ describe('games application seam', () => {
         }
         const after = events.at(-3)?.seq ?? 0
         const received: GameEvent[] = []
-        const unsubscribe = await subscribeGame(opened.id, 'spectator', after, (event) => {
-          received.push(event)
-        })
+        const subscriptionError = (error: unknown) => {
+          throw error
+        }
+        const unsubscribe = subscribeGame(
+          opened.id,
+          'spectator',
+          after,
+          (event) => {
+            received.push(event)
+          },
+          subscriptionError,
+        )
         try {
-          expect(received).toEqual(events.filter((event) => event.seq > after))
+          await expect.poll(() => received).toEqual(events.filter((event) => event.seq > after))
           const ids = received.map((event) => event.seq)
           expect(new Set(ids).size).toBe(ids.length)
         } finally {
@@ -1921,3 +1910,69 @@ it('continues an unfinished decision from its next attempt after refresh', async
     await fake.close()
   }
 })
+
+it.each(['within', 'after'] as const)(
+  'continues %s concurrent whisper rooms after a refresh without rewriting events',
+  async (checkpoint) => {
+    const action = gameActions()
+    let refreshed = false
+    const fake = await startFakeProvider((request) => {
+      const input = gameRequest.parse(request.body)
+      const name = input.tool_choice.function.name
+      const user = input.messages.at(-1)?.content ?? ''
+      const seat = Number(/You are Seat (\d+)/.exec(user)?.[1])
+      const whisper = currentRequestText(user).includes('Only room members see the conversation.')
+      let args = action(name, user)
+      if (name === 'propose_whisper')
+        args = { members: seat <= 4 ? [seat % 2 ? seat + 1 : seat - 1] : null }
+      if (name === 'rank_whispers') args = { ranking: [seat <= 2 ? 1 : 2] }
+      if (name === 'speak' && whisper)
+        args = { speech: `Room ${String(seat)} secret`, slayer_target: null }
+      if (
+        !refreshed &&
+        name === 'speak' &&
+        (checkpoint === 'within' ? whisper && seat >= 3 : !whisper)
+      )
+        return { kind: 'hang' }
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({ reasoning_summary: 'Recovery', ...args }),
+      }
+    })
+    let id: string | undefined
+    try {
+      const model = await preset('replay-whispers', fake.baseUrl)
+      const game = await createGame({
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        discretions: randomDiscretions,
+        whisperLimit: 1,
+        speechLimit: 2,
+      })
+      id = game.id
+      await expect
+        .poll(async () => {
+          const events = await gameEvents(game.id)
+          return checkpoint === 'within'
+            ? events.some((event) => event.type === 'whisper.speech')
+            : events.filter((event) => event.type === 'whisper.room.closed').length >= 2
+        })
+        .toBe(true)
+      await resetGameRunnersForTest()
+      const before = await gameEvents(game.id)
+      expect(before.filter((event) => event.type === 'whisper.room.opened')).toHaveLength(2)
+      refreshed = true
+      await resumeGame(game.id)
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('ended')
+      const after = await gameEvents(game.id)
+      expect(after.slice(0, before.length)).toEqual(before)
+      expect(after.map((event) => event.seq)).toEqual(after.map((_, index) => index + 1))
+    } finally {
+      if (id) await abortGame(id)
+      await fake.close()
+    }
+  },
+)
