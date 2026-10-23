@@ -1,8 +1,8 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod'
-import type { SchemaIssue, ValidationError } from '#shared/types/game'
-import { REASONING_SUMMARY_MAX_LENGTH } from '#shared/types/game'
-import { ROLES } from '#shared/game/roles'
+import type { SchemaIssue, ValidationError } from '../types/game'
+import { REASONING_SUMMARY_MAX_LENGTH } from '../types/game'
+import { ROLES } from './roles'
 
 export type Lang = 'zh' | 'en'
 

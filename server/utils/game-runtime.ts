@@ -26,7 +26,7 @@ import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
 import { getPreset, getProvider } from './models'
 import { chatCompletion, LlmCallError } from './llm'
-import { checkToolCall, contestantTools, storytellerTools, type Tool } from './tools'
+import { checkToolCall, contestantTools, storytellerTools, type Tool } from '#shared/game/tools'
 import { appendGameEvent, insertGame, getGame, gameEvents, LOG_VERSION } from './game-store'
 
 export const gameInput = z.object({

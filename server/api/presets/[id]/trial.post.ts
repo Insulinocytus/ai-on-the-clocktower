@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { TrialResult } from '#shared/types/models'
 import { chatCompletion, LlmCallError } from '../../../utils/llm'
 import { getPreset, getProvider, idParam } from '../../../utils/models'
-import { checkToolCall, contestantTools, type Lang } from '../../../utils/tools'
+import { checkToolCall, contestantTools, type Lang } from '#shared/game/tools'
 
 const TRIAL_SEATS = 5
 

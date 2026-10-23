@@ -78,6 +78,9 @@ importers:
       eslint:
         specifier: ^10.13.0
         version: 10.13.0(jiti@2.7.0)(supports-color@10.2.2)
+      fake-indexeddb:
+        specifier: ^6.2.6
+        version: 6.2.6
       knip:
         specifier: ^6.41.0
         version: 6.41.0

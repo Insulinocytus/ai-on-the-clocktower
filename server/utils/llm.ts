@@ -1,5 +1,5 @@
 import type { ChatMessage } from '#shared/game/tool-calls'
-import type { Tool } from './tools'
+import type { Tool } from '#shared/game/tools'
 import { getProvider } from './models'
 
 /** Everything needed to address one model: provider connection plus preset call parameters. */

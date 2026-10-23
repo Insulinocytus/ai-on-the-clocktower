@@ -31,6 +31,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.19.2",
     "eslint": "^10.13.0",
+    "fake-indexeddb": "^6.2.6",
     "knip": "^6.41.0",
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",
