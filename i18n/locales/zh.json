@@ -20,9 +20,7 @@
     "empty": "还没有提供商。",
     "name": "名称",
     "baseUrl": "Base URL",
-    "apiKeyEnv": "凭据环境变量名",
-    "keySet": "已设置",
-    "keyUnset": "未设置",
+    "apiKey": "API 密钥",
     "timeoutSec": "单次调用超时（秒）",
     "maxConcurrency": "最大并发",
     "confirmDelete": "删除提供商“{name}”及其下全部模型预设？"
@@ -200,16 +198,6 @@
     "start": "开始对局",
     "starting": "正在开局…",
     "seatCount": "座位数",
-    "setupHelp": "5–15 个 AI 座位，角色池为暗流涌动全部 22 个角色，可逐项配置裁量来源。黎明公告后先私聊、再公聊，死亡座位照常参加。",
-    "reconnecting": "连接已断开，正在重连并补齐事件…",
-    "reasons": {
-      "engine_error": "引擎错误",
-      "process_restart": "进程重启",
-      "human": "观战者终止",
-      "all_demons_dead": "所有恶魔死亡",
-      "two_alive": "只剩两名玩家存活",
-      "mayor": "镇长存活至仅三人存活且无人被处决的白天结束",
-      "saint_executed": "圣徒死于处决"
-    }
+    "setupHelp": "5–15 个 AI 座位，角色池为暗流涌动全部 22 个角色，可逐项配置裁量来源。黎明公告后先私聊、再公聊，死亡座位照常参加。"
   }
 }

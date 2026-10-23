@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { abortGame, gameEvents, getGame, resumeGame, subscribeGame } from '@/api'
 import type { GameEvent, Observer } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { renderEvent } from '#shared/event-templates'
@@ -12,7 +13,17 @@ definePageMeta({ spectator: true })
 const route = useRoute()
 const { t, locale } = useI18n()
 const id = String(route.params.id)
-const { data: game, error: loadError, refresh } = await useFetch<GameSummary>(`/api/games/${id}`)
+const game = ref<GameSummary>()
+const loadError = ref<unknown>()
+async function refresh() {
+  try {
+    game.value = await getGame(id)
+    loadError.value = undefined
+  } catch (cause) {
+    loadError.value = cause
+  }
+}
+await refresh()
 const events = ref<GameEvent[]>([])
 const error = ref('')
 const replay = computed(() => game.value?.status === 'ended' || game.value?.status === 'aborted')
@@ -24,8 +35,9 @@ const observer = ref<Observer>('spectator')
 const showLosing = ref(false)
 const focusedSeat = ref<number>()
 let generation = 0
-let source: EventSource | undefined
-let manualSource: EventSource | undefined
+let disposed = false
+let unsubscribe: (() => void) | undefined
+let unsubscribeManual: (() => void) | undefined
 const manualEvents = ref<GameEvent[]>([])
 const manualOpen = ref(false)
 const pending = computed(() => {
@@ -67,38 +79,44 @@ function mergeManual(incoming: GameEvent[]) {
   if (
     manualEvents.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
   )
-    manualSource?.close()
+    unsubscribeManual?.()
 }
 async function catchUpManual() {
   try {
-    mergeManual(
-      await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
-        query: { observer: 'spectator', after: manualEvents.value.at(-1)?.seq ?? 0 },
-      }),
-    )
+    const incoming = await gameEvents(id, 'spectator', manualEvents.value.at(-1)?.seq ?? 0)
+    if (disposed) return
+    mergeManual(incoming)
     await refresh()
   } catch (cause) {
-    error.value = apiErrorMessage(cause)
+    if (!disposed) error.value = apiErrorMessage(cause)
   }
 }
-function connectManual() {
+async function connectManual() {
   if (replay.value || !game.value?.compatible) return
-  manualSource = new EventSource(`/api/games/${id}/stream?observer=spectator&after=0`)
-  manualSource.onmessage = (message) => {
-    const event = JSON.parse(String(message.data)) as GameEvent
-    mergeManual([event])
+  try {
+    const stop = await subscribeGame(id, 'spectator', 0, (event) => {
+      if (disposed) return
+      mergeManual([event])
+      if (
+        event.type === 'discretion.requested' ||
+        event.type === 'discretion.resolved' ||
+        event.type === 'game.ended' ||
+        event.type === 'game.aborted' ||
+        event.type === 'game.paused' ||
+        event.type === 'game.resumed'
+      )
+        void refresh()
+    })
     if (
-      event.type === 'discretion.requested' ||
-      event.type === 'discretion.resolved' ||
-      event.type === 'game.ended' ||
-      event.type === 'game.aborted' ||
-      event.type === 'game.paused' ||
-      event.type === 'game.resumed'
+      disposed ||
+      manualEvents.value.some(
+        (event) => event.type === 'game.ended' || event.type === 'game.aborted',
+      )
     )
-      void refresh()
-  }
-  manualSource.onopen = () => {
-    void catchUpManual()
+      stop()
+    else unsubscribeManual = stop
+  } catch (cause) {
+    if (!disposed) error.value = apiErrorMessage(cause)
   }
 }
 
@@ -179,7 +197,7 @@ function merge(incoming: GameEvent[]) {
   for (const entry of incoming) bySeq.set(entry.seq, entry)
   events.value = [...bySeq.values()].sort((a, b) => a.seq - b.seq)
   if (events.value.some((entry) => entry.type === 'game.ended' || entry.type === 'game.aborted')) {
-    source?.close()
+    unsubscribe?.()
     void refresh()
   }
 }
@@ -187,9 +205,7 @@ function merge(incoming: GameEvent[]) {
 async function catchUp(after: number) {
   const current = generation
   try {
-    const incoming = await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
-      query: { after, observer: observer.value },
-    })
+    const incoming = await gameEvents(id, observer.value, after)
     if (current === generation) merge(incoming)
   } catch (cause) {
     if (current === generation) error.value = apiErrorMessage(cause)
@@ -199,7 +215,7 @@ async function catchUp(after: number) {
 async function abort() {
   aborting.value = true
   try {
-    game.value = await $fetch<GameSummary>(`/api/games/${id}/abort`, { method: 'POST' })
+    game.value = await abortGame(id)
     await catchUp(events.value.at(-1)?.seq ?? 0)
     await catchUpManual()
   } catch (cause) {
@@ -212,7 +228,7 @@ async function abort() {
 async function resume() {
   resuming.value = true
   try {
-    game.value = await $fetch<GameSummary>(`/api/games/${id}/resume`, { method: 'POST' })
+    game.value = await resumeGame(id)
     await catchUpManual()
   } catch (cause) {
     error.value = apiErrorMessage(cause)
@@ -221,40 +237,42 @@ async function resume() {
   }
 }
 
-function connect() {
-  generation++
-  source?.close()
+async function connect() {
+  const current = ++generation
+  unsubscribe?.()
+  unsubscribe = undefined
   events.value = []
   focusedSeat.value = undefined
   if (!game.value?.compatible) return
+  error.value = ''
   if (replay.value) {
-    void catchUp(0)
+    await catchUp(0)
     return
   }
-  const current = generation
-  source = new EventSource(
-    `/api/games/${id}/stream?observer=${encodeURIComponent(observer.value)}&after=0`,
-  )
-  source.onmessage = (message) => {
-    if (current === generation) merge([JSON.parse(String(message.data)) as GameEvent])
-  }
-  source.onopen = () => {
-    if (current !== generation) return
-    error.value = ''
-    void catchUp(events.value.at(-1)?.seq ?? 0)
-  }
-  source.onerror = () => {
-    if (current === generation && !replay.value) error.value = t('games.reconnecting')
+  try {
+    const stop = await subscribeGame(id, observer.value, 0, (event) => {
+      if (current === generation) merge([event])
+    })
+    if (
+      current !== generation ||
+      events.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
+    )
+      stop()
+    else unsubscribe = stop
+  } catch (cause) {
+    if (current === generation) error.value = apiErrorMessage(cause)
   }
 }
 onMounted(() => {
-  connect()
-  connectManual()
+  void connect()
+  void connectManual()
 })
 watch(observer, connect)
 onUnmounted(() => {
-  source?.close()
-  manualSource?.close()
+  disposed = true
+  generation++
+  unsubscribe?.()
+  unsubscribeManual?.()
 })
 </script>
 

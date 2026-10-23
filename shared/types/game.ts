@@ -3,7 +3,7 @@ import type { Preset } from './models'
 export const REASONING_SUMMARY_MAX_LENGTH = 500
 
 export type GameEndReason = 'all_demons_dead' | 'two_alive' | 'mayor' | 'saint_executed'
-type GameAbortReason = 'engine_error' | 'human' | 'process_restart'
+type GameAbortReason = 'engine_error' | 'human'
 export type GameReason = GameEndReason | GameAbortReason
 
 export type Language = 'en' | 'zh'

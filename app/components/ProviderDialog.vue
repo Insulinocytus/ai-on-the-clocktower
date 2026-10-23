@@ -11,36 +11,31 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'vue-sonner'
-import type { Provider } from '#shared/types/models'
+import { createProvider, updateProvider, type Provider } from '@/api'
 
 const props = defineProps<{ provider?: Provider }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [] }>()
 const { t } = useI18n()
 
-const form = reactive({ name: '', baseUrl: '', apiKeyEnv: '', timeoutSec: 300, maxConcurrency: 5 })
+const form = reactive({ name: '', baseUrl: '', apiKey: '', timeoutSec: 300, maxConcurrency: 5 })
 
 watch(open, (isOpen) => {
   if (!isOpen) return
-  const { name, baseUrl, apiKeyEnv, timeoutSec, maxConcurrency } = props.provider ?? {
+  const { name, baseUrl, apiKey, timeoutSec, maxConcurrency } = props.provider ?? {
     name: '',
     baseUrl: '',
-    apiKeyEnv: '',
+    apiKey: '',
     timeoutSec: 300,
     maxConcurrency: 5,
   }
-  Object.assign(form, { name, baseUrl, apiKeyEnv, timeoutSec, maxConcurrency })
+  Object.assign(form, { name, baseUrl, apiKey, timeoutSec, maxConcurrency })
 })
 
 async function save() {
   try {
-    await $fetch(
-      props.provider ? `/api/providers/${String(props.provider.id)}` : '/api/providers',
-      {
-        method: props.provider ? 'PUT' : 'POST',
-        body: form,
-      },
-    )
+    if (props.provider) await updateProvider(props.provider.id, form)
+    else await createProvider(form)
     toast.success(t('common.saved'))
     open.value = false
     emit('saved')
@@ -72,12 +67,12 @@ async function save() {
           />
         </div>
         <div class="grid gap-2">
-          <Label for="provider-key-env">{{ t('providers.apiKeyEnv') }}</Label>
+          <Label for="provider-key">{{ t('providers.apiKey') }}</Label>
           <Input
-            id="provider-key-env"
-            v-model="form.apiKeyEnv"
-            placeholder="OPENROUTER_API_KEY"
-            pattern="[A-Za-z_][A-Za-z0-9_]*"
+            id="provider-key"
+            v-model="form.apiKey"
+            type="password"
+            autocomplete="new-password"
             required
           />
         </div>

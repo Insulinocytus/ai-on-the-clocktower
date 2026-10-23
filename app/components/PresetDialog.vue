@@ -20,7 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'vue-sonner'
-import type { Preset, Provider } from '#shared/types/models'
+import { createPreset, updatePreset, type Provider } from '@/api'
+import type { Preset } from '#shared/types/models'
 
 const props = defineProps<{ preset?: Preset; providers: Provider[] }>()
 const open = defineModel<boolean>('open', { required: true })
@@ -58,10 +59,8 @@ const extraBodyValid = computed(() => {
 
 async function save() {
   try {
-    await $fetch(props.preset ? `/api/presets/${String(props.preset.id)}` : '/api/presets', {
-      method: props.preset ? 'PUT' : 'POST',
-      body: form,
-    })
+    if (props.preset) await updatePreset(props.preset.id, form)
+    else await createPreset(form)
     toast.success(t('common.saved'))
     open.value = false
     emit('saved')

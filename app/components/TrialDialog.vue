@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { trialPreset } from '@/api'
 import type { Preset, TrialResult } from '#shared/types/models'
 
 const props = defineProps<{ preset?: Preset }>()
@@ -29,14 +30,7 @@ async function run() {
   result.value = undefined
   error.value = undefined
   try {
-    // Passing a plain string keeps Nitro's typed-route inference from exhausting the type checker here.
-    const url = `/api/presets/${String(props.preset.id)}/trial`
-    const response = await $fetch<TrialResult>(url, {
-      method: 'POST',
-      body: { lang: locale.value },
-      signal: request.signal,
-      retry: 0,
-    })
+    const response = await trialPreset(props.preset.id, { lang: locale.value }, request.signal)
     if (!request.signal.aborted) result.value = response
   } catch (e) {
     if (!request.signal.aborted) error.value = apiErrorMessage(e)

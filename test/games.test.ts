@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { isDeepStrictEqual } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { reactive } from 'vue'
 import {
   abortGame,
   createGame,
@@ -228,7 +229,7 @@ describe('games application seam', () => {
       await expect(submit(null, request.seq + 999)).rejects.toThrow(
         'Manual discretion is no longer pending',
       )
-      const choice = ['chef', 'fortuneteller', 'soldier', 'poisoner', 'imp']
+      const choice = reactive(['chef', 'fortuneteller', 'soldier', 'poisoner', 'imp'])
       const responses = await Promise.allSettled([submit(choice), submit(choice)])
       expect(responses.filter((response) => response.status === 'fulfilled')).toHaveLength(1)
       const conflicts = responses.filter((response) => response.status === 'rejected')

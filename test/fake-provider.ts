@@ -50,6 +50,15 @@ export async function startFakeProvider(
   const requests: RecordedRequest[] = []
 
   const server = createServer((req, res) => {
+    res.setHeader('access-control-allow-origin', '*')
+    res.setHeader('access-control-allow-methods', 'POST, OPTIONS')
+    res.setHeader('access-control-allow-headers', 'authorization, content-type')
+    res.setHeader('access-control-expose-headers', 'retry-after')
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204)
+      res.end()
+      return
+    }
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {

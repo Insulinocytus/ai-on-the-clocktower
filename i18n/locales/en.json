@@ -20,9 +20,7 @@
     "empty": "No providers yet.",
     "name": "Name",
     "baseUrl": "Base URL",
-    "apiKeyEnv": "API key environment variable",
-    "keySet": "set",
-    "keyUnset": "not set",
+    "apiKey": "API key",
     "timeoutSec": "Timeout per call (s)",
     "maxConcurrency": "Max concurrency",
     "confirmDelete": "Delete provider “{name}” and all of its model presets?"
@@ -205,16 +203,6 @@
     "start": "Start game",
     "starting": "Starting…",
     "seatCount": "Seats",
-    "setupHelp": "Choose 5–15 AI seats from all 22 Trouble Brewing characters and configure each discretion source. After dawn, living and dead seats may whisper, then join public discussion.",
-    "reconnecting": "Connection interrupted. Reconnecting and restoring missing events…",
-    "reasons": {
-      "engine_error": "Engine error",
-      "process_restart": "Process restarted",
-      "human": "Stopped by spectator",
-      "all_demons_dead": "All Demons are dead",
-      "two_alive": "Only two players remain alive",
-      "mayor": "The Mayor survived to the end of a day with three players alive and no execution",
-      "saint_executed": "The Saint died by execution"
-    }
+    "setupHelp": "Choose 5–15 AI seats from all 22 Trouble Brewing characters and configure each discretion source. After dawn, living and dead seats may whisper, then join public discussion."
   }
 }

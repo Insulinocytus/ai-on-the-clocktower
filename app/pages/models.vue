@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -10,17 +9,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'vue-sonner'
-import type { Preset, Provider } from '#shared/types/models'
+import { deletePreset, deleteProvider, listPresets, listProviders, type Provider } from '@/api'
+import type { Preset } from '#shared/types/models'
 
 const { t } = useI18n()
 
-const { data: providers, refresh: refreshProviders } = await useFetch<Provider[]>(
-  '/api/providers',
-  {
-    default: () => [],
-  },
+const { data: providers, refresh: refreshProviders } = await useAsyncData(
+  'providers',
+  listProviders,
+  { default: () => [] },
 )
-const { data: presets, refresh: refreshPresets } = await useFetch<Preset[]>('/api/presets', {
+const { data: presets, refresh: refreshPresets } = await useAsyncData('presets', listPresets, {
   default: () => [],
 })
 const providerName = (id: number) => providers.value.find((p) => p.id === id)?.name ?? '—'
@@ -29,10 +28,10 @@ const providerDialog = reactive({ open: false, provider: undefined as Provider |
 const presetDialog = reactive({ open: false, preset: undefined as Preset | undefined })
 const trialDialog = reactive({ open: false, preset: undefined as Preset | undefined })
 
-async function remove(path: string, confirmText: string) {
+async function remove(deleteItem: () => Promise<void>, confirmText: string) {
   if (!window.confirm(confirmText)) return
   try {
-    await $fetch(path, { method: 'DELETE' })
+    await deleteItem()
     toast.success(t('common.deleted'))
   } catch (error) {
     toast.error(apiErrorMessage(error))
@@ -59,7 +58,6 @@ async function remove(path: string, confirmText: string) {
           <TableRow>
             <TableHead>{{ t('providers.name') }}</TableHead>
             <TableHead>{{ t('providers.baseUrl') }}</TableHead>
-            <TableHead>{{ t('providers.apiKeyEnv') }}</TableHead>
             <TableHead>{{ t('providers.timeoutSec') }}</TableHead>
             <TableHead>{{ t('providers.maxConcurrency') }}</TableHead>
             <TableHead />
@@ -69,12 +67,6 @@ async function remove(path: string, confirmText: string) {
           <TableRow v-for="p in providers" :key="p.id">
             <TableCell class="font-medium">{{ p.name }}</TableCell>
             <TableCell class="font-mono text-xs">{{ p.baseUrl }}</TableCell>
-            <TableCell>
-              <span class="font-mono text-xs">{{ p.apiKeyEnv }}</span>
-              <Badge :variant="p.apiKeySet ? 'secondary' : 'destructive'" class="ml-2">
-                {{ p.apiKeySet ? t('providers.keySet') : t('providers.keyUnset') }}
-              </Badge>
-            </TableCell>
             <TableCell>{{ p.timeoutSec }}</TableCell>
             <TableCell>{{ p.maxConcurrency }}</TableCell>
             <TableCell class="text-right">
@@ -89,7 +81,7 @@ async function remove(path: string, confirmText: string) {
                 variant="ghost"
                 size="sm"
                 @click="
-                  remove(`/api/providers/${p.id}`, t('providers.confirmDelete', { name: p.name }))
+                  remove(() => deleteProvider(p.id), t('providers.confirmDelete', { name: p.name }))
                 "
               >
                 {{ t('common.delete') }}
@@ -152,7 +144,7 @@ async function remove(path: string, confirmText: string) {
                 variant="ghost"
                 size="sm"
                 @click="
-                  remove(`/api/presets/${p.id}`, t('presets.confirmDelete', { name: p.name }))
+                  remove(() => deletePreset(p.id), t('presets.confirmDelete', { name: p.name }))
                 "
               >
                 {{ t('common.delete') }}

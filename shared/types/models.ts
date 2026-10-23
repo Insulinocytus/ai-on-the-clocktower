@@ -1,15 +1,3 @@
-/** An LLM provider as the API returns it: the credential's value never leaves the server, only whether it is set. */
-export interface Provider {
-  id: number
-  name: string
-  baseUrl: string
-  /** Name of the environment variable holding the API key. */
-  apiKeyEnv: string
-  apiKeySet: boolean
-  timeoutSec: number
-  maxConcurrency: number
-}
-
 export interface Preset {
   id: number
   name: string

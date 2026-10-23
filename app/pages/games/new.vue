@@ -10,19 +10,25 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Preset } from '#shared/types/models'
-import type { GameSummary } from '#shared/types/game-view'
+import { createGame, getGame, listPresets } from '@/api'
 import type { GameConfig, DiscretionSource } from '#shared/types/game'
 import { DISCRETION_IDS } from '#shared/game/rules'
 
 const { t, locale } = useI18n()
-const { data: presets } = await useFetch<Preset[]>('/api/presets', { default: () => [] })
+const presets = ref<Preset[]>([])
+const error = ref('')
+try {
+  presets.value = await listPresets()
+} catch (cause) {
+  error.value = apiErrorMessage(cause)
+}
 const route = useRoute()
 const templateId = typeof route.query.template === 'string' ? route.query.template : undefined
 const templateError = ref('')
 let templateConfig: GameConfig | undefined
 if (templateId) {
   try {
-    const game = await $fetch<GameSummary>(`/api/games/${encodeURIComponent(templateId)}`)
+    const game = await getGame(templateId)
     if (!game.compatible) throw new Error(t('games.incompatible'))
     templateConfig = game.config
   } catch (cause) {
@@ -56,7 +62,6 @@ const invalidPresets = computed(
     (needsStoryteller.value && (!form.storyteller || missingPreset(form.storyteller))),
 )
 const busy = ref(false)
-const error = ref('')
 const sources = ['random', 'storyteller', 'manual'] as const
 function setAll(source: DiscretionSource) {
   for (const id of DISCRETION_IDS) form.discretions[id] = source
@@ -67,19 +72,14 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    const game = await $fetch<GameSummary>('/api/games', {
-      method: 'POST',
-      body: {
-        ...form,
-        seatCount: form.presets.length,
-        presets: form.presets.map(Number),
-        storyteller: form.storyteller ? Number(form.storyteller) : null,
-      },
+    const game = await createGame({
+      ...form,
+      presets: form.presets.map(Number),
+      storyteller: form.storyteller ? Number(form.storyteller) : null,
     })
     await navigateTo(`/games/${game.id}`)
   } catch (cause) {
-    const details = cause as { data?: { data?: { missing?: string[] } } }
-    error.value = details.data?.data?.missing?.join(', ') ?? apiErrorMessage(cause)
+    error.value = apiErrorMessage(cause)
   } finally {
     busy.value = false
   }

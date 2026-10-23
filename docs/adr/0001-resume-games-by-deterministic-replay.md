@@ -15,4 +15,4 @@
 
 ## 应用 API 的实时运行
 
-`app/api/index.ts` 导出创建、列表、摘要、按观察者读取与订阅事件、终止、提交手动裁量和决策失败后的继续。订阅先补发起始 seq 之后的投影，再推送新事件，返回取消订阅函数。对局和事件写入 IndexedDB；`app/api/game-runner.ts` 在标签页模块状态中维护各局 runner，跨局共享 `app/api/llm.ts` 的提供商并发队列。引擎仍只通过 `Ports` 访问输入，后续恢复可在调用 `runGame` 前组合重放 ports，不需要改写引擎控制流。此阶段只支持当前 runner 的继续，不实现刷新后的重放恢复；旧页面与服务端仍保留。
+`app/api/index.ts` 导出创建、列表、摘要、按观察者读取与订阅事件、终止、提交手动裁量和决策失败后的继续。订阅先补发起始 seq 之后的投影，再推送新事件，返回取消订阅函数。对局和事件写入 IndexedDB；`app/api/game-runner.ts` 在标签页模块状态中维护各局 runner，跨局共享 `app/api/llm.ts` 的提供商并发队列。引擎仍只通过 `Ports` 访问输入，后续恢复可在调用 `runGame` 前组合重放 ports，不需要改写引擎控制流。页面已全部使用应用 API，不再运行 Nitro API、SSE 或 SQLite；`mise run build` 通过 `nuxt generate` 生成静态文件，`mise run start` 仅在 `127.0.0.1` 提供静态文件（端口由 `PORT` 指定，默认 3000）。提供商凭据直接保存在当前浏览器的 IndexedDB，浏览器直接调用提供商，提供商必须允许该来源的 CORS 请求。本阶段只支持当前 runner 的继续，刷新后的重放恢复另行实现。

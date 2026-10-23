@@ -9,14 +9,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { listGames } from '@/api'
 import type { GameSummary } from '#shared/types/game-view'
+import { GAME_REASON_LABELS } from '#shared/game/reasons'
 
-const { t } = useI18n()
-const {
-  data: games,
-  refresh,
-  error,
-} = await useFetch<GameSummary[]>('/api/games', { default: () => [] })
+const { t, locale } = useI18n()
+const games = ref<GameSummary[]>([])
+const error = ref<unknown>()
+async function refresh() {
+  try {
+    games.value = await listGames()
+    error.value = undefined
+  } catch (cause) {
+    error.value = cause
+  }
+}
+await refresh()
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   timer = setInterval(() => {
@@ -61,7 +69,7 @@ onUnmounted(() => {
               game.compatible ? t(`games.${game.status}`) : t('games.incompatible')
             }}</Badge></TableCell
           >
-          <TableCell>{{ game.reason ? t(`games.reasons.${game.reason}`) : '—' }}</TableCell>
+          <TableCell>{{ game.reason ? GAME_REASON_LABELS[game.reason][locale] : '—' }}</TableCell>
           <TableCell>
             <Button v-if="game.compatible" variant="outline" size="sm" as-child>
               <NuxtLink :to="{ path: '/games/new', query: { template: game.id } }">

@@ -135,6 +135,7 @@ export async function submitManualDiscretion(id: string, seq: number, choice: un
   const errors = validateDiscretionChoice(choice, pending.candidates, pending.seatCount)
   if (errors.length)
     throw Object.assign(new Error('Illegal discretion choice'), { data: { errors } })
+  choice = z.json().parse(choice)
   runner.pending.delete(seq)
   runner.lastManual = { seq, choice: choice as DiscretionChoice }
   pending.resolve(choice as DiscretionChoice)

@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { submitManualDiscretion } from '@/api'
 import { ROLES } from '#shared/game/roles'
 import { fold } from '#shared/game/rules'
 import type { GameConfig, GameEvent, RoleId } from '#shared/types/game'
@@ -72,15 +73,12 @@ async function submit() {
   if (choice.value === undefined || busy.value) return
   busy.value = true
   try {
-    await $fetch(`/api/games/${props.gameId}/discretions/${String(props.request.seq)}`, {
-      method: 'POST',
-      body: { choice: choice.value },
-    })
+    await submitManualDiscretion(props.gameId, props.request.seq, choice.value)
     emit('submitted')
   } catch (cause) {
-    const failure = cause as { statusCode?: number; data?: { data?: { choice?: unknown } } }
-    if (failure.statusCode === 409) {
-      const accepted = failure.data?.data?.choice
+    const failure = cause as { data?: { status?: string; choice?: unknown } }
+    if (failure.data?.status !== undefined) {
+      const accepted = failure.data.choice
       toast.info(
         t('manual.conflict', {
           choice: accepted === undefined ? t('manual.expired') : describe(accepted),
