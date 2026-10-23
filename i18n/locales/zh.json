@@ -1,5 +1,10 @@
 {
-  "app": { "title": "AI 血染钟楼", "language": "EN" },
+  "app": {
+    "title": "AI 血染钟楼",
+    "language": "EN",
+    "tabBlockedTitle": "应用已在另一个标签页打开",
+    "tabBlockedDescription": "请关闭另一个标签页以在此处继续，本页会自动加载。"
+  },
   "nav": { "models": "模型", "games": "对局" },
   "common": {
     "add": "添加",
