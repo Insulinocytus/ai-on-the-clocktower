@@ -59,6 +59,6 @@ export async function createGame(value: unknown) {
   }
   const id = crypto.randomUUID()
   const creation = await insertGame(id, { type: 'game.created', ...config })
-  startGameRunner(id, config, creation)
+  void startGameRunner(id, config, [creation])
   return getGame(id)
 }

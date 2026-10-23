@@ -15,4 +15,8 @@
 
 ## 应用 API 的实时运行
 
-`app/api/index.ts` 导出创建、列表、摘要、按观察者读取与订阅事件、终止、提交手动裁量和决策失败后的继续。订阅先补发起始 seq 之后的投影，再推送新事件，返回取消订阅函数。对局和事件写入 IndexedDB；`app/api/game-runner.ts` 在标签页模块状态中维护各局 runner，跨局共享 `app/api/llm.ts` 的提供商并发队列。引擎仍只通过 `Ports` 访问输入，后续恢复可在调用 `runGame` 前组合重放 ports，不需要改写引擎控制流。页面已全部使用应用 API，不再运行 Nitro API、SSE 或 SQLite；`mise run build` 通过 `nuxt generate` 生成静态文件，`mise run start` 仅在 `127.0.0.1` 提供静态文件（端口由 `PORT` 指定，默认 3000）。提供商凭据直接保存在当前浏览器的 IndexedDB，浏览器直接调用提供商，提供商必须允许该来源的 CORS 请求。本阶段只支持当前 runner 的继续，刷新后的重放恢复另行实现。
+`app/api/index.ts` 导出创建、列表、摘要、按观察者读取与订阅事件、终止、提交手动裁量和继续。订阅先补发起始 seq 之后的投影，再推送新事件，返回取消订阅函数。对局和事件写入 IndexedDB；`app/api/game-runner.ts` 在标签页模块状态中维护各局 runner，跨局共享 `app/api/llm.ts` 的提供商并发队列。引擎仍只通过 `Ports` 访问输入。页面已全部使用应用 API，不再运行 Nitro API、SSE 或 SQLite；`mise run build` 通过 `nuxt generate` 生成静态文件，`mise run start` 仅在 `127.0.0.1` 提供静态文件（端口由 `PORT` 指定，默认 3000）。提供商凭据直接保存在当前浏览器的 IndexedDB，浏览器直接调用提供商，提供商必须允许该来源的 CORS 请求。
+
+## 页面关闭后的继续
+
+未结束、未终止且当前标签页没有 runner 的对局推导为暂停；加载应用不自动启动 runner。人类继续时从创建事件重建随机数与引擎控制流，只核对引擎事件、读取运行时事件，按当前批次的座位和请求还原选手决策，按裁量还原说书人决策与手动选择。日志耗尽后才写入新事件、发送新请求；未完成决策保留已记录的 attempt 和无效输出提示，未解决的手动裁量保留原请求 seq。最后一条暂停相关事件仍为 `game.paused` 时先补写 `game.resumed`。重放分歧追加带分歧描述的引擎错误终止；版本不符拒绝继续。没有 runner 的对局可直接追加人类终止事件。应用 API 的 `resetGameRunnersForTest` 仅供测试模拟刷新：取消并清除内存 runner，不改动已持久化事件。

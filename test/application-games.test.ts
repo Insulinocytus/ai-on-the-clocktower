@@ -8,6 +8,8 @@ import {
   gameEvents,
   getGame,
   listGames,
+  resetGameRunnersForTest,
+  resumeGame,
   subscribeGame,
   submitManualDiscretion,
 } from '../app/api'
@@ -171,3 +173,96 @@ it('lists incompatible games but refuses both history and subscriptions', async 
     'Incompatible engine version',
   )
 })
+
+it('restores the same manual wait after a refresh without rewriting history', async () => {
+  const provider = await createProvider({
+    name: 'Replay',
+    baseUrl: 'http://127.0.0.1:1/v1',
+    apiKey: 'secret',
+  })
+  const model = await createPreset({ name: 'Replay', providerId: provider.id, model: 'test' })
+  const game = await createGame({
+    presets: Array.from({ length: 5 }, () => model.id),
+    language: 'en',
+  })
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  const before = await gameEvents(game.id)
+  const request = before.find((event) => event.type === 'discretion.requested')
+  if (!request) throw new Error('Missing manual request')
+  await resetGameRunnersForTest()
+  expect(await getGame(game.id)).toMatchObject({ status: 'paused' })
+  await resumeGame(game.id)
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  expect(await gameEvents(game.id)).toEqual(before)
+  await submitManualDiscretion(game.id, request.seq, [
+    'chef',
+    'empath',
+    'fortuneteller',
+    'poisoner',
+    'imp',
+  ])
+  await expect
+    .poll(async () =>
+      (await gameEvents(game.id)).some((event) => event.type === 'discretion.resolved'),
+    )
+    .toBe(true)
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  const resolvedHistory = await gameEvents(game.id)
+  await resetGameRunnersForTest()
+  await resumeGame(game.id)
+  await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+  expect(await gameEvents(game.id)).toEqual(resolvedHistory)
+  await resetGameRunnersForTest()
+  expect(await abortGame(game.id)).toMatchObject({ status: 'aborted', reason: 'human' })
+})
+
+it.each(['event', 'version'] as const)(
+  'rejects %s divergence instead of running an incompatible history',
+  async (change) => {
+    const provider = await createProvider({
+      name: 'Replay safety',
+      baseUrl: 'http://127.0.0.1:1/v1',
+      apiKey: 'secret',
+    })
+    const model = await createPreset({
+      name: 'Replay safety',
+      providerId: provider.id,
+      model: 'test',
+    })
+    const game = await createGame({
+      presets: Array.from({ length: 5 }, () => model.id),
+      language: 'en',
+    })
+    await expect.poll(async () => (await getGame(game.id)).status).toBe('waiting')
+    await resetGameRunnersForTest()
+    const before = await gameEvents(game.id)
+    const original = before[change === 'version' ? 0 : 1]
+    if (!original) throw new Error('Missing replay event')
+    const modified =
+      change === 'version' ? { ...original, engineVersion: -1 } : { ...original, discretion: 'D2' }
+    await inTransaction('gameEvents', 'readwrite', async (transaction) => {
+      await requestResult(
+        transaction
+          .objectStore('gameEvents')
+          .put({ gameId: game.id, seq: original.seq, event: modified }),
+      )
+    })
+    if (change === 'version') {
+      await expect(resumeGame(game.id)).rejects.toThrow('Incompatible engine version')
+      expect(await getGame(game.id)).toMatchObject({ status: 'paused', compatible: false })
+      await abortGame(game.id)
+    } else {
+      await resumeGame(game.id)
+      await expect.poll(async () => (await getGame(game.id)).status).toBe('aborted')
+      const after = await gameEvents(game.id)
+      expect(after.slice(0, before.length)).toEqual(
+        before.map((event) => (event.seq === original.seq ? modified : event)),
+      )
+      expect(after.at(-1)).toMatchObject({
+        type: 'game.aborted',
+        reason: 'engine_error',
+        error: expect.stringContaining('Replay divergence at seq 2') as unknown,
+      })
+    }
+  },
+)

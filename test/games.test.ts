@@ -13,6 +13,7 @@ import {
   getGame,
   listGames,
   resumeGame,
+  resetGameRunnersForTest,
   submitManualDiscretion,
   subscribeGame,
   trialPreset,
@@ -1082,6 +1083,7 @@ describe('games application seam', () => {
             whisperLimit: 0,
           }),
         )
+        if (name === 'first') await expect.poll(() => fake.requests.length).toBe(1)
       }
       await expect.poll(() => fake.requests.length).toBeGreaterThan(0)
       expect(fake.requests).toHaveLength(1)
@@ -1752,6 +1754,170 @@ it('defaults to three private room entries and leaves a no-room round for public
       ),
     ).toEqual([])
   } finally {
+    await fake.close()
+  }
+})
+
+it('replays completed seats in a partial batch and requests only the missing seats after refresh', async () => {
+  const action = gameActions()
+  let interrupted = false
+  const fake = await startFakeProvider((request) => {
+    const input = gameRequest.parse(request.body)
+    const name = input.tool_choice.function.name
+    const user = input.messages.at(-1)?.content ?? ''
+    if (name === 'decide')
+      return {
+        kind: 'toolCall',
+        name,
+        arguments: JSON.stringify({
+          reasoning_summary: 'Setup',
+          roles: ['soldier', 'chef', 'empath', 'scarletwoman', 'imp'],
+        }),
+      }
+    if (name === 'speak' && !interrupted && !user.includes('You are Seat 5.'))
+      return { kind: 'hang' }
+    return {
+      kind: 'toolCall',
+      name,
+      arguments: JSON.stringify({ reasoning_summary: 'Replay', ...action(name, user) }),
+    }
+  })
+  let id: string | undefined
+  try {
+    const model = await preset('replay', fake.baseUrl)
+    const game = await createGame({
+      presets: Array.from({ length: 5 }, () => model.id),
+      storyteller: model.id,
+      language: 'en',
+      discretions: { ...randomDiscretions, D1: 'storyteller', seating: 'storyteller' },
+      whisperLimit: 0,
+    })
+    id = game.id
+    await expect
+      .poll(
+        async () =>
+          (await gameEvents(game.id)).filter(
+            (event) => event.type === 'contestant.decision' && event.request.tool === 'speak',
+          ).length,
+      )
+      .toBe(1)
+    await expect
+      .poll(
+        () =>
+          fake.requests.filter(
+            (request) => gameRequest.parse(request.body).tool_choice.function.name === 'speak',
+          ).length,
+      )
+      .toBe(5)
+    await resetGameRunnersForTest()
+    const before = await gameEvents(game.id)
+    expect(await getGame(game.id)).toMatchObject({ status: 'paused' })
+    interrupted = true
+    const requestsBefore = fake.requests.length
+    await resumeGame(game.id)
+    await expect.poll(async () => (await getGame(game.id)).status, { timeout: 10000 }).toBe('ended')
+    const after = await gameEvents(game.id)
+    expect(after.slice(0, before.length)).toEqual(before)
+    const decisionsBefore = before.filter((event) => event.type === 'contestant.decision').length
+    const decisionsAfter = after.filter((event) => event.type === 'contestant.decision').length
+    expect(fake.requests.length - requestsBefore).toBe(decisionsAfter - decisionsBefore)
+    const answeredRequest = fake.requests.slice(0, requestsBefore).find((request) => {
+      const input = gameRequest.parse(request.body)
+      return (
+        input.tool_choice.function.name === 'speak' &&
+        input.messages.at(-1)?.content?.includes('You are Seat 5.')
+      )
+    })
+    expect(fake.requests.slice(requestsBefore).map((request) => request.body)).not.toContainEqual(
+      answeredRequest?.body,
+    )
+  } finally {
+    if (id) await abortGame(id)
+    await fake.close()
+  }
+})
+
+it.each(['invalid', 'transport'] as const)(
+  'continues %s attempts and resumes a persisted decision-failure pause after refresh',
+  async (failure) => {
+    const fake = await nightProvider()
+    let id: string | undefined
+    try {
+      fake.script(
+        ...Array.from({ length: 5 }, () =>
+          failure === 'invalid'
+            ? {
+                kind: 'toolCall' as const,
+                name: 'night_choice',
+                arguments: '{"reasoning_summary":"retry","targets":[]}',
+              }
+            : { kind: 'serverError' as const, status: 503 },
+        ),
+      )
+      const model = await preset('replay', fake.baseUrl)
+      const game = await createGame({
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        discretions: randomDiscretions,
+        whisperLimit: 0,
+      })
+      id = game.id
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('paused')
+      await resetGameRunnersForTest()
+      const before = await gameEvents(game.id)
+      await resumeGame(game.id)
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('ended')
+      const after = await gameEvents(game.id)
+      expect(after.slice(0, before.length)).toEqual(before)
+      expect(after[before.length]).toMatchObject({ type: 'game.resumed' })
+      const next = after.slice(before.length).find((event) => event.type === 'contestant.decision')
+      expect(next).toMatchObject({ attempt: 6, validation: { ok: true } })
+      if (failure === 'invalid') {
+        const prompt = gameRequest.parse(fake.requests[5]?.body).messages.at(-1)?.content
+        expect(prompt).toContain('attempt 5 of at most 10')
+      }
+    } finally {
+      if (id) await abortGame(id)
+      await fake.close()
+    }
+  },
+)
+
+it('continues an unfinished decision from its next attempt after refresh', async () => {
+  const fake = await nightProvider()
+  let id: string | undefined
+  try {
+    fake.script(
+      { kind: 'toolCall', name: 'night_choice', arguments: '{}' },
+      { kind: 'toolCall', name: 'night_choice', arguments: '{}' },
+      { kind: 'hang' },
+    )
+    const model = await preset('replay', fake.baseUrl)
+    const game = await createGame({
+      presets: Array.from({ length: 5 }, () => model.id),
+      language: 'en',
+      discretions: randomDiscretions,
+      whisperLimit: 0,
+    })
+    id = game.id
+    await expect.poll(() => fake.requests.length).toBe(3)
+    await resetGameRunnersForTest()
+    const before = await gameEvents(game.id)
+    await resumeGame(game.id)
+    await expect.poll(async () => (await getGame(game.id)).status, { timeout: 10000 }).toBe('ended')
+    const after = await gameEvents(game.id)
+    expect(after.slice(0, before.length)).toEqual(before)
+    expect(
+      after.slice(before.length).find((event) => event.type === 'contestant.decision'),
+    ).toMatchObject({ attempt: 3, validation: { ok: true } })
+    expect(after.some((event) => event.type === 'game.resumed')).toBe(false)
+    expect(fake.requests[3]?.body).toEqual(fake.requests[2]?.body)
+  } finally {
+    if (id) await abortGame(id)
     await fake.close()
   }
 })

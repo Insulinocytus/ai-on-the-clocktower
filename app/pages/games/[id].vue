@@ -290,7 +290,7 @@ onUnmounted(() => {
         <Badge variant="outline">{{ replay ? t('games.replay') : t('games.live') }}</Badge>
         <Badge variant="secondary">{{ t(`games.${game.status}`) }}</Badge>
         <Button
-          v-if="pending && !manualOpen"
+          v-if="pending && game.status !== 'paused' && !manualOpen"
           variant="outline"
           size="sm"
           class="border-amber-400 text-amber-800"
@@ -342,7 +342,7 @@ onUnmounted(() => {
         >
       </header>
       <div
-        v-if="pauses.length"
+        v-if="game.compatible && game.status === 'paused'"
         role="alert"
         class="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-5 py-2 text-sm text-amber-900"
       >
@@ -394,7 +394,7 @@ onUnmounted(() => {
         />
       </div>
       <SpectatorDiscretion
-        v-if="pending"
+        v-if="pending && game.status !== 'paused'"
         :key="pending.seq"
         v-model:open="manualOpen"
         :game-id="id"

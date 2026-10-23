@@ -37,6 +37,8 @@ interface Runner {
   log: GameEvent[]
   commit: (event: GameEventInput) => Promise<GameEvent>
   writes: Promise<unknown>
+  ready: PromiseWithResolvers<undefined>
+  done?: Promise<void>
   lastManual?: { seq: number; choice: DiscretionChoice }
   /** Shared by every decision paused since the last resume; one retry releases them all. */
   paused?: PromiseWithResolvers<undefined>
@@ -50,6 +52,19 @@ interface Runner {
   >
 }
 const runners = new Map<string, Runner>()
+
+export function hasGameRunner(id: string): boolean {
+  return runners.has(id)
+}
+
+export async function resetGameRunnersForTest(): Promise<void> {
+  const active = [...runners.values()]
+  for (const runner of active) runner.controller.abort()
+  await Promise.allSettled(
+    active.flatMap((runner) => (runner.done ? [runner.writes, runner.done] : [runner.writes])),
+  )
+  runners.clear()
+}
 const usageShape = z.looseObject({ usage: z.unknown().optional() })
 const MAX_ATTEMPTS = 5
 const RETRY_BACKOFF_MS = 250
@@ -87,12 +102,18 @@ async function pause(
 
 export async function resumeGame(id: string) {
   const game = await getGame(id)
+  if (!game.compatible) throw new Error('Incompatible engine version')
+  if (game.status !== 'paused') throw new Error('Game is not paused')
   const runner = runners.get(id)
-  if (game.status !== 'paused' || !runner?.paused) throw new Error('Game is not paused')
-  const { resolve } = runner.paused
-  runner.paused = undefined
-  await runner.commit({ type: 'game.resumed' })
-  resolve(undefined)
+  if (!runner) {
+    await startGameRunner(id, game.config, await storedGameEvents(id))
+  } else {
+    if (!runner.paused) throw new Error('Game is not paused')
+    const { resolve } = runner.paused
+    runner.paused = undefined
+    await runner.commit({ type: 'game.resumed' })
+    resolve(undefined)
+  }
   return getGame(id)
 }
 
@@ -100,8 +121,11 @@ export async function abortGame(id: string) {
   const game = await getGame(id)
   if (game.status === 'ended' || game.status === 'aborted') return game
   const runner = runners.get(id)
-  if (!runner) throw new Error('Game runner is unavailable')
-  await runner.commit({ type: 'game.aborted', reason: 'human' })
+  if (runner) await runner.commit({ type: 'game.aborted', reason: 'human' })
+  else {
+    const events = await storedGameEvents(id)
+    await appendGameEvent(id, { type: 'game.aborted', reason: 'human', seq: events.length + 1 })
+  }
   return getGame(id)
 }
 
@@ -167,12 +191,18 @@ function waitForManual(
   return promise
 }
 
-export function startGameRunner(id: string, config: GameConfig, creation: GameEvent): void {
+export function startGameRunner(
+  id: string,
+  config: GameConfig,
+  history: GameEvent[],
+): Promise<void> {
+  let cursor = 1
   const runner: Runner = {
     controller: new AbortController(),
-    log: [creation],
+    log: history.slice(0, 1),
     pending: new Map(),
     writes: Promise.resolve(),
+    ready: Promise.withResolvers<undefined>(),
     commit(event) {
       const write = runner.writes.then(async () => {
         runner.controller.signal.throwIfAborted()
@@ -188,6 +218,53 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
   }
   runners.set(id, runner)
   const commit = runner.commit
+  const runtimeEvent = (event: GameEvent) =>
+    event.type === 'contestant.decision' ||
+    event.type === 'storyteller.decision' ||
+    event.type === 'game.paused' ||
+    event.type === 'game.resumed'
+  function readRuntime(): GameEvent[] {
+    const events: GameEvent[] = []
+    for (let event = history[cursor]; event && runtimeEvent(event); event = history[cursor]) {
+      cursor++
+      runner.log.push(event)
+      events.push(event)
+    }
+    return events
+  }
+  let continuing: Promise<unknown> | undefined
+  async function live() {
+    if (cursor < history.length)
+      throw new Error(`Replay divergence at seq ${String(cursor + 1)}: unexpected input request`)
+    continuing ??=
+      runner.log.findLast((event) => event.type === 'game.paused' || event.type === 'game.resumed')
+        ?.type === 'game.paused'
+        ? commit({ type: 'game.resumed' })
+        : Promise.resolve()
+    await continuing
+    runner.controller.signal.throwIfAborted()
+  }
+  async function engineCommit(event: GameEventInput): Promise<GameEvent> {
+    runner.controller.signal.throwIfAborted()
+    const unclaimed = readRuntime().find((entry) => entry.type.endsWith('.decision'))
+    if (unclaimed)
+      throw new Error(`Replay divergence at seq ${String(unclaimed.seq)}: unexpected decision`)
+    const expected = history[cursor]
+    if (expected) {
+      const { seq, ...input } = expected
+      if (!sameValue(input, event))
+        throw new Error(
+          `Replay divergence at seq ${String(seq)}: expected ${JSON.stringify(input)}, received ${JSON.stringify(event)}`,
+        )
+      cursor++
+      runner.log.push(expected)
+      return expected
+    }
+    await live()
+    const stored = await commit(event)
+    runner.ready.resolve(undefined)
+    return stored
+  }
   const rng = createRng(config.seed)
   const tools = contestantTools(config.language, config.seatCount)
 
@@ -207,33 +284,63 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
     ) =>
       | { ok: true; choice: ContestantChoice | DiscretionChoice }
       | { ok: false; errors: ValidationError[] },
+    replay: GameEvent[],
   ) {
     const actor =
       metadata.type === 'contestant.decision'
         ? { seat: metadata.seat }
         : { discretion: metadata.discretion }
-    const provider = await inTransaction('providers', 'readonly', (transaction) =>
-      requestResult(
-        transaction.objectStore('providers').get(model.providerId) as IDBRequest<
-          Provider | undefined
-        >,
-      ),
+    const attempts = replay.filter(
+      (
+        event,
+      ): event is Extract<GameEvent, { type: 'contestant.decision' | 'storyteller.decision' }> =>
+        event.type === metadata.type &&
+        (event.type !== 'contestant.decision' ||
+          (metadata.type === 'contestant.decision' && event.seat === metadata.seat)) &&
+        (event.type !== 'storyteller.decision' ||
+          (metadata.type === 'storyteller.decision' && event.discretion === metadata.discretion)) &&
+        sameValue(event.request, metadata.request),
     )
-    if (!provider) throw new Error('Provider not found')
     let limit = MAX_ATTEMPTS
     for (let attempt = 1; ; attempt++) {
+      const recorded = attempts[attempt - 1]
+      const validation = recorded
+        ? z.object({ ok: z.boolean(), code: z.string().optional() }).parse(recorded.validation)
+        : undefined
+      if (recorded && recorded.attempt !== attempt)
+        throw new Error(`Replay divergence at seq ${String(recorded.seq)}: unexpected attempt`)
+      if (validation?.code === 'call_failed') {
+        if (attempt === limit) limit += MAX_ATTEMPTS
+        continue
+      }
+      if (!recorded) {
+        await live()
+        runner.ready.resolve(undefined)
+      }
+      const provider = recorded
+        ? undefined
+        : await inTransaction('providers', 'readonly', (transaction) =>
+            requestResult(
+              transaction.objectStore('providers').get(model.providerId) as IDBRequest<
+                Provider | undefined
+              >,
+            ),
+          )
+      if (!recorded && !provider) throw new Error('Provider not found')
       const start = performance.now()
       let raw: unknown
       try {
-        raw = await chatCompletion(
-          {
-            ...provider,
-            ...model,
-            extraBody: JSON.parse(model.extraBody) as Record<string, unknown>,
-          },
-          { ...prompt, tools, tool },
-          runner.controller.signal,
-        )
+        if (provider) {
+          raw = await chatCompletion(
+            {
+              ...provider,
+              ...model,
+              extraBody: JSON.parse(model.extraBody) as Record<string, unknown>,
+            },
+            { ...prompt, tools, tool },
+            runner.controller.signal,
+          )
+        } else raw = recorded?.raw
       } catch (error) {
         runner.controller.signal.throwIfAborted()
         const message = error instanceof Error ? error.message : String(error)
@@ -272,18 +379,24 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
       const errors = parsed.ok ? [] : parsed.errors
       const valid = parsed.ok
       const usage = usageShape.safeParse(raw)
-      const decision = await commit({
-        ...metadata,
-        raw,
-        model: model.model,
-        usage: usage.success ? (usage.data.usage ?? null) : null,
-        durationMs: performance.now() - start,
-        attempt,
-        validation: { ok: valid, errors },
-      })
+      if (recorded && validation?.ok !== valid)
+        throw new Error(
+          `Replay divergence at seq ${String(recorded.seq)}: decision validation changed`,
+        )
+      const decision =
+        recorded ??
+        (await commit({
+          ...metadata,
+          raw,
+          model: model.model,
+          usage: usage.success ? (usage.data.usage ?? null) : null,
+          durationMs: performance.now() - start,
+          attempt,
+          validation: { ok: valid, errors },
+        }))
       if (parsed.ok) return { choice: parsed.choice, decision: decision.seq }
       if (attempt === limit) {
-        await pause(runner, actor, JSON.stringify(errors))
+        if (!recorded) await pause(runner, actor, JSON.stringify(errors))
         limit += MAX_ATTEMPTS
       }
       const calls = toolCheck.ok
@@ -298,6 +411,7 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
   async function ask(
     request: ContestantRequest,
     events: readonly GameEvent[],
+    replay: GameEvent[],
   ): Promise<ContestantChoice> {
     const model = config.seats[request.seat - 1]
     if (!model) throw new Error('Unknown contestant seat')
@@ -313,6 +427,7 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
           ? { ok: false, errors }
           : { ok: true, choice: value as ContestantChoice }
       },
+      replay,
     )
     return { ...(result.choice as ContestantChoice), decision: result.decision }
   }
@@ -322,11 +437,24 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
   const ports: Ports = {
     config,
     log: runner.log,
-    commit,
+    commit: engineCommit,
     rng,
     askContestants: (batch) => {
       const events = runner.log.slice()
-      return Promise.all(batch.map((request) => ask(request, events)))
+      const replay = readRuntime()
+      for (const event of replay) {
+        if (
+          event.type.endsWith('.decision') &&
+          (event.type !== 'contestant.decision' ||
+            !batch.some(
+              (request) => request.seat === event.seat && sameValue(request, event.request),
+            ))
+        )
+          throw new Error(
+            `Replay divergence at seq ${String(event.seq)}: unexpected contestant request`,
+          )
+      }
+      return Promise.all(batch.map((request) => ask(request, events, replay)))
     },
     discretion: (id, candidates, context, requestSeq) => {
       switch (config.discretions[id]) {
@@ -346,18 +474,29 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
             discretionTools,
             'decide',
             (value) => parseStorytellerChoice(value, id, candidates, config.seatCount),
+            readRuntime(),
           ).then((result) => ({
             choice: result.choice as DiscretionChoice,
             decision: result.decision,
           }))
-        case 'manual':
-          return waitForManual(runner, requestSeq, candidates, config.seatCount)
+        case 'manual': {
+          const resolved = history[cursor]
+          if (resolved?.type === 'discretion.resolved' && resolved.discretion === id)
+            return Promise.resolve({ choice: resolved.choice as DiscretionChoice })
+          return live().then(() => {
+            const waiting = waitForManual(runner, requestSeq, candidates, config.seatCount)
+            runner.ready.resolve(undefined)
+            return waiting
+          })
+        }
       }
     },
   }
-  void runGame(ports)
+  runner.done = runGame(ports)
+    .then(() => undefined)
     .catch(async (error: unknown) => {
       if (runner.controller.signal.aborted) return
+      if (runner.log.length < history.length) runner.log.push(...history.slice(runner.log.length))
       await commit({
         type: 'game.aborted',
         reason: 'engine_error',
@@ -366,8 +505,23 @@ export function startGameRunner(id: string, config: GameConfig, creation: GameEv
     })
     .finally(() => {
       runner.controller.abort()
-      runners.delete(id)
+      if (runners.get(id) === runner) runners.delete(id)
+      runner.ready.resolve(undefined)
     })
+  return runner.ready.promise
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const left = Object.entries(a)
+  return (
+    left.length === Object.keys(b).length &&
+    left.every(
+      ([key, value]) =>
+        Object.hasOwn(b, key) && sameValue(value, (b as Record<string, unknown>)[key]),
+    )
+  )
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {

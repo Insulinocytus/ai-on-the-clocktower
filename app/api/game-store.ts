@@ -4,6 +4,7 @@ import { project, visibleTo } from '../../shared/game/rules'
 import { ENGINE_VERSION } from '../../shared/game/version'
 import { inTransaction, requestResult } from './storage'
 import { z } from 'zod'
+import { hasGameRunner } from './game-runner'
 
 interface GameRow {
   id: string
@@ -59,7 +60,7 @@ export async function getGame(id: string): Promise<GameSummary> {
       ? 'ended'
       : terminal?.type === 'game.aborted'
         ? 'aborted'
-        : paused?.type === 'game.paused'
+        : !hasGameRunner(id) || paused?.type === 'game.paused'
           ? 'paused'
           : waiting
             ? 'waiting'
