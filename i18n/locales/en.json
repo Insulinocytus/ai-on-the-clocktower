@@ -1,5 +1,10 @@
 {
-  "app": { "title": "AI on the Clocktower", "language": "中文" },
+  "app": {
+    "title": "AI on the Clocktower",
+    "language": "中文",
+    "tabBlockedTitle": "This app is open in another tab",
+    "tabBlockedDescription": "Close the other tab to continue here. This tab will load automatically."
+  },
   "nav": { "models": "Models", "games": "Games" },
   "common": {
     "add": "Add",
