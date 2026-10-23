@@ -180,8 +180,8 @@
 
 ### 工程影响（推断，非已实现功能）
 
-- [`buildContestantPrompt`](../../shared/prompts/contestant.ts#L146-L164)每次决策加入 system 文本，并另带事件/决策历史；[`ask`](../../server/utils/game-runtime.ts#L341-L350)对每次选手请求重新构建提示词。若按该位置注入固定全文，每次相关调用都会携带策略静态前缀，不能把体积理解为“每局只付一次”。
-- [LLM 请求组装](../../server/utils/llm.ts#L122-L142)发送实际 messages 与 tools；提供商返回的 usage 由[运行时](../../server/utils/game-runtime.ts#L316-L322)记录。没有为本报告发送真实模型请求，因此没有账单、延迟、缓存命中率或实际供应商 usage 结论。
+- [`buildContestantPrompt`](../../shared/prompts/contestant.ts#L146-L164)每次决策加入 system 文本，并另带事件/决策历史；[浏览器对局 runner](../../app/api/game-runner.ts)对每次选手请求重新构建提示词。若按该位置注入固定全文，每次相关调用都会携带策略静态前缀，不能把体积理解为“每局只付一次”。
+- [LLM 请求组装](../../app/api/llm.ts)发送实际 messages 与 tools；提供商返回的 usage 由[浏览器对局 runner](../../app/api/game-runner.ts)记录。没有为本报告发送真实模型请求，因此没有账单、延迟、缓存命中率或实际供应商 usage 结论。
 - 32,768-token 窗口下，中文 `cl100k_base` 参考静态文本已超窗；另外三种语言/参考编码组合的静态文本也接近 30k，再加历史、工具与输出预留可能超限。真实兼容性必须用所选模型 tokenizer/窗口判断，不能笼统保证“32k 可用”。
 - 固定前缀是否缓存、如何计费取决于提供商。不要未经实测承诺缓存会抵消全文成本，也不要为压缩而悄悄改为摘要/按角色筛选。
 

@@ -8,7 +8,6 @@ export default defineNuxtConfig({
   css: ['~/assets/css/tailwind.css', 'vue-sonner/style.css'],
   vite: { plugins: [tailwindcss()] },
   devServer: { host: '127.0.0.1' },
-  runtimeConfig: { dbPath: '.data/app.db' },
   routeRules: { '/': { redirect: '/games' } },
   shadcn: { prefix: '', componentDir: '~/components/ui' },
   i18n: {

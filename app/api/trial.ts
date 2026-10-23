@@ -1,10 +1,9 @@
 import { z } from 'zod'
-import type { TrialResult } from '#shared/types/models'
-import { chatCompletion, LlmCallError } from '../../../utils/llm'
-import { getPreset, getProvider, idParam } from '../../../utils/models'
-import { checkToolCall, contestantTools, type Lang } from '../../../utils/tools'
-
-const TRIAL_SEATS = 5
+import { checkToolCall, contestantTools, type Lang } from '../../shared/game/tools'
+import type { TrialResult } from '../../shared/types/models'
+import { requireModelRecord } from './index'
+import { chatCompletion, LlmCallError } from './llm'
+import { inTransaction } from './storage'
 
 const PROMPT: Record<Lang, { system: string; user: string }> = {
   zh: {
@@ -19,17 +18,25 @@ const PROMPT: Record<Lang, { system: string; user: string }> = {
   },
 }
 
-const trialBody = z.object({ lang: z.enum(['zh', 'en']) })
+const trialInput = z.object({ lang: z.enum(['zh', 'en']) })
 
-// One real request with the six game tools and a minimal prompt; nothing is stored.
-export default defineEventHandler(async (event): Promise<TrialResult> => {
-  const { id } = await getValidatedRouterParams(event, (params) => idParam.parse(params))
-  const { lang } = await readValidatedBody(event, (body) => trialBody.parse(body))
-  const preset = getPreset(id)
-  const provider = getProvider(preset.providerId)
-  if (!provider) throw createError({ statusCode: 404, statusMessage: 'Provider not found' })
-
-  const tools = contestantTools(lang, TRIAL_SEATS)
+export async function trialPreset(
+  id: number,
+  input: unknown,
+  signal?: AbortSignal,
+): Promise<TrialResult> {
+  z.object({ id: z.int() }).parse({ id })
+  const { lang } = trialInput.parse(input)
+  const { preset, provider } = await inTransaction(
+    ['presets', 'providers'],
+    'readonly',
+    async (transaction) => {
+      const preset = await requireModelRecord('presets', id, transaction)
+      const provider = await requireModelRecord('providers', preset.providerId, transaction)
+      return { preset, provider }
+    },
+  )
+  const tools = contestantTools(lang, 5)
   let raw: unknown
   try {
     raw = await chatCompletion(
@@ -48,6 +55,7 @@ export default defineEventHandler(async (event): Promise<TrialResult> => {
         tools,
         tool: 'speak',
       },
+      signal,
     )
   } catch (error) {
     if (!(error instanceof LlmCallError)) throw error
@@ -57,4 +65,4 @@ export default defineEventHandler(async (event): Promise<TrialResult> => {
   return check.ok
     ? { valid: true, toolCall: { name: check.name, arguments: check.arguments }, raw }
     : { valid: false, error: check.error, raw }
-})
+}

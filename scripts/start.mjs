@@ -1,9 +1,15 @@
-// Production entry for `mise run start`: load `.env`, default to listening on 127.0.0.1 only, then boot the built Nitro server.
+import { createServer } from 'node:http'
+import { fileURLToPath } from 'node:url'
+import sirv from 'sirv'
+
 try {
   process.loadEnvFile()
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error
 }
-// Nitro reads NITRO_HOST first, then HOST; without either it would listen on every interface.
-process.env.HOST ??= '127.0.0.1'
-await import('../.output/server/index.mjs')
+
+const port = Number(process.env.PORT ?? 3000)
+const assets = sirv(fileURLToPath(new URL('../.output/public', import.meta.url)), { single: true })
+createServer(assets).listen(port, '127.0.0.1', () => {
+  console.log(`Listening on http://127.0.0.1:${String(port)}`)
+})

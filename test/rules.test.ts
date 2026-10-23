@@ -654,7 +654,7 @@ const CONFIG: GameConfig = {
   whisperLimit: 0,
   language: 'en',
   seed: 18,
-  logVersion: 2,
+  engineVersion: 2,
 }
 const ORDER: RoleId[] = ['soldier', 'chef', 'empath', 'scarletwoman', 'imp']
 

@@ -5,6 +5,6 @@ export interface GameSummary {
   createdAt: string
   status: 'running' | 'waiting' | 'paused' | 'ended' | 'aborted'
   reason?: GameReason
-  replayable: boolean
+  compatible: boolean
   config: GameConfig
 }

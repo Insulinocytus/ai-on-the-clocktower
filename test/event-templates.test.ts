@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import en from '../i18n/locales/en.json'
-import zh from '../i18n/locales/zh.json'
 import { renderEvent } from '../shared/event-templates'
 import { createRng, runGame } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
@@ -30,7 +28,7 @@ const config: GameConfig = {
   whisperLimit: 0,
   language: 'en',
   seed: 18,
-  logVersion: 3,
+  engineVersion: 3,
 }
 
 describe('localized terminal game events', () => {
@@ -93,7 +91,5 @@ describe('localized terminal game events', () => {
     if (end?.type !== 'game.ended') throw new Error('Expected a completed game')
     expect(renderEvent(end, 'zh', 'public')).toContain(chinese)
     expect(renderEvent(end, 'en', 'public')).toContain(english)
-    expect(zh.games.reasons).toHaveProperty(reason, expect.stringContaining(chinese))
-    expect(en.games.reasons).toHaveProperty(reason, expect.stringContaining(english))
   })
 })

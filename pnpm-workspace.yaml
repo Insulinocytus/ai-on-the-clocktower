@@ -3,3 +3,5 @@ allowBuilds:
   esbuild: true
   # Only a fallback for missing native bindings; the platform optional dependency ships them.
   unrs-resolver: false
+overrides:
+  better-sqlite3: '-'

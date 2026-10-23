@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { abortGame, gameEvents, getGame, resumeGame, subscribeGame } from '@/api'
 import type { GameEvent, Observer } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { renderEvent } from '#shared/event-templates'
@@ -12,7 +13,17 @@ definePageMeta({ spectator: true })
 const route = useRoute()
 const { t, locale } = useI18n()
 const id = String(route.params.id)
-const { data: game, error: loadError, refresh } = await useFetch<GameSummary>(`/api/games/${id}`)
+const game = ref<GameSummary>()
+const loadError = ref<unknown>()
+async function refresh() {
+  try {
+    game.value = await getGame(id)
+    loadError.value = undefined
+  } catch (cause) {
+    loadError.value = cause
+  }
+}
+await refresh()
 const events = ref<GameEvent[]>([])
 const error = ref('')
 const replay = computed(() => game.value?.status === 'ended' || game.value?.status === 'aborted')
@@ -24,8 +35,9 @@ const observer = ref<Observer>('spectator')
 const showLosing = ref(false)
 const focusedSeat = ref<number>()
 let generation = 0
-let source: EventSource | undefined
-let manualSource: EventSource | undefined
+let disposed = false
+let unsubscribe: (() => void) | undefined
+let unsubscribeManual: (() => void) | undefined
 const manualEvents = ref<GameEvent[]>([])
 const manualOpen = ref(false)
 const pending = computed(() => {
@@ -67,38 +79,52 @@ function mergeManual(incoming: GameEvent[]) {
   if (
     manualEvents.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
   )
-    manualSource?.close()
+    unsubscribeManual?.()
 }
 async function catchUpManual() {
   try {
-    mergeManual(
-      await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
-        query: { observer: 'spectator', after: manualEvents.value.at(-1)?.seq ?? 0 },
-      }),
-    )
+    const incoming = await gameEvents(id, 'spectator', manualEvents.value.at(-1)?.seq ?? 0)
+    if (disposed) return
+    mergeManual(incoming)
     await refresh()
   } catch (cause) {
-    error.value = apiErrorMessage(cause)
+    if (!disposed) error.value = apiErrorMessage(cause)
   }
 }
 function connectManual() {
-  if (replay.value || !game.value?.replayable) return
-  manualSource = new EventSource(`/api/games/${id}/stream?observer=spectator&after=0`)
-  manualSource.onmessage = (message) => {
-    const event = JSON.parse(String(message.data)) as GameEvent
-    mergeManual([event])
-    if (
-      event.type === 'discretion.requested' ||
-      event.type === 'discretion.resolved' ||
-      event.type === 'game.ended' ||
-      event.type === 'game.aborted' ||
-      event.type === 'game.paused' ||
-      event.type === 'game.resumed'
+  if (replay.value || !game.value?.compatible) return
+  try {
+    const stop = subscribeGame(
+      id,
+      'spectator',
+      0,
+      (event) => {
+        if (disposed) return
+        mergeManual([event])
+        if (
+          event.type === 'discretion.requested' ||
+          event.type === 'discretion.resolved' ||
+          event.type === 'game.ended' ||
+          event.type === 'game.aborted' ||
+          event.type === 'game.paused' ||
+          event.type === 'game.resumed'
+        )
+          void refresh()
+      },
+      (cause) => {
+        if (!disposed) error.value = apiErrorMessage(cause)
+      },
     )
-      void refresh()
-  }
-  manualSource.onopen = () => {
-    void catchUpManual()
+    if (
+      disposed ||
+      manualEvents.value.some(
+        (event) => event.type === 'game.ended' || event.type === 'game.aborted',
+      )
+    )
+      stop()
+    else unsubscribeManual = stop
+  } catch (cause) {
+    if (!disposed) error.value = apiErrorMessage(cause)
   }
 }
 
@@ -176,7 +202,7 @@ function merge(incoming: GameEvent[]) {
   for (const entry of incoming) bySeq.set(entry.seq, entry)
   events.value = [...bySeq.values()].sort((a, b) => a.seq - b.seq)
   if (events.value.some((entry) => entry.type === 'game.ended' || entry.type === 'game.aborted')) {
-    source?.close()
+    unsubscribe?.()
     void refresh()
   }
 }
@@ -184,9 +210,7 @@ function merge(incoming: GameEvent[]) {
 async function catchUp(after: number) {
   const current = generation
   try {
-    const incoming = await $fetch<GameEvent[]>(`/api/games/${id}/events`, {
-      query: { after, observer: observer.value },
-    })
+    const incoming = await gameEvents(id, observer.value, after)
     if (current === generation) merge(incoming)
   } catch (cause) {
     if (current === generation) error.value = apiErrorMessage(cause)
@@ -196,7 +220,7 @@ async function catchUp(after: number) {
 async function abort() {
   aborting.value = true
   try {
-    game.value = await $fetch<GameSummary>(`/api/games/${id}/abort`, { method: 'POST' })
+    game.value = await abortGame(id)
     await catchUp(events.value.at(-1)?.seq ?? 0)
     await catchUpManual()
   } catch (cause) {
@@ -209,7 +233,7 @@ async function abort() {
 async function resume() {
   resuming.value = true
   try {
-    game.value = await $fetch<GameSummary>(`/api/games/${id}/resume`, { method: 'POST' })
+    game.value = await resumeGame(id)
     await catchUpManual()
   } catch (cause) {
     error.value = apiErrorMessage(cause)
@@ -218,40 +242,50 @@ async function resume() {
   }
 }
 
-function connect() {
-  generation++
-  source?.close()
+async function connect() {
+  const current = ++generation
+  unsubscribe?.()
+  unsubscribe = undefined
   events.value = []
   focusedSeat.value = undefined
-  if (!game.value?.replayable) return
+  if (!game.value?.compatible) return
+  error.value = ''
   if (replay.value) {
-    void catchUp(0)
+    await catchUp(0)
     return
   }
-  const current = generation
-  source = new EventSource(
-    `/api/games/${id}/stream?observer=${encodeURIComponent(observer.value)}&after=0`,
-  )
-  source.onmessage = (message) => {
-    if (current === generation) merge([JSON.parse(String(message.data)) as GameEvent])
-  }
-  source.onopen = () => {
-    if (current !== generation) return
-    error.value = ''
-    void catchUp(events.value.at(-1)?.seq ?? 0)
-  }
-  source.onerror = () => {
-    if (current === generation && !replay.value) error.value = t('games.reconnecting')
+  try {
+    const stop = subscribeGame(
+      id,
+      observer.value,
+      0,
+      (event) => {
+        if (current === generation) merge([event])
+      },
+      (cause) => {
+        if (current === generation) error.value = apiErrorMessage(cause)
+      },
+    )
+    if (
+      current !== generation ||
+      events.value.some((event) => event.type === 'game.ended' || event.type === 'game.aborted')
+    )
+      stop()
+    else unsubscribe = stop
+  } catch (cause) {
+    if (current === generation) error.value = apiErrorMessage(cause)
   }
 }
 onMounted(() => {
-  connect()
+  void connect()
   connectManual()
 })
 watch(observer, connect)
 onUnmounted(() => {
-  source?.close()
-  manualSource?.close()
+  disposed = true
+  generation++
+  unsubscribe?.()
+  unsubscribeManual?.()
 })
 </script>
 
@@ -269,14 +303,14 @@ onUnmounted(() => {
         <Badge variant="outline">{{ replay ? t('games.replay') : t('games.live') }}</Badge>
         <Badge variant="secondary">{{ t(`games.${game.status}`) }}</Badge>
         <Button
-          v-if="pending && !manualOpen"
+          v-if="pending && game.status !== 'paused' && !manualOpen"
           variant="outline"
           size="sm"
           class="border-amber-400 text-amber-800"
           @click="manualOpen = true"
           >{{ t('manual.waiting', { discretion: pending.discretion }) }}</Button
         >
-        <div v-if="game.replayable" class="ml-auto flex items-center gap-2">
+        <div v-if="game.compatible" class="ml-auto flex items-center gap-2">
           <template v-if="replay">
             <Button
               variant="outline"
@@ -321,31 +355,32 @@ onUnmounted(() => {
         >
       </header>
       <div
-        v-if="pauses.length"
+        v-if="game.compatible && game.status === 'paused'"
         role="alert"
         class="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-5 py-2 text-sm text-amber-900"
       >
-        <ul class="flex-1 space-y-1">
+        <ul v-if="pauses.length" class="flex-1 space-y-1">
           <li v-for="entry in pauses" :key="entry.seq" class="break-all">
             {{ renderEvent(entry, locale === 'zh' ? 'zh' : 'en', 'spectator') }}
           </li>
         </ul>
+        <p v-else class="flex-1">{{ t('games.pageClosedPause') }}</p>
         <Button size="sm" :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
       </div>
       <SpectatorControls
-        v-if="game.replayable"
+        v-if="game.compatible"
         v-model:observer="observer"
         v-model:losing="showLosing"
         :seat-count="game.config.seatCount"
       />
-      <p v-if="!game.replayable" role="alert" class="p-6 text-destructive">
+      <p v-if="!game.compatible" role="alert" class="p-6 text-destructive">
         {{ t('games.incompatible') }}
       </p>
       <p v-else-if="error" role="status" class="border-b px-5 py-2 text-sm text-destructive">
         {{ error }}
       </p>
       <div
-        v-if="game.replayable"
+        v-if="game.compatible"
         class="grid min-h-0 flex-1 grid-cols-[220px_minmax(460px,1fr)_minmax(420px,1.1fr)]"
       >
         <SpectatorChannels :blocks="blocks" :selected="selected?.key" @select="select" />
@@ -373,7 +408,7 @@ onUnmounted(() => {
         />
       </div>
       <SpectatorDiscretion
-        v-if="pending"
+        v-if="pending && game.status !== 'paused'"
         :key="pending.seq"
         v-model:open="manualOpen"
         :game-id="id"

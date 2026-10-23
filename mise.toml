@@ -26,7 +26,7 @@ mise generate git-pre-commit --write --hook post-checkout --task setup
 run = "nuxt dev"
 
 [tasks.build]
-run = "nuxt build"
+run = "nuxt generate"
 
 [tasks.start]
 run = "node scripts/start.mjs"
@@ -46,7 +46,6 @@ depends = ["nuxt:prepare"]
 run = "eslint . --max-warnings 0"
 
 [tasks.test]
-# vitest never reads .nuxt, but nuxt prepare clears it, including vitest's .nuxt/test build dirs.
 wait_for = ["nuxt:prepare"]
 run = "vitest run"
 

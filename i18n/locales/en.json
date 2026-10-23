@@ -1,5 +1,10 @@
 {
-  "app": { "title": "AI on the Clocktower", "language": "中文" },
+  "app": {
+    "title": "AI on the Clocktower",
+    "language": "中文",
+    "tabBlockedTitle": "This app is open in another tab",
+    "tabBlockedDescription": "Close the other tab to continue here. This tab will load automatically."
+  },
   "nav": { "models": "Models", "games": "Games" },
   "common": {
     "add": "Add",
@@ -20,9 +25,7 @@
     "empty": "No providers yet.",
     "name": "Name",
     "baseUrl": "Base URL",
-    "apiKeyEnv": "API key environment variable",
-    "keySet": "set",
-    "keyUnset": "not set",
+    "apiKey": "API key",
     "timeoutSec": "Timeout per call (s)",
     "maxConcurrency": "Max concurrency",
     "confirmDelete": "Delete provider “{name}” and all of its model presets?"
@@ -192,9 +195,10 @@
     "ended": "Ended",
     "aborted": "Aborted",
     "paused": "Paused",
-    "resume": "Retry",
+    "pageClosedPause": "The page running this game was closed or reloaded. Resume to continue from where it stopped.",
+    "resume": "Resume",
     "abort": "Abort game",
-    "incompatible": "This log version cannot be replayed.",
+    "incompatible": "This engine version cannot be replayed.",
     "live": "Live",
     "replay": "Replay",
     "seat": "Seat {seat}",
@@ -205,16 +209,6 @@
     "start": "Start game",
     "starting": "Starting…",
     "seatCount": "Seats",
-    "setupHelp": "Choose 5–15 AI seats from all 22 Trouble Brewing characters and configure each discretion source. After dawn, living and dead seats may whisper, then join public discussion.",
-    "reconnecting": "Connection interrupted. Reconnecting and restoring missing events…",
-    "reasons": {
-      "engine_error": "Engine error",
-      "process_restart": "Process restarted",
-      "human": "Stopped by spectator",
-      "all_demons_dead": "All Demons are dead",
-      "two_alive": "Only two players remain alive",
-      "mayor": "The Mayor survived to the end of a day with three players alive and no execution",
-      "saint_executed": "The Saint died by execution"
-    }
+    "setupHelp": "Choose 5–15 AI seats from all 22 Trouble Brewing characters and configure each discretion source. After dawn, living and dead seats may whisper, then join public discussion."
   }
 }

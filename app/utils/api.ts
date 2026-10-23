@@ -1,12 +1,7 @@
-interface ApiErrorBody {
-  message?: string
-  data?: { issues?: { path: (string | number)[]; message: string }[] }
-}
+import { ZodError } from 'zod'
 
-/** Human-readable text for a failed `$fetch` to our API, listing validation issues when present. */
 export function apiErrorMessage(error: unknown): string {
-  const body = (error as { data?: ApiErrorBody } | null)?.data
-  const issues = body?.data?.issues
-  if (issues?.length) return issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n')
-  return body?.message ?? String(error)
+  if (error instanceof ZodError)
+    return error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('\n')
+  return error instanceof Error ? error.message : String(error)
 }
