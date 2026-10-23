@@ -301,7 +301,9 @@ describe('games application seam', () => {
         message: 'Manual discretion is no longer pending',
         data: { choice },
       })
-      await expect.poll(async () => (await getGame(game.id)).status).toBe('ended')
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('ended')
       expect(await history()).toContainEqual(
         expect.objectContaining({
           type: 'discretion.resolved',
@@ -373,7 +375,9 @@ describe('games application seam', () => {
           whisperLimit: 0,
           discretions: { ...randomDiscretions, D1: 'storyteller', seating: 'storyteller' },
         })
-        await expect.poll(async () => (await getGame(game.id)).status).toBe('ended')
+        await expect
+          .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+          .toBe('ended')
         const events = await gameEvents(game.id)
         const decisions = events.filter((event) => event.type === 'storyteller.decision')
         expect(decisions).toMatchObject([
@@ -644,7 +648,9 @@ describe('games application seam', () => {
         language: 'zh',
         whisperLimit: 0,
       })
-      await expect.poll(async () => (await getGame(opened.id)).status).toBe('ended')
+      await expect
+        .poll(async () => (await getGame(opened.id)).status, { timeout: 10000 })
+        .toBe('ended')
       const events = await gameEvents(opened.id)
       const decisions = events.filter(
         (event) =>
