@@ -37,7 +37,7 @@ const CONFIG: GameConfig = {
   whisperLimit: 0,
   language: 'en',
   seed: 18,
-  logVersion: 3,
+  engineVersion: 3,
 }
 
 function pass(request: ContestantRequest): ContestantChoice {

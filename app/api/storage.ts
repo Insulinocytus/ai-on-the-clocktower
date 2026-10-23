@@ -2,14 +2,18 @@ let database: Promise<IDBDatabase> | undefined
 
 export function openDatabase(): Promise<IDBDatabase> {
   if (database) return database
-  const request = indexedDB.open('ai-on-the-clocktower', 1)
+  const request = indexedDB.open('ai-on-the-clocktower', 2)
   const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>()
   database = promise
-  request.onupgradeneeded = () => {
+  request.onupgradeneeded = (event) => {
     const db = request.result
-    db.createObjectStore('providers', { keyPath: 'id', autoIncrement: true })
-    const presets = db.createObjectStore('presets', { keyPath: 'id', autoIncrement: true })
-    presets.createIndex('providerId', 'providerId')
+    if (event.oldVersion < 1) {
+      db.createObjectStore('providers', { keyPath: 'id', autoIncrement: true })
+      const presets = db.createObjectStore('presets', { keyPath: 'id', autoIncrement: true })
+      presets.createIndex('providerId', 'providerId')
+    }
+    db.createObjectStore('games', { keyPath: 'id' })
+    db.createObjectStore('gameEvents', { keyPath: ['gameId', 'seq'] })
   }
   request.onsuccess = () => {
     const db = request.result

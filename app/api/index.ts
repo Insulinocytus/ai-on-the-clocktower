@@ -3,6 +3,9 @@ import type { Preset } from '../../shared/types/models'
 import { inTransaction, openDatabase, requestResult } from './storage'
 
 export { trialPreset } from './trial'
+export { createGame } from './games'
+export { getGame, listGames, gameEvents, subscribeGame } from './game-store'
+export { abortGame, resumeGame, submitManualDiscretion } from './game-runner'
 
 export async function initializeApplication(): Promise<void> {
   await Promise.all([openDatabase(), navigator.storage.persist()])

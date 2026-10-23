@@ -58,12 +58,12 @@ onUnmounted(() => {
           <TableCell>{{ game.config.seats.map((seat) => seat.name).join(' / ') }}</TableCell>
           <TableCell
             ><Badge variant="secondary">{{
-              game.replayable ? t(`games.${game.status}`) : t('games.incompatible')
+              game.compatible ? t(`games.${game.status}`) : t('games.incompatible')
             }}</Badge></TableCell
           >
           <TableCell>{{ game.reason ? t(`games.reasons.${game.reason}`) : '—' }}</TableCell>
           <TableCell>
-            <Button v-if="game.replayable" variant="outline" size="sm" as-child>
+            <Button v-if="game.compatible" variant="outline" size="sm" as-child>
               <NuxtLink :to="{ path: '/games/new', query: { template: game.id } }">
                 {{ t('games.template') }}
               </NuxtLink>

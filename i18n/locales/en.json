@@ -194,7 +194,7 @@
     "paused": "Paused",
     "resume": "Retry",
     "abort": "Abort game",
-    "incompatible": "This log version cannot be replayed.",
+    "incompatible": "This engine version cannot be replayed.",
     "live": "Live",
     "replay": "Replay",
     "seat": "Seat {seat}",

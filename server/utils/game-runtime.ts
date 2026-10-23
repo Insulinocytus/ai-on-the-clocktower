@@ -21,13 +21,14 @@ import {
   validateDiscretionChoice,
 } from '#shared/game/rules'
 import type { ChatMessage } from '#shared/game/tool-calls'
+import { ENGINE_VERSION } from '#shared/game/version'
 import { buildContestantPrompt } from '#shared/prompts/contestant'
 import { invalidAttemptSuffix } from '#shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '#shared/prompts/storyteller'
 import { getPreset, getProvider } from './models'
 import { chatCompletion, LlmCallError } from './llm'
 import { checkToolCall, contestantTools, storytellerTools, type Tool } from '#shared/game/tools'
-import { appendGameEvent, insertGame, getGame, gameEvents, LOG_VERSION } from './game-store'
+import { appendGameEvent, insertGame, getGame, gameEvents } from './game-store'
 
 export const gameInput = z.object({
   presets: z.array(z.int()).min(5).max(15),
@@ -216,7 +217,7 @@ export function createGame(input: z.infer<typeof gameInput>) {
     whisperLimit: input.whisperLimit,
     language: input.language,
     seed: randomBytes(4).readUInt32LE(),
-    logVersion: LOG_VERSION,
+    engineVersion: ENGINE_VERSION,
   }
   const id = randomUUID()
   const runner: Runner = {

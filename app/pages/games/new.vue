@@ -23,7 +23,7 @@ let templateConfig: GameConfig | undefined
 if (templateId) {
   try {
     const game = await $fetch<GameSummary>(`/api/games/${encodeURIComponent(templateId)}`)
-    if (!game.replayable) throw new Error(t('games.incompatible'))
+    if (!game.compatible) throw new Error(t('games.incompatible'))
     templateConfig = game.config
   } catch (cause) {
     templateError.value = apiErrorMessage(cause)

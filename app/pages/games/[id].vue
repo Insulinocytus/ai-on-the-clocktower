@@ -82,7 +82,7 @@ async function catchUpManual() {
   }
 }
 function connectManual() {
-  if (replay.value || !game.value?.replayable) return
+  if (replay.value || !game.value?.compatible) return
   manualSource = new EventSource(`/api/games/${id}/stream?observer=spectator&after=0`)
   manualSource.onmessage = (message) => {
     const event = JSON.parse(String(message.data)) as GameEvent
@@ -226,7 +226,7 @@ function connect() {
   source?.close()
   events.value = []
   focusedSeat.value = undefined
-  if (!game.value?.replayable) return
+  if (!game.value?.compatible) return
   if (replay.value) {
     void catchUp(0)
     return
@@ -279,7 +279,7 @@ onUnmounted(() => {
           @click="manualOpen = true"
           >{{ t('manual.waiting', { discretion: pending.discretion }) }}</Button
         >
-        <div v-if="game.replayable" class="ml-auto flex items-center gap-2">
+        <div v-if="game.compatible" class="ml-auto flex items-center gap-2">
           <template v-if="replay">
             <Button
               variant="outline"
@@ -336,19 +336,19 @@ onUnmounted(() => {
         <Button size="sm" :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
       </div>
       <SpectatorControls
-        v-if="game.replayable"
+        v-if="game.compatible"
         v-model:observer="observer"
         v-model:losing="showLosing"
         :seat-count="game.config.seatCount"
       />
-      <p v-if="!game.replayable" role="alert" class="p-6 text-destructive">
+      <p v-if="!game.compatible" role="alert" class="p-6 text-destructive">
         {{ t('games.incompatible') }}
       </p>
       <p v-else-if="error" role="status" class="border-b px-5 py-2 text-sm text-destructive">
         {{ error }}
       </p>
       <div
-        v-if="game.replayable"
+        v-if="game.compatible"
         class="grid min-h-0 flex-1 grid-cols-[220px_minmax(460px,1fr)_minmax(420px,1.1fr)]"
       >
         <SpectatorChannels :blocks="blocks" :selected="selected?.key" @select="select" />

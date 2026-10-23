@@ -8,8 +8,8 @@ export default defineEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (value) => eventsQuery.parse(value))
   const lastId = getHeader(event, 'last-event-id')
   const after = lastId === undefined ? query.after : eventsQuery.parse({ after: lastId }).after
-  if (!getGame(id).replayable)
-    throw createError({ statusCode: 409, statusMessage: 'Incompatible log version' })
+  if (!getGame(id).compatible)
+    throw createError({ statusCode: 409, statusMessage: 'Incompatible engine version' })
   const stream = createEventStream(event)
   let cursor = after
   const push = (entry: GameEvent) => {

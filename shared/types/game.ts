@@ -62,7 +62,7 @@ export interface GameConfig {
   whisperLimit: number
   language: Language
   seed: number
-  logVersion: number
+  engineVersion: number
 }
 export interface NightRequest {
   tool: 'night_choice'

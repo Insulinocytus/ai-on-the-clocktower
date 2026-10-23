@@ -189,7 +189,7 @@
     "paused": "已暂停",
     "resume": "重试",
     "abort": "终止对局",
-    "incompatible": "日志格式版本不兼容，无法回放。",
+    "incompatible": "引擎版本不兼容，无法回放。",
     "live": "直播",
     "replay": "回放",
     "seat": "{seat} 号座位",

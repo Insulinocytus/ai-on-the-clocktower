@@ -1,8 +1,7 @@
+import { ENGINE_VERSION } from '#shared/game/version'
 import type { GameEvent, GameEventInput } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { useDb } from './db'
-
-export const LOG_VERSION = 3
 
 type Listener = (event: GameEvent) => void
 const listeners = new Map<string, Set<Listener>>()
@@ -51,7 +50,7 @@ export function getGame(id: string): GameSummary {
     config,
     status,
     ...(terminal && 'reason' in terminal ? { reason: terminal.reason } : {}),
-    replayable: config.logVersion === LOG_VERSION,
+    compatible: config.engineVersion === ENGINE_VERSION,
   }
 }
 
