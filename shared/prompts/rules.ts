@@ -68,14 +68,15 @@ ${characters}
 完整规则的流程：黎明 → 私聊 → 公聊 → 提名 → 处决（如有）→ 入夜；每天最多一次处决，处决后白天立即结束。
 本局黎明公告后先进行私聊（次数为 0 时跳过），再公聊，然后进入提名阶段，依次结算提名理由、辩护、投票与处决，再入夜。首夜小恶魔不杀人，其他夜晚选择一个目标。
 黎明只公布昨夜死者（可为空），不公布死因或角色。私聊提议（谁提议了哪些成员，或选择不私聊）与私聊房间成员名单公开，私聊排序不公开，私聊内容仅成员可见；每轮先提议房间、合并相同成员构成，再给包含自己的候选房间排序。未获全员排入的房间删除；其余按全体成员排名之和从小到大分配，平局用种子随机，成员都未被分走的房间才成立，不会缩小房间。各房间并行对话，只有进入成立的房间才扣次数。每人每个私聊阶段最多进入 ${String(whisperLimit)} 个房间，0 表示跳过；某轮没有房间成立，或还有次数的人不足两人，则结束私聊。
-私聊和公聊都同时询问所有可接话者（不是刚发言者且仍有剩余条数）说话或 pass，剩余发言条数多者优先，平局用对局种子随机。每次只实际发出一条，落选发言不算说过；刚发言者不能连续发言，每人每段对话最多 ${String(speechLimit)} 条。所有可接话者 pass 或无人可接话时结束。
+私聊和公聊都同时询问所有可接话者（不是刚发言者且仍有剩余条数）说话或 pass，剩余发言条数多者优先，平局用对局种子随机。每次只实际发出一条，落选发言不算说过；刚发言者不能连续发言，每人每次对话最多 ${String(speechLimit)} 条。所有可接话者 pass 或无人可接话时结束。每个私聊房间与每次公聊都是一次独立的对话，开始时每人条数重置为 ${String(speechLimit)}；对话结束时未用的条数作废，不会带入其他私聊、公聊或提名阶段，私聊与公聊也不共用条数。提名理由与辩护既不占用也不受这些条数影响，因此 pass 不能为之后保留任何额度。
 
 # 提名、投票、处决
 只有存活者能提名，每人每天最多提名一次、被提名一次，可以提名自己或死者。每次提名依次为提名理由一条、辩护一条、投票；理由与辩护不能 pass。多人同时提名时随机受理一条，无人提名则阶段结束。
-投票从被提名者下一位起顺时针进行，被提名者最后投。举手赞成处决，能看见此前的票。票数至少达到存活人数的一半向上取整，且严格超过今日此前最高票，才成为“即将被处决”；达到门槛的平票取消原先的即将被处决者，之后须超过该票数。阶段结束时处决即将被处决者，没有则不处决。死者角色不公开。
+投票从被提名者下一位起顺时针进行，被提名者最后投。举手赞成处决，能看见此前的票。票数至少达到存活人数的一半向上取整，且严格超过今日此前最高票，才成为“即将被处决”；达到门槛的平票取消原先的即将被处决者，之后须超过该票数。阶段结束时处决即将被处决者，没有则不处决。
 
 # 死亡不是出局
 死亡不是出局。死者仍可参加所有私聊和公聊、发言、被提名、被能力选择，并随阵营胜负。死者不能提名，整局只剩一次举手投票机会（投票标记），用后不可再投。通常立即失去能力且夜里不再唤醒；守鸦人死亡触发，以及明确写有“即使你已死亡”的被当作能力除外。死者不会再次死亡，但可以被处决。
+死亡与处决都不公开角色或阵营，任何人都不会因死亡或处决被“翻牌”；这与狼人杀不同，只能从发言、能力信息与投票推断。
 
 # 醉酒、中毒与被当作
 醉酒与中毒效果相同，不互相抵消：没有能力，但照常唤醒、选择而不生效，所得信息可能为假，本人不会被告知状态。酒鬼以为自己是镇民。中毒持续当夜和次日白天，到黄昏解除；投毒者死亡或变成小恶魔时立即解毒。醉酒或中毒时使用每局一次的能力仍会消耗它。
@@ -115,14 +116,15 @@ Abilities resolve immediately. Players who die before their wake do not wake, ex
 The full flow is dawn → whispers → public discussion → nominations → execution, if any → night. At most one execution occurs per day; it ends the day immediately.
 After dawn this game has whispers (skipped when the room allowance is 0), then public discussion, followed by nominations: nomination reason, defense, voting and execution, then night. The Imp does not kill on the first night; on other nights they choose one target.
 Dawn announces only who died last night, possibly nobody, never the cause or character. Whisper proposals (who proposed which members, or declined) and whisper membership are public; whisper rankings are not, and content is private to members. Each round players propose rooms, merge identical membership, then rank candidate rooms containing themselves. Remove rooms omitted by any member; allocate the rest by ascending sum of all members' ranks, with seeded random ties. A room forms only if no member has been assigned elsewhere; rooms never shrink. Formed rooms converse in parallel; only entering a formed room spends an entry. Each player may enter ${String(whisperLimit)} rooms per whisper phase; 0 skips the phase. No rooms forming, or fewer than two players with entries left, ends the phase.
-In public or private conversations, all eligible speakers (not the previous speaker, with speeches remaining) simultaneously offer a speech or pass. More remaining speeches takes priority, with seeded random ties. Only one speech is actually spoken; rejected speeches were not said. No consecutive speeches by the same player; at most ${String(speechLimit)} per player per conversation. End when all eligible speakers pass or nobody is eligible.
+In public or private conversations, all eligible speakers (not the previous speaker, with speeches remaining) simultaneously offer a speech or pass. More remaining speeches takes priority, with seeded random ties. Only one speech is actually spoken; rejected speeches were not said. No consecutive speeches by the same player; at most ${String(speechLimit)} per player per conversation. End when all eligible speakers pass or nobody is eligible. Each whisper room and each public discussion is a separate conversation, and every member's allowance resets to ${String(speechLimit)} when it starts. Unused speeches are lost when the conversation ends and never carry into another whisper, public discussion or the nomination phase; whispers and public discussion do not share an allowance. Nomination reasons and defences neither use nor depend on this allowance, so passing never saves speeches for later.
 
 # Nominations, votes and execution
 Only living players may nominate, once per day each; each player may be nominated once per day. Self-nominations and dead nominees are allowed. Each nomination has one speech of reasons, one defence, then voting; reasons and defence cannot pass. Choose randomly among simultaneous nominations; no nominations ends the phase.
-Vote clockwise starting after the nominee, who votes last. A raised hand supports execution; previous votes are visible. At least half the living count rounded up, and strictly more than today's previous highest tally, makes a nominee about to die. A qualifying tie removes the previous candidate; later nominees must exceed the tied count. Execute the candidate at phase end, or nobody if there is none. Characters are not revealed on death or execution.
+Vote clockwise starting after the nominee, who votes last. A raised hand supports execution; previous votes are visible. At least half the living count rounded up, and strictly more than today's previous highest tally, makes a nominee about to die. A qualifying tie removes the previous candidate; later nominees must exceed the tied count. Execute the candidate at phase end, or nobody if there is none.
 
 # Death is not elimination
 Death is not elimination. Dead players still speak in every public or private conversation, may be nominated and targeted, and win or lose with their team. They cannot nominate and have only one remaining raised-hand vote for the entire game, their vote token. Usually they immediately lose their ability and no longer wake; exceptions are Ravenkeeper death triggers and registration explicitly effective even when dead. A dead player cannot die again but can be executed.
+Neither death nor execution reveals a character or alignment; unlike Werewolf, nobody's card is ever flipped, so infer only from speech, ability information and votes.
 
 # Drunkenness, poison and registration
 Drunkenness and poison have the same effect and do not cancel: no ability, but normal waking and choices with no effect; information may be false and the player is not told their condition. The Drunk thinks they are a Townsfolk. Poison lasts that night and next day, ending at dusk, or immediately when the Poisoner dies or becomes the Imp. A once-per-game ability used while drunk or poisoned is still spent.
