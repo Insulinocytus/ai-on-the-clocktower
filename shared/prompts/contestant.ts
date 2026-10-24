@@ -91,12 +91,12 @@ export function buildContestantPrompt({
         const purpose =
           request.kind === 'whisper' && request.room
             ? zh
-              ? `私聊第 ${String(request.room.round)} 轮，房间 ${request.room.id}；成员：${request.room.members.join('、')}。还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。内容仅房间成员可见。`
-              : `Whisper round ${String(request.room.round)}, room ${request.room.id}; members: ${request.room.members.join(', ')}. ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null. Only room members see the conversation.`
+              ? `私聊第 ${String(request.room.round)} 轮，房间 ${request.room.id}；成员：${request.room.members.join('、')}。本次对话还可发言 ${String(request.remaining ?? 0)} 条，对话结束即作废，不会留给公聊或提名；可以 pass（speech 填 null）。内容仅房间成员可见。`
+              : `Whisper round ${String(request.room.round)}, room ${request.room.id}; members: ${request.room.members.join(', ')}. ${String(request.remaining ?? 0)} speeches remaining in this conversation only; unused speeches are lost when it ends and never carry into public discussion or nominations. You may pass with speech: null. Only room members see the conversation.`
             : free
               ? zh
-                ? `公聊发言，还可发言 ${String(request.remaining ?? 0)} 条；可以 pass（speech 填 null）。`
-                : `Public discussion: ${String(request.remaining ?? 0)} speeches remaining; you may pass with speech: null.`
+                ? `公聊发言，本次对话还可发言 ${String(request.remaining ?? 0)} 条，对话结束即作废，不会留给提名或辩护；可以 pass（speech 填 null）。`
+                : `Public discussion: ${String(request.remaining ?? 0)} speeches remaining in this conversation only; unused speeches are lost when it ends and never carry into nominations or defences. You may pass with speech: null.`
               : request.kind === 'nomination'
                 ? zh
                   ? `为提名 ${String(request.nominee)} 号给出一条非空的提名理由，不能 pass。`
