@@ -76,7 +76,7 @@ ${characters}
 
 # 死亡不是出局
 死亡不是出局。死者仍可参加所有私聊和公聊、发言、被提名、被能力选择，并随阵营胜负。死者不能提名，整局只剩一次举手投票机会（投票标记），用后不可再投。通常立即失去能力且夜里不再唤醒；守鸦人死亡触发，以及明确写有“即使你已死亡”的被当作能力除外。死者不会再次死亡，但可以被处决。
-死亡与处决都不公开角色或阵营，任何人都不会因死亡或处决被“翻牌”；这与狼人杀不同，只能从发言、能力信息与投票推断。
+死亡与处决都不公开角色或阵营。
 
 # 醉酒、中毒与被当作
 醉酒与中毒效果相同，不互相抵消：没有能力，但照常唤醒、选择而不生效，所得信息可能为假，本人不会被告知状态。酒鬼以为自己是镇民。中毒持续当夜和次日白天，到黄昏解除；投毒者死亡或变成小恶魔时立即解毒。醉酒或中毒时使用每局一次的能力仍会消耗它。
@@ -124,7 +124,7 @@ Vote clockwise starting after the nominee, who votes last. A raised hand support
 
 # Death is not elimination
 Death is not elimination. Dead players still speak in every public or private conversation, may be nominated and targeted, and win or lose with their team. They cannot nominate and have only one remaining raised-hand vote for the entire game, their vote token. Usually they immediately lose their ability and no longer wake; exceptions are Ravenkeeper death triggers and registration explicitly effective even when dead. A dead player cannot die again but can be executed.
-Neither death nor execution reveals a character or alignment; unlike Werewolf, nobody's card is ever flipped, so infer only from speech, ability information and votes.
+Neither death nor execution reveals a character or alignment.
 
 # Drunkenness, poison and registration
 Drunkenness and poison have the same effect and do not cancel: no ability, but normal waking and choices with no effect; information may be false and the player is not told their condition. The Drunk thinks they are a Townsfolk. Poison lasts that night and next day, ending at dusk, or immediately when the Poisoner dies or becomes the Imp. A once-per-game ability used while drunk or poisoned is still spent.
