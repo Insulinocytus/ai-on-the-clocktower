@@ -71,8 +71,12 @@ _Avoid_: 模式、策略、provider
 _Avoid_: 说书人 AI、GM 模型
 
 **LLM 提供商（Provider）**:
-录入的一个 LLM 服务入口：请求实际发往的地址、凭据，以及对它调用的超时与并发上限；可被多个模型预设共用。指请求发往谁（如经 OpenRouter 调 Claude，提供商是 OpenRouter），不是模型的出品方。
+录入的一个 LLM 服务入口：请求实际发往的地址、接口格式、凭据，以及对它调用的超时与并发上限；可被多个模型预设共用。指请求发往谁（如经 OpenRouter 调 Claude，提供商是 OpenRouter），不是模型的出品方。同一地址支持多种接口格式时，每种格式录为一个提供商。
 _Avoid_: 连接、endpoint、账号
+
+**接口格式（API Format）**:
+LLM 提供商接受的请求与响应形状，取三者之一：OpenAI Completions（指 OpenAI Chat Completions，不是旧的纯文本补全接口）、OpenAI Responses、Anthropic Messages。与模型出品方无关：经某个兼容网关调用任何模型，格式按网关所接受的形状填写。
+_Avoid_: 协议、endpoint、provider 类型
 
 **模型预设（Model Preset）**:
 一个有名字的“LLM 提供商 + 模型名 + 调用参数”组合，是指派给座位或说书人的单位；同一模型配不同参数就是不同的预设，观战时以预设名标识选手模型。

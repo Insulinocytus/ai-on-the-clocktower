@@ -24,6 +24,7 @@ import type { GameSummary } from '../shared/types/game-view'
 import { startFakeProvider } from './fake-provider'
 import { preset } from './game-fixtures'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
+import { firstToolCall } from '../shared/game/tool-calls'
 
 const toolChoice = z.object({ function: z.object({ name: z.string() }) })
 const randomDiscretions = {
@@ -700,7 +701,7 @@ describe('games application seam', () => {
       },
       'schema',
     ],
-    ['invalid response', { kind: 'raw', body: {} }, 'choices[0].message'],
+    ['invalid response', { kind: 'raw', body: {} }, 'recognised API format'],
     [
       'multiple calls',
       {
@@ -1065,6 +1066,7 @@ describe('games application seam', () => {
       const provider = await createProvider({
         name: 'Shared queue',
         baseUrl: fake.baseUrl,
+        apiFormat: fake.apiFormat,
         apiKey: 'game-test-secret',
         maxConcurrency: 1,
       })
@@ -1122,6 +1124,7 @@ describe('games application seam', () => {
       await updateProvider(model.providerId, {
         name: 'Updated',
         baseUrl: fake.baseUrl,
+        apiFormat: fake.apiFormat,
         apiKey: 'game-test-secret',
         maxConcurrency: 2,
       })
@@ -1871,6 +1874,161 @@ it.each(['invalid', 'transport'] as const)(
         const prompt = gameRequest.parse(fake.requests[5]?.body).messages.at(-1)?.content
         expect(prompt).toContain('attempt 5 of at most 10')
       }
+    } finally {
+      if (id) await abortGame(id)
+      await fake.close()
+    }
+  },
+)
+
+const responsesRequest = z.object({
+  tool_choice: z.object({ name: z.string() }),
+  input: z.array(
+    z.union([
+      z.object({ role: z.enum(['system', 'user']), content: z.string() }),
+      z.object({
+        type: z.literal('function_call'),
+        call_id: z.string(),
+        name: z.string(),
+        arguments: z.string(),
+      }),
+      z.object({
+        type: z.literal('function_call_output'),
+        call_id: z.string(),
+        output: z.string(),
+      }),
+    ]),
+  ),
+})
+const messagesRequest = z.object({
+  tool_choice: z.object({ name: z.string() }),
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.array(
+        z.union([
+          z.object({ type: z.literal('text'), text: z.string() }),
+          z.object({
+            type: z.literal('tool_use'),
+            id: z.string(),
+            name: z.string(),
+            input: z.unknown(),
+          }),
+          z.object({
+            type: z.literal('tool_result'),
+            tool_use_id: z.string(),
+            content: z.string(),
+          }),
+        ]),
+      ),
+    }),
+  ),
+})
+
+/**
+ * The requested tool, the newest user text, and the carried-forward calls and their result ids
+ * of a request.
+ */
+function summariseRequest(format: 'openai_responses' | 'anthropic_messages', body: unknown) {
+  if (format === 'openai_responses') {
+    const { tool_choice, input } = responsesRequest.parse(body)
+    const last = input.at(-1)
+    return {
+      tool: tool_choice.name,
+      user: last && 'content' in last ? last.content : '',
+      carried: input.flatMap((item) =>
+        'type' in item && item.type === 'function_call'
+          ? [{ id: item.call_id, name: item.name, arguments: item.arguments }]
+          : [],
+      ),
+      results: input.flatMap((item) =>
+        'type' in item && item.type === 'function_call_output' ? [item.call_id] : [],
+      ),
+    }
+  }
+  const { tool_choice, messages } = messagesRequest.parse(body)
+  messages.forEach((message, index) => {
+    expect(message.role).toBe(index % 2 ? 'assistant' : 'user')
+  })
+  const blocks = messages.flatMap((message) => message.content)
+  const last = blocks.at(-1)
+  return {
+    tool: tool_choice.name,
+    user: last?.type === 'text' ? last.text : '',
+    carried: blocks.flatMap((block) =>
+      block.type === 'tool_use'
+        ? [{ id: block.id, name: block.name, arguments: JSON.stringify(block.input) }]
+        : [],
+    ),
+    results: blocks.flatMap((block) => (block.type === 'tool_result' ? [block.tool_use_id] : [])),
+  }
+}
+
+it.each(['openai_responses', 'anthropic_messages'] as const)(
+  'plays, carries forward and resumes a game over %s',
+  async (apiFormat) => {
+    const action = gameActions()
+    let interrupted = false
+    const fake = await startFakeProvider(
+      (request) => {
+        const { tool, user } = summariseRequest(apiFormat, request.body)
+        if (tool === 'speak' && !interrupted) return { kind: 'hang' }
+        return {
+          kind: 'toolCall',
+          name: tool,
+          arguments: JSON.stringify({ reasoning_summary: 'Legal', ...action(tool, user) }),
+        }
+      },
+      undefined,
+      apiFormat,
+    )
+    let id: string | undefined
+    try {
+      const model = await preset('formats', fake.baseUrl, 300, 5, apiFormat)
+      const game = await createGame({
+        presets: Array.from({ length: 5 }, () => model.id),
+        language: 'en',
+        discretions: randomDiscretions,
+        whisperLimit: 0,
+      })
+      id = game.id
+      await expect
+        .poll(
+          () =>
+            fake.requests.filter(
+              (request) => summariseRequest(apiFormat, request.body).tool === 'speak',
+            ).length,
+        )
+        .toBeGreaterThan(0)
+      await resetGameRunnersForTest()
+      expect(await getGame(game.id)).toMatchObject({ status: 'paused' })
+      const before = await gameEvents(game.id)
+      interrupted = true
+      await resumeGame(game.id)
+      await expect
+        .poll(async () => (await getGame(game.id)).status, { timeout: 10000 })
+        .toBe('ended')
+      const after = await gameEvents(game.id)
+      expect(after.slice(0, before.length)).toEqual(before)
+      const decisions = after.filter((event) => event.type === 'contestant.decision')
+      for (const decision of decisions)
+        expect(decision).toMatchObject({
+          validation: { ok: true },
+          raw: { id: apiFormat === 'openai_responses' ? 'resp-fake' : 'msg-fake' },
+        })
+      const requests = fake.requests.map((request) => summariseRequest(apiFormat, request.body))
+      const carried = requests.flatMap((request) => request.carried)
+      expect(carried.length).toBeGreaterThan(0)
+      for (const call of carried) {
+        const decision = decisions.find((event) => `call_${String(event.seq)}` === call.id)
+        expect(decision, call.id).toBeDefined()
+        expect({ name: call.name, arguments: JSON.parse(call.arguments) as unknown }).toEqual({
+          name: decision?.request.tool,
+          arguments: JSON.parse(firstToolCall(decision?.raw)?.arguments ?? 'null') as unknown,
+        })
+      }
+      for (const request of requests)
+        expect(request.results).toEqual(request.carried.map((call) => call.id))
     } finally {
       if (id) await abortGame(id)
       await fake.close()

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { checkToolCall, contestantTools, type Lang } from '../../shared/game/tools'
 import type { TrialResult } from '../../shared/types/models'
 import { requireModelRecord } from './index'
-import { chatCompletion, LlmCallError } from './llm'
+import { callLlm, LlmCallError } from './llm'
 import { inTransaction } from './storage'
 
 const PROMPT: Record<Lang, { system: string; user: string }> = {
@@ -39,7 +39,7 @@ export async function trialPreset(
   const tools = contestantTools(lang, 5)
   let raw: unknown
   try {
-    raw = await chatCompletion(
+    raw = await callLlm(
       {
         ...provider,
         providerId: provider.id,

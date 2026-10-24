@@ -22,7 +22,7 @@ import { buildContestantPrompt } from '../../shared/prompts/contestant'
 import { invalidAttemptSuffix } from '../../shared/prompts/retry'
 import { buildStorytellerPrompt, parseStorytellerChoice } from '../../shared/prompts/storyteller'
 import { requireModelRecord } from './index'
-import { chatCompletion, LlmCallError } from './llm'
+import { callLlm, LlmCallError } from './llm'
 import {
   checkToolCall,
   contestantTools,
@@ -366,7 +366,7 @@ export function startGameRunner(
       let raw: unknown
       try {
         if (provider) {
-          raw = await chatCompletion(
+          raw = await callLlm(
             {
               ...provider,
               ...model,

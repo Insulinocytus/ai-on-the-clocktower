@@ -1,8 +1,9 @@
 import { once } from 'node:events'
 import { createServer, type IncomingHttpHeaders } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import type { ApiFormat } from '../shared/types/models'
 
-/** One scripted reply of the fake OpenAI-compatible provider, consumed in order per request. */
+/** One scripted reply of the fake provider, consumed in order per request. */
 type FakeStep =
   /** A tool call; `arguments` is sent verbatim, so it may be malformed JSON. */
   | { kind: 'toolCall'; name: string; arguments: string; waitFor?: Promise<void> }
@@ -27,24 +28,99 @@ interface RecordedRequest {
 export interface FakeProvider {
   /** Base URL to store on a provider, e.g. `http://127.0.0.1:1234/v1`. */
   baseUrl: string
+  apiFormat: ApiFormat
   script: (...steps: FakeStep[]) => void
   requests: RecordedRequest[]
   close: () => Promise<void>
 }
 
-const completion = (message: Record<string, unknown>) => ({
-  id: 'chatcmpl-fake',
-  object: 'chat.completion',
-  created: 0,
-  model: 'fake-model',
-  choices: [{ index: 0, message: { role: 'assistant', ...message }, finish_reason: 'stop' }],
-  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-})
+const PATHS: Record<ApiFormat, string> = {
+  openai_completions: '/v1/chat/completions',
+  openai_responses: '/v1/responses',
+  anthropic_messages: '/v1/messages',
+}
 
-/** A local stand-in for an OpenAI-compatible Chat Completions endpoint that answers from a script. */
+function jsonOrText(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+function responseBody(
+  format: ApiFormat,
+  answer: { text: string } | { call: { name: string; arguments: string } },
+) {
+  switch (format) {
+    case 'openai_completions':
+      return {
+        id: 'chatcmpl-fake',
+        object: 'chat.completion',
+        created: 0,
+        model: 'fake-model',
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: 'assistant',
+              ...('text' in answer
+                ? { content: answer.text }
+                : {
+                    content: null,
+                    tool_calls: [{ id: 'call_fake', type: 'function', function: answer.call }],
+                  }),
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }
+    case 'openai_responses':
+      return {
+        id: 'resp-fake',
+        object: 'response',
+        model: 'fake-model',
+        status: 'completed',
+        output: [
+          'text' in answer
+            ? {
+                type: 'message',
+                id: 'msg_fake',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: answer.text }],
+              }
+            : { type: 'function_call', id: 'fc_fake', call_id: 'call_fake', ...answer.call },
+        ],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }
+    case 'anthropic_messages':
+      return {
+        id: 'msg-fake',
+        type: 'message',
+        role: 'assistant',
+        model: 'fake-model',
+        content: [
+          'text' in answer
+            ? { type: 'text', text: answer.text }
+            : {
+                type: 'tool_use',
+                id: 'toolu_fake',
+                name: answer.call.name,
+                input: jsonOrText(answer.call.arguments),
+              },
+        ],
+        stop_reason: 'text' in answer ? 'end_turn' : 'tool_use',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }
+  }
+}
+
+/** A local stand-in for an LLM provider of the given API format that answers from a script. */
 export async function startFakeProvider(
   responder?: (request: RecordedRequest) => FakeStep | undefined | Promise<FakeStep | undefined>,
   fallback?: (request: RecordedRequest) => FakeStep | undefined,
+  apiFormat: ApiFormat = 'openai_completions',
 ): Promise<FakeProvider> {
   const steps: FakeStep[] = []
   const requests: RecordedRequest[] = []
@@ -52,7 +128,10 @@ export async function startFakeProvider(
   const server = createServer((req, res) => {
     res.setHeader('access-control-allow-origin', '*')
     res.setHeader('access-control-allow-methods', 'POST, OPTIONS')
-    res.setHeader('access-control-allow-headers', 'authorization, content-type')
+    res.setHeader(
+      'access-control-allow-headers',
+      'authorization, content-type, x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access',
+    )
     res.setHeader('access-control-expose-headers', 'retry-after')
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
@@ -77,7 +156,7 @@ export async function startFakeProvider(
         res.writeHead(status, { 'content-type': 'application/json', ...headers })
         res.end(JSON.stringify(body))
       }
-      if (req.url !== '/v1/chat/completions') {
+      if (req.url !== PATHS[apiFormat]) {
         json(404, { error: { message: `unexpected path ${req.url ?? ''}` } })
         return
       }
@@ -94,16 +173,7 @@ export async function startFakeProvider(
               const respond = () => {
                 json(
                   200,
-                  completion({
-                    content: null,
-                    tool_calls: [
-                      {
-                        id: 'call_fake',
-                        type: 'function',
-                        function: { name: step.name, arguments: step.arguments },
-                      },
-                    ],
-                  }),
+                  responseBody(apiFormat, { call: { name: step.name, arguments: step.arguments } }),
                 )
               }
               if (step.waitFor) void step.waitFor.then(respond)
@@ -111,7 +181,7 @@ export async function startFakeProvider(
               return
             }
             case 'text':
-              json(200, completion({ content: step.content }))
+              json(200, responseBody(apiFormat, { text: step.content }))
               return
             case 'rateLimit':
               json(
@@ -150,6 +220,7 @@ export async function startFakeProvider(
 
   return {
     baseUrl: `http://127.0.0.1:${String(port)}/v1`,
+    apiFormat,
     script: (...next) => steps.push(...next),
     requests,
     close: async () => {

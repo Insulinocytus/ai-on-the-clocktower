@@ -1,3 +1,6 @@
+export const API_FORMATS = ['openai_completions', 'openai_responses', 'anthropic_messages'] as const
+export type ApiFormat = (typeof API_FORMATS)[number]
+
 export interface Preset {
   id: number
   name: string

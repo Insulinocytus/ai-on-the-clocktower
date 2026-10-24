@@ -52,8 +52,8 @@ const ERRORS: Record<ValidationError['code'], { zh: string; en: string }> = {
     en: 'ranking may contain only listed room numbers, without duplicates; an empty array is allowed.',
   },
   invalid_response: {
-    zh: '响应必须包含 choices[0].message 及工具调用。',
-    en: 'The response must contain choices[0].message and a tool call.',
+    zh: '响应必须是可识别接口格式的工具调用。',
+    en: 'The response must contain a tool call in a recognised API format.',
   },
   no_tool_call: {
     zh: '未提交工具调用；请调用请求中指定的工具。',

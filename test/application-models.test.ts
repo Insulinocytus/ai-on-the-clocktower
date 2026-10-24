@@ -19,6 +19,7 @@ const SECRET = 'sk-test-secret-value'
 const providerInput = {
   name: 'Local',
   baseUrl: 'http://127.0.0.1:1/v1',
+  apiFormat: 'openai_completions',
   apiKey: SECRET,
 }
 
@@ -84,6 +85,22 @@ describe('application providers', () => {
       }
       await expect(createProvider(input)).rejects.toMatchObject(issues)
       const saved = await createProvider(providerInput)
+      await expect(updateProvider(saved.id, input)).rejects.toMatchObject(issues)
+      expect(await listProviders()).toContainEqual(saved)
+    },
+  )
+
+  it.each([undefined, 'gemini'])(
+    'requires a known API format (%s) on create and update',
+    async (apiFormat) => {
+      const input = { ...providerInput, apiFormat }
+      const issues = {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ path: ['apiFormat'] }),
+        ]) as unknown,
+      }
+      await expect(createProvider(input)).rejects.toMatchObject(issues)
+      const saved = await createProvider({ ...providerInput, apiFormat: 'anthropic_messages' })
       await expect(updateProvider(saved.id, input)).rejects.toMatchObject(issues)
       expect(await listProviders()).toContainEqual(saved)
     },

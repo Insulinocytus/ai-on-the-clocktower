@@ -25,6 +25,12 @@
     "empty": "还没有提供商。",
     "name": "名称",
     "baseUrl": "Base URL",
+    "apiFormat": "接口格式",
+    "formats": {
+      "openai_completions": "OpenAI Completions",
+      "openai_responses": "OpenAI Responses",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "apiKey": "API 密钥",
     "timeoutSec": "单次调用超时（秒）",
     "maxConcurrency": "最大并发",
