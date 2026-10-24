@@ -58,6 +58,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
           <TableRow>
             <TableHead>{{ t('providers.name') }}</TableHead>
             <TableHead>{{ t('providers.baseUrl') }}</TableHead>
+            <TableHead>{{ t('providers.apiFormat') }}</TableHead>
             <TableHead>{{ t('providers.timeoutSec') }}</TableHead>
             <TableHead>{{ t('providers.maxConcurrency') }}</TableHead>
             <TableHead />
@@ -67,6 +68,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
           <TableRow v-for="p in providers" :key="p.id">
             <TableCell class="font-medium">{{ p.name }}</TableCell>
             <TableCell class="font-mono text-xs">{{ p.baseUrl }}</TableCell>
+            <TableCell>{{ t(`providers.formats.${p.apiFormat}`) }}</TableCell>
             <TableCell>{{ p.timeoutSec }}</TableCell>
             <TableCell>{{ p.maxConcurrency }}</TableCell>
             <TableCell class="text-right">

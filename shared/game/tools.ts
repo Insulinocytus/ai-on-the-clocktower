@@ -1,5 +1,5 @@
 import { Ajv } from 'ajv'
-import { z } from 'zod'
+import { toolCalls } from './tool-calls'
 import type { SchemaIssue, ValidationError } from '../types/game'
 import { REASONING_SUMMARY_MAX_LENGTH } from '../types/game'
 import { ROLES } from './roles'
@@ -172,20 +172,6 @@ export function storytellerTools(lang: Lang, seatCount: number): Tool[] {
   ]
 }
 
-const completionShape = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z.object({
-          tool_calls: z
-            .array(z.object({ function: z.object({ name: z.string(), arguments: z.string() }) }))
-            .nullish(),
-        }),
-      }),
-    )
-    .min(1),
-})
-
 export type ToolCallCheck =
   | { ok: true; name: string; arguments: unknown; rawArguments: string }
   | {
@@ -202,16 +188,14 @@ export function checkToolCall(
   tools: Tool[],
   expectedTool: string,
 ): ToolCallCheck {
-  const parsed = completionShape.safeParse(response)
-  const calls = parsed.success
-    ? (parsed.data.choices[0]?.message.tool_calls ?? []).map((call) => call.function)
-    : []
+  const recognised = toolCalls(response)
+  const calls = recognised ?? []
   const fail = (
     code: ValidationError['code'],
     error: string,
     issues?: SchemaIssue[],
   ): ToolCallCheck => ({ ok: false, code, error, calls, ...(issues && { issues }) })
-  if (!parsed.success) return fail('invalid_response', 'Response has no choices[0].message')
+  if (!recognised) return fail('invalid_response', 'Response is not in a recognised API format')
   const [call] = calls
   if (!call) return fail('no_tool_call', 'No tool call')
   if (calls.length > 1) {

@@ -25,6 +25,12 @@
     "empty": "No providers yet.",
     "name": "Name",
     "baseUrl": "Base URL",
+    "apiFormat": "API format",
+    "formats": {
+      "openai_completions": "OpenAI Completions",
+      "openai_responses": "OpenAI Responses",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "apiKey": "API key",
     "timeoutSec": "Timeout per call (s)",
     "maxConcurrency": "Max concurrency",

@@ -1,10 +1,12 @@
 import type { ChatMessage } from '../../shared/game/tool-calls'
 import type { Tool } from '../../shared/game/tools'
+import type { ApiFormat } from '../../shared/types/models'
 import { requireModelRecord } from './index'
 
 export interface LlmTarget {
   providerId: number
   baseUrl: string
+  apiFormat: ApiFormat
   apiKey: string
   timeoutSec: number
   model: string
@@ -103,7 +105,93 @@ function acquireProvider(id: number, signal?: AbortSignal): Promise<() => void> 
   return pending.promise
 }
 
-export async function chatCompletion(
+const PATHS: Record<ApiFormat, string> = {
+  openai_completions: '/chat/completions',
+  openai_responses: '/responses',
+  anthropic_messages: '/messages',
+}
+
+function responsesInput(message: ChatMessage): unknown[] {
+  switch (message.role) {
+    case 'assistant':
+      return message.tool_calls.map(({ id, function: fn }) => ({
+        type: 'function_call',
+        call_id: id,
+        ...fn,
+      }))
+    case 'tool':
+      return [
+        { type: 'function_call_output', call_id: message.tool_call_id, output: message.content },
+      ]
+    case 'system':
+    case 'user':
+      return [message]
+  }
+}
+
+/** Anthropic turns must alternate, so consecutive same-role messages merge into one turn. */
+function anthropicMessages(messages: ChatMessage[]) {
+  const turns: { role: 'user' | 'assistant'; content: object[] }[] = []
+  for (const message of messages) {
+    if (message.role === 'system') continue
+    const content =
+      message.role === 'assistant'
+        ? message.tool_calls.map(({ id, function: fn }) => ({
+            type: 'tool_use',
+            id,
+            name: fn.name,
+            input: JSON.parse(fn.arguments) as unknown,
+          }))
+        : message.role === 'tool'
+          ? [{ type: 'tool_result', tool_use_id: message.tool_call_id, content: message.content }]
+          : [{ type: 'text', text: message.content }]
+    const role = message.role === 'assistant' ? 'assistant' : 'user'
+    const last = turns.at(-1)
+    if (last?.role === role) last.content.push(...content)
+    else turns.push({ role, content })
+  }
+  return turns
+}
+
+/** Core fields override `extraBody`; format defaults (`store`, `max_tokens`) yield to it. */
+function requestBody(target: LlmTarget, { messages, tools, tool }: ChatRequest) {
+  switch (target.apiFormat) {
+    case 'openai_completions':
+      return {
+        ...target.extraBody,
+        model: target.model,
+        messages,
+        tools,
+        ...(target.forceToolChoice && {
+          tool_choice: { type: 'function', function: { name: tool } },
+        }),
+      }
+    case 'openai_responses':
+      return {
+        store: false,
+        ...target.extraBody,
+        model: target.model,
+        input: messages.flatMap(responsesInput),
+        tools: tools.map(({ function: fn }) => ({ type: 'function', ...fn, strict: false })),
+        ...(target.forceToolChoice && { tool_choice: { type: 'function', name: tool } }),
+      }
+    case 'anthropic_messages':
+      return {
+        max_tokens: 16000,
+        ...target.extraBody,
+        model: target.model,
+        system: messages.flatMap((m) => (m.role === 'system' ? [m.content] : [])).join('\n\n'),
+        messages: anthropicMessages(messages),
+        tools: tools.map(({ function: { parameters, ...fn } }) => ({
+          ...fn,
+          input_schema: parameters,
+        })),
+        ...(target.forceToolChoice && { tool_choice: { type: 'tool', name: tool } }),
+      }
+  }
+}
+
+export async function callLlm(
   target: LlmTarget,
   request: ChatRequest,
   signal?: AbortSignal,
@@ -111,24 +199,25 @@ export async function chatCompletion(
   const release = await acquireProvider(target.providerId, signal)
   try {
     signal?.throwIfAborted()
-    const body: Record<string, unknown> = {
-      ...target.extraBody,
-      model: target.model,
-      messages: request.messages,
-      tools: request.tools,
-      ...(target.forceToolChoice && {
-        tool_choice: { type: 'function', function: { name: request.tool } },
-      }),
-    }
+    const body: Record<string, unknown> = requestBody(target, request)
     delete body.temperature
     if (!target.forceToolChoice) delete body.tool_choice
     const timeout = AbortSignal.timeout(target.timeoutSec * 1000)
     let response: Response
     let text: string
     try {
-      response = await fetch(`${target.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      response = await fetch(`${target.baseUrl.replace(/\/+$/, '')}${PATHS[target.apiFormat]}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${target.apiKey}` },
+        headers: {
+          'content-type': 'application/json',
+          ...(target.apiFormat === 'anthropic_messages'
+            ? {
+                'x-api-key': target.apiKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+              }
+            : { authorization: `Bearer ${target.apiKey}` }),
+        },
         body: JSON.stringify(body),
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       })

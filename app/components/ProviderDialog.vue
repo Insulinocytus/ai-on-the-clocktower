@@ -10,26 +10,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from 'vue-sonner'
 import { createProvider, updateProvider, type Provider } from '@/api'
+import { API_FORMATS } from '#shared/types/models'
 
 const props = defineProps<{ provider?: Provider }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [] }>()
 const { t } = useI18n()
 
-const form = reactive({ name: '', baseUrl: '', apiKey: '', timeoutSec: 300, maxConcurrency: 5 })
+const form = reactive({
+  name: '',
+  baseUrl: '',
+  apiFormat: 'openai_completions',
+  apiKey: '',
+  timeoutSec: 300,
+  maxConcurrency: 5,
+})
 
 watch(open, (isOpen) => {
   if (!isOpen) return
-  const { name, baseUrl, apiKey, timeoutSec, maxConcurrency } = props.provider ?? {
+  const { name, baseUrl, apiFormat, apiKey, timeoutSec, maxConcurrency } = props.provider ?? {
     name: '',
     baseUrl: '',
+    apiFormat: 'openai_completions',
     apiKey: '',
     timeoutSec: 300,
     maxConcurrency: 5,
   }
-  Object.assign(form, { name, baseUrl, apiKey, timeoutSec, maxConcurrency })
+  Object.assign(form, { name, baseUrl, apiFormat, apiKey, timeoutSec, maxConcurrency })
 })
 
 async function save() {
@@ -65,6 +81,17 @@ async function save() {
             placeholder="https://openrouter.ai/api/v1"
             required
           />
+        </div>
+        <div class="grid gap-2">
+          <Label for="provider-api-format">{{ t('providers.apiFormat') }}</Label>
+          <Select v-model="form.apiFormat" required>
+            <SelectTrigger id="provider-api-format" class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="format in API_FORMATS" :key="format" :value="format">{{
+                t(`providers.formats.${format}`)
+              }}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div class="grid gap-2">
           <Label for="provider-key">{{ t('providers.apiKey') }}</Label>

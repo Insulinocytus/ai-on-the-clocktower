@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createPreset, createProvider, trialPreset } from '../app/api'
 import { startFakeProvider, type FakeProvider } from './fake-provider'
+import type { ApiFormat } from '../shared/types/models'
 
 const SECRET = 'sk-test-secret-value'
 const speak = JSON.stringify({
@@ -32,6 +33,7 @@ describe('application trial call', () => {
     const { id: providerId } = await createProvider({
       name: 'Fake',
       baseUrl: fake.baseUrl,
+      apiFormat: fake.apiFormat,
       apiKey: SECRET,
       ...provider,
     })
@@ -195,6 +197,7 @@ describe('application trial call', () => {
     const provider = await createProvider({
       name: 'Limited',
       baseUrl: fake.baseUrl,
+      apiFormat: fake.apiFormat,
       apiKey: SECRET,
       maxConcurrency: 1,
     })
@@ -232,6 +235,7 @@ describe('application trial call', () => {
     const provider = await createProvider({
       name: 'Queue',
       baseUrl: fake.baseUrl,
+      apiFormat: fake.apiFormat,
       apiKey: SECRET,
       maxConcurrency: 1,
     })
@@ -267,6 +271,7 @@ describe('application trial call', () => {
     const provider = await createProvider({
       name: 'Cancel',
       baseUrl: fake.baseUrl,
+      apiFormat: fake.apiFormat,
       apiKey: SECRET,
       maxConcurrency: 1,
     })
@@ -285,4 +290,159 @@ describe('application trial call', () => {
     await expect.poll(() => fake.requests[before]?.closed).toBe(true)
     expect(fake.requests).toHaveLength(before + 2)
   })
+})
+
+describe('trial call in other API formats', () => {
+  async function trial(
+    apiFormat: ApiFormat,
+    step: Parameters<FakeProvider['script']>[0],
+    preset: { forceToolChoice?: boolean; extraBody?: string } = {},
+  ) {
+    const fake = await startFakeProvider(undefined, undefined, apiFormat)
+    try {
+      fake.script(step)
+      const { id: providerId } = await createProvider({
+        name: apiFormat,
+        baseUrl: fake.baseUrl,
+        apiFormat,
+        apiKey: SECRET,
+      })
+      const { id } = await createPreset({
+        name: 'Trial',
+        providerId,
+        model: 'fake-model',
+        ...preset,
+      })
+      const result = await trialPreset(id, { lang: 'en' })
+      expect(fake.requests).toHaveLength(1)
+      return { result, request: fake.requests[0] }
+    } finally {
+      await fake.close()
+    }
+  }
+  const speakCall = { kind: 'toolCall', name: 'speak', arguments: speak } as const
+
+  it('sends an OpenAI Responses request without temperature and with store off by default', async () => {
+    const { result, request } = await trial('openai_responses', speakCall, {
+      forceToolChoice: true,
+      extraBody: '{"temperature":0.7,"reasoning":{"effort":"low"},"input":[],"model":"wrong"}',
+    })
+    expect(result).toMatchObject({
+      valid: true,
+      toolCall: { name: 'speak', arguments: JSON.parse(speak) as unknown },
+      raw: { id: 'resp-fake' },
+    })
+    expect(request?.path).toBe('/v1/responses')
+    expect(request?.headers.authorization).toBe(`Bearer ${SECRET}`)
+    const body = request?.body ?? {}
+    expect(body).toMatchObject({
+      model: 'fake-model',
+      store: false,
+      reasoning: { effort: 'low' },
+      tool_choice: { type: 'function', name: 'speak' },
+    })
+    expect(body).not.toHaveProperty('temperature')
+    expect(body).not.toHaveProperty('messages')
+    expect((body.input as { role: string }[]).map((item) => item.role)).toEqual(['system', 'user'])
+    const tools = body.tools as Record<string, unknown>[]
+    expect(tools).toHaveLength(6)
+    expect(tools[0]).toMatchObject({
+      type: 'function',
+      name: 'speak',
+      strict: false,
+      parameters: { type: 'object' },
+    })
+    expect(tools[0]).not.toHaveProperty('function')
+  })
+
+  it('lets extra_body turn OpenAI Responses storage on and omits a disallowed tool_choice', async () => {
+    const { result, request } = await trial('openai_responses', speakCall, {
+      extraBody: '{"store":true,"tool_choice":"required"}',
+    })
+    expect(result.valid).toBe(true)
+    expect(request?.body.store).toBe(true)
+    expect(request?.body).not.toHaveProperty('tool_choice')
+  })
+
+  it('sends an Anthropic Messages request with browser headers, top-level system and default max_tokens', async () => {
+    const { result, request } = await trial('anthropic_messages', speakCall, {
+      forceToolChoice: true,
+      extraBody: '{"temperature":0.7,"system":"wrong","messages":[]}',
+    })
+    expect(result).toMatchObject({
+      valid: true,
+      toolCall: { name: 'speak', arguments: JSON.parse(speak) as unknown },
+      raw: { id: 'msg-fake' },
+    })
+    expect(request?.path).toBe('/v1/messages')
+    expect(request?.headers).toMatchObject({
+      'x-api-key': SECRET,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    })
+    expect(request?.headers).not.toHaveProperty('authorization')
+    const body = request?.body ?? {}
+    expect(body).toMatchObject({
+      model: 'fake-model',
+      max_tokens: 16000,
+      tool_choice: { type: 'tool', name: 'speak' },
+    })
+    expect(body).not.toHaveProperty('temperature')
+    expect(body.system).toContain('Blood on the Clocktower')
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: expect.stringContaining('Call speak') as unknown }],
+      },
+    ])
+    const tools = body.tools as Record<string, unknown>[]
+    expect(tools).toHaveLength(6)
+    expect(tools[0]).toMatchObject({ name: 'speak', input_schema: { type: 'object' } })
+    expect(tools[0]).not.toHaveProperty('function')
+  })
+
+  it('lets extra_body override the Anthropic max_tokens default', async () => {
+    const { request } = await trial('anthropic_messages', speakCall, {
+      extraBody: '{"max_tokens":512}',
+    })
+    expect(request?.body.max_tokens).toBe(512)
+    expect(request?.body).not.toHaveProperty('tool_choice')
+  })
+
+  it.each([
+    ['openai_responses', 'function_call', { call_id: 'a', arguments: speak }],
+    ['anthropic_messages', 'tool_use', { id: 'a', input: JSON.parse(speak) as unknown }],
+  ] as const)(
+    'reports %s responses with the same errors as OpenAI Completions',
+    async (format, type, call) => {
+      const text = await trial(format, { kind: 'text', content: 'Hello!' })
+      expect(text.result).toMatchObject({ valid: false, error: 'No tool call' })
+      const wrong = await trial(format, {
+        kind: 'toolCall',
+        name: 'vote',
+        arguments: '{"reasoning_summary":"r","raise_hand":true}',
+      })
+      expect(wrong.result).toMatchObject({
+        valid: false,
+        error: 'Expected tool "speak", got "vote"',
+      })
+      const unknown = await trial(format, { kind: 'toolCall', name: 'shout', arguments: speak })
+      expect(unknown.result).toMatchObject({ valid: false, error: 'Unknown tool "shout"' })
+      const unrecognised = await trial(format, { kind: 'raw', body: {} })
+      expect(unrecognised.result).toMatchObject({
+        valid: false,
+        error: 'Response is not in a recognised API format',
+      })
+      const twice = { type, name: 'speak', ...call }
+      const multiple = await trial(format, {
+        kind: 'raw',
+        body:
+          format === 'openai_responses' ? { output: [twice, twice] } : { content: [twice, twice] },
+      })
+      expect(multiple.result).toMatchObject({
+        valid: false,
+        error: 'Expected one tool call, got 2',
+      })
+    },
+  )
 })

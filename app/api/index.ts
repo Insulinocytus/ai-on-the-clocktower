@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Preset } from '../../shared/types/models'
+import { API_FORMATS, type Preset } from '../../shared/types/models'
 import { inTransaction, openDatabase, requestResult } from './storage'
 
 export { trialPreset } from './trial'
@@ -22,6 +22,7 @@ export async function initializeApplication(): Promise<void> {
 const providerInput = z.object({
   name: z.string().trim().min(1),
   baseUrl: z.url({ protocol: /^https?$/ }),
+  apiFormat: z.enum(API_FORMATS),
   apiKey: z.string().trim().min(1),
   timeoutSec: z.int().positive().default(300),
   maxConcurrency: z.int().positive().default(5),
