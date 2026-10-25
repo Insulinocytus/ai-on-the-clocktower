@@ -19,14 +19,20 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'vue-sonner'
 import { createProvider, updateProvider, type Provider } from '@/api'
-import { API_FORMATS } from '#shared/types/models'
+import { API_FORMATS, type ApiFormat } from '#shared/types/models'
 
 const props = defineProps<{ provider?: Provider }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ saved: [] }>()
 const { t } = useI18n()
 
-const form = reactive({
+const BASE_URL_PLACEHOLDERS: Record<ApiFormat, string> = {
+  openai_completions: 'https://api.openai.com/v1',
+  openai_responses: 'https://api.openai.com/v1',
+  anthropic_messages: 'https://api.anthropic.com',
+}
+
+const form = reactive<Omit<Provider, 'id'>>({
   name: '',
   baseUrl: '',
   apiFormat: 'openai_completions',
@@ -78,7 +84,7 @@ async function save() {
             id="provider-base-url"
             v-model="form.baseUrl"
             type="url"
-            placeholder="https://openrouter.ai/api/v1"
+            :placeholder="BASE_URL_PLACEHOLDERS[form.apiFormat]"
             required
           />
         </div>
