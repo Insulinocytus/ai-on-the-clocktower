@@ -26,7 +26,7 @@ interface RecordedRequest {
 }
 
 export interface FakeProvider {
-  /** Base URL to store on a provider, following the format's official SDK, e.g. `http://127.0.0.1:1234/v1`. */
+  /** Base URL to store on a provider, e.g. `http://127.0.0.1:1234/v1`, or `http://127.0.0.1:1234` for Anthropic. */
   baseUrl: string
   apiFormat: ApiFormat
   script: (...steps: FakeStep[]) => void
