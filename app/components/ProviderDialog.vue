@@ -48,6 +48,12 @@ watch(open, (isOpen) => {
   Object.assign(form, { name, baseUrl, apiFormat, apiKey, timeoutSec, maxConcurrency })
 })
 
+const baseUrlPlaceholder = computed(() =>
+  form.apiFormat === 'anthropic_messages'
+    ? 'https://api.anthropic.com'
+    : 'https://api.openai.com/v1',
+)
+
 async function save() {
   try {
     if (props.provider) await updateProvider(props.provider.id, form)
@@ -78,7 +84,7 @@ async function save() {
             id="provider-base-url"
             v-model="form.baseUrl"
             type="url"
-            placeholder="https://openrouter.ai/api/v1"
+            :placeholder="baseUrlPlaceholder"
             required
           />
         </div>

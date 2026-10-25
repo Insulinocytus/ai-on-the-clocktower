@@ -108,7 +108,7 @@ function acquireProvider(id: number, signal?: AbortSignal): Promise<() => void> 
 const PATHS: Record<ApiFormat, string> = {
   openai_completions: '/chat/completions',
   openai_responses: '/responses',
-  anthropic_messages: '/messages',
+  anthropic_messages: '/v1/messages',
 }
 
 function responsesInput(message: ChatMessage): unknown[] {

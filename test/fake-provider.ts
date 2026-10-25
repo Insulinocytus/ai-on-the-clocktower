@@ -26,7 +26,7 @@ interface RecordedRequest {
 }
 
 export interface FakeProvider {
-  /** Base URL to store on a provider, e.g. `http://127.0.0.1:1234/v1`. */
+  /** Base URL to store on a provider, following the format's official SDK, e.g. `http://127.0.0.1:1234/v1`. */
   baseUrl: string
   apiFormat: ApiFormat
   script: (...steps: FakeStep[]) => void
@@ -219,7 +219,7 @@ export async function startFakeProvider(
   const { port } = server.address() as AddressInfo
 
   return {
-    baseUrl: `http://127.0.0.1:${String(port)}/v1`,
+    baseUrl: `http://127.0.0.1:${String(port)}${apiFormat === 'anthropic_messages' ? '' : '/v1'}`,
     apiFormat,
     script: (...next) => steps.push(...next),
     requests,
