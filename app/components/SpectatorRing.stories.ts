@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook-vue/nuxt'
 import { expect, fn } from 'storybook/test'
 import { computed } from 'vue'
-import { config, perspective } from './spectator.fixtures'
+import { config, firstNight, perspective } from './spectator.fixtures'
 import { ROLES } from '#shared/game/roles'
 import SpectatorRing from './SpectatorRing.vue'
 
@@ -23,7 +23,7 @@ const meta = {
       return { args, title: computed(() => t(args.title)), onFocus }
     },
     template: `
-      <div class="h-175 w-190">
+      <div class="h-175 w-210">
         <SpectatorRing v-bind="args" :title="title" @focus="onFocus" />
       </div>
     `,
@@ -43,6 +43,24 @@ export const FirstNight: Story = {
       ROLES.chef.name.zh,
     )
     await expect(canvas.getByText('中毒')).toBeVisible()
+  },
+}
+
+const crowded = view({ kind: 'first-night' })
+export const CrowdedReminders: Story = {
+  args: {
+    ...crowded,
+    grimoire: {
+      ...crowded.grimoire,
+      redHerring: 1,
+      seats: crowded.grimoire.seats.map((seat) =>
+        seat.seat === 1
+          ? { ...seat, poisoned: true, protected: true, abilityUsed: true, master: 3 }
+          : seat.seat === 4
+            ? { ...seat, registeredRole: 'chef', registeredAlignment: 'good' }
+            : seat,
+      ),
+    },
   },
 }
 
@@ -92,6 +110,25 @@ export const FocusedSeat: Story = {
     )
     await userEvent.click(canvas.getByRole('button', { name: /^4 号座位/ }))
     await expect(onFocus).toHaveBeenCalledWith(4)
+  },
+}
+
+export const FifteenSeats: Story = {
+  args: firstNight(15),
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('存活 15 / 15 人')).toBeVisible()
+    await expect(canvas.getAllByRole('button', { name: /号座位/ })).toHaveLength(15)
+  },
+}
+
+export const SevenSeatsCrowdedReminders: Story = {
+  args: firstNight(7, true),
+}
+
+export const FifteenSeatsCrowdedReminders: Story = {
+  args: firstNight(15, true),
+  play: async ({ canvas }) => {
+    await expect(canvas.getAllByText('中毒')).toHaveLength(15)
   },
 }
 

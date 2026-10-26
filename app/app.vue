@@ -51,7 +51,6 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
 .tab-blocked-message h1 {
   margin-bottom: var(--space-4);
   font-size: var(--font-size-dialog);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-heading);
 }
 

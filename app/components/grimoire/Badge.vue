@@ -21,7 +21,6 @@ withDefaults(
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
   font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   white-space: nowrap;
 }

@@ -31,7 +31,6 @@ withDefaults(
   border-radius: var(--radius-pill);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-ui);
-  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   white-space: nowrap;
   cursor: pointer;

@@ -299,7 +299,7 @@ onUnmounted(() => {
     <template v-if="game">
       <header class="spectator-header flex items-center gap-3 border-b border-rule">
         <NuxtLink to="/games" class="text-sm text-ink2 underline">{{ t('games.title') }}</NuxtLink>
-        <h1 class="spectator-title font-medium">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
+        <h1 class="spectator-title">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
         <Badge>{{ replay ? t('games.replay') : t('games.live') }}</Badge>
         <Badge>{{ t(`games.${game.status}`) }}</Badge>
         <Button
@@ -350,12 +350,6 @@ onUnmounted(() => {
         <p v-else class="flex-1">{{ t('games.pageClosedPause') }}</p>
         <Button :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
       </div>
-      <SpectatorControls
-        v-if="game.compatible"
-        v-model:observer="observer"
-        v-model:losing="showLosing"
-        :seat-count="game.config.seatCount"
-      />
       <p v-if="!game.compatible" role="alert" class="p-6 text-accent">
         {{ t('games.incompatible') }}
       </p>
@@ -371,7 +365,13 @@ onUnmounted(() => {
         :blocks="blocks"
         :selected="selected?.key"
         @select="select"
-      />
+      >
+        <SpectatorControls
+          v-model:observer="observer"
+          v-model:losing="showLosing"
+          :seat-count="game.config.seatCount"
+        />
+      </SpectatorChannels>
       <div v-if="game.compatible" class="spectator-frame grid min-h-0 flex-1">
         <SpectatorRing
           :config="game.config"

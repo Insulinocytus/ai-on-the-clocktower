@@ -214,6 +214,41 @@ export const manualRequest = manual
 
 export const setupSample = sample(() => 0.25, config.seatCount)
 
+export function firstNight(seatCount: number, crowded = false) {
+  const gameConfig: GameConfig = {
+    ...config,
+    seatCount,
+    seats: Array.from({ length: Math.ceil(seatCount / seats.length) }, () => seats)
+      .flat()
+      .slice(0, seatCount),
+  }
+  const gameEvents: GameEvent[] = [
+    { seq: 1, type: 'game.created', ...gameConfig },
+    { seq: 2, type: 'grimoire.set', seats: seatsFor(sample(() => 0.25, seatCount)) },
+    { seq: 3, type: 'phase.started', day: 1, phase: 'first-night' },
+  ]
+  const grimoire = fold(gameEvents)
+  return {
+    config: gameConfig,
+    events: gameEvents,
+    grimoire: crowded
+      ? {
+          ...grimoire,
+          seats: grimoire.seats.map((seat) => ({
+            ...seat,
+            poisoned: true,
+            protected: true,
+            abilityUsed: true,
+            master: (seat.seat % seatCount) + 1,
+            registeredRole: 'chef' as const,
+          })),
+        }
+      : grimoire,
+    publicState: foldPublic(gameEvents, seatCount),
+    title: 'spectator.blocks.first-night',
+  }
+}
+
 export const setupRequest: DiscretionRequest = {
   seq: 2,
   type: 'discretion.requested',

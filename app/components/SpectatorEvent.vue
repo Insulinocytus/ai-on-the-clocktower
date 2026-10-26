@@ -12,13 +12,13 @@ const { t, locale } = useI18n()
   <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-50' : ''">
     <span class="pt-1 font-serif text-xs tabular-nums text-muted">{{ row.event.seq }}</span>
     <div class="min-w-0">
-      <p v-if="row.losing" class="mb-1 text-xs font-medium text-muted">
+      <p v-if="row.losing" class="mb-1 text-xs text-muted">
         {{ t('spectator.notSelected') }}
       </p>
       <template
         v-if="row.event.type === 'contestant.decision' || row.event.type === 'storyteller.decision'"
       >
-        <p class="text-xs font-medium text-muted">
+        <p class="text-xs text-muted">
           {{
             row.event.type === 'contestant.decision'
               ? t('spectator.seatSummary', { seat: row.event.seat })

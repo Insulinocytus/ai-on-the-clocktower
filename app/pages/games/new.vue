@@ -292,7 +292,6 @@ async function create() {
 
 .new-game h2 {
   font-size: var(--font-size-title);
-  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-heading);
 }
 

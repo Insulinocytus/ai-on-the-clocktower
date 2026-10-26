@@ -8,7 +8,6 @@ import { Toaster } from 'vue-sonner'
       unstyled: true,
       classes: {
         toast: 'grimoire-toast',
-        title: 'grimoire-toast-title',
         description: 'grimoire-toast-description',
         icon: 'grimoire-toast-icon',
         error: 'grimoire-toast--error',
@@ -75,10 +74,6 @@ import { Toaster } from 'vue-sonner'
 
 .grimoire-toast--error .grimoire-toast-icon {
   color: var(--accent);
-}
-
-.grimoire-toast-title {
-  font-weight: var(--font-weight-medium);
 }
 
 .grimoire-toast-description {

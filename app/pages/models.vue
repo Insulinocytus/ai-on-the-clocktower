@@ -236,7 +236,6 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
 
 .models-section-heading h2 {
   font-size: var(--font-size-title);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-heading);
 }
 
