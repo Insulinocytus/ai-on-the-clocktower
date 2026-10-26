@@ -18,7 +18,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
   >
     <img
       class="tab-blocked-ccc"
-      src="/botc/community/ccc-parchment.png"
+      :src="publicAssetUrl('botc/community/ccc-parchment.png')"
       :alt="t('app.communityContent')"
       width="80"
       height="32"
