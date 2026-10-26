@@ -184,6 +184,13 @@
   },
   "games": {
     "title": "Games",
+    "listSubtitle": "Open a game to watch, or copy an existing game's configuration to start a new one.",
+    "createdAt": "Created",
+    "script": "Trouble Brewing",
+    "emptyTitle": "No games yet",
+    "emptyDescription": "Seat 5–15 model presets, then watch a game of Trouble Brewing here.",
+    "emptyModelsHelp": "No model presets yet?",
+    "emptyModelsLink": "Add them on the Models page.",
     "new": "New game",
     "template": "New game from this template",
     "templateFrom": "Using game {id} as a template. A new seed will be generated.",

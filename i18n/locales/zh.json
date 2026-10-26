@@ -179,6 +179,13 @@
   },
   "games": {
     "title": "对局",
+    "listSubtitle": "点进一局观战，或从已有对局复制配置新建。",
+    "createdAt": "创建时间",
+    "script": "暗流涌动",
+    "emptyTitle": "还没有对局",
+    "emptyDescription": "挑 5 到 15 个模型预设坐上座位，开局后在这里观战暗流涌动。",
+    "emptyModelsHelp": "还没有模型预设？",
+    "emptyModelsLink": "先去模型页录入。",
     "new": "新建对局",
     "template": "以此局为模板新建",
     "templateFrom": "以对局 {id} 为模板，种子将重新生成。",
