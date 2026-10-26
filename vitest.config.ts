@@ -16,6 +16,9 @@ export default defineConfig({
         plugins: [storybookTest({ configDir: '.storybook' })],
         test: {
           name: 'storybook',
+          // Story iframes share one renderer thread; 8+ cold Nuxt apps booting at once push first stories past the 15s timeout.
+          maxWorkers: 4,
+          sequence: { groupOrder: 1 },
           browser: {
             enabled: true,
             provider: playwright(),
