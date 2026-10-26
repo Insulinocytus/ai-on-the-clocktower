@@ -31,15 +31,61 @@ const toldRoles = computed(() => {
   return roles
 })
 const seats = computed(() =>
-  props.config.seats.map((preset, index) => ({
-    number: index + 1,
-    preset: preset.name,
-    state: props.grimoire.seats.find((seat) => seat.seat === index + 1),
-    role:
-      props.grimoire.seats.find((seat) => seat.seat === index + 1)?.role ??
-      toldRoles.value.get(index + 1),
-    publicSeat: props.publicState.seats.find((seat) => seat.seat === index + 1),
-  })),
+  props.config.seats.map((preset, index) => {
+    const state = props.grimoire.seats.find((seat) => seat.seat === index + 1)
+    const publicSeat = props.publicState.seats.find((seat) => seat.seat === index + 1)
+    return {
+      number: index + 1,
+      preset: preset.name,
+      state,
+      role: state?.role ?? toldRoles.value.get(index + 1),
+      publicSeat,
+      dead: !(state?.alive ?? publicSeat?.alive ?? true),
+      reminders: state
+        ? [
+            {
+              visible: state.poisoned,
+              icon: characterIconUrl('poisoner'),
+              label: t('spectator.poisoned'),
+            },
+            {
+              visible: state.protected,
+              icon: characterIconUrl('monk'),
+              label: t('spectator.protected'),
+            },
+            { visible: state.abilityUsed, paper: '✓', label: t('spectator.abilityUsed') },
+            {
+              visible: state.master !== null,
+              icon: characterIconUrl('butler'),
+              label: t('spectator.master', { seat: state.master }),
+            },
+            {
+              visible: props.grimoire.redHerring === index + 1,
+              icon: characterIconUrl('fortuneteller'),
+              label: t('spectator.redHerring'),
+            },
+            {
+              visible: !!state.registeredRole,
+              icon: state.registeredRole ? characterIconUrl(state.registeredRole) : undefined,
+              label: state.registeredRole
+                ? t('spectator.registeredRole', {
+                    role: ROLES[state.registeredRole].name[language.value],
+                  })
+                : '',
+            },
+            {
+              visible: !!state.registeredAlignment,
+              paper: state.registeredAlignment ? t(`spectator.${state.registeredAlignment}`) : '',
+              label: state.registeredAlignment
+                ? t('spectator.registeredAlignment', {
+                    alignment: t(`spectator.${state.registeredAlignment}`),
+                  })
+                : '',
+            },
+          ].filter((reminder) => reminder.visible)
+        : [],
+    }
+  }),
 )
 function position(index: number, inner = false) {
   const angle =
@@ -54,7 +100,7 @@ function position(index: number, inner = false) {
 </script>
 
 <template>
-  <section class="grimoire-board" :aria-label="t('spectator.grimoire')">
+  <section class="grimoire-well" :aria-label="t('spectator.grimoire')">
     <header class="flex items-center justify-between text-xs text-muted">
       <h2 class="font-serif text-sm">{{ t('spectator.grimoire') }}</h2>
       <span>{{ t('spectator.atSeq', { seq: grimoire.seq }) }}</span>
@@ -79,26 +125,15 @@ function position(index: number, inner = false) {
             :aria-pressed="focusedSeat === seat.number"
             @click="$emit('focus', seat.number)"
           >
-            <span
-              class="seat-token"
-              :class="{
-                'seat-token--dead': !(seat.state?.alive ?? seat.publicSeat?.alive ?? true),
-              }"
-            >
+            <span class="seat-token round-token" :class="{ 'seat-token--dead': seat.dead }">
               <img
                 v-if="seat.role"
-                :src="
-                  characterIconUrl(seat.role, seat.state?.alignment ?? ROLES[seat.role].alignment)
-                "
+                :src="characterIconUrl(seat.role, seat.state?.alignment)"
                 alt=""
                 :title="ROLES[seat.role].ability[language]"
               />
             </span>
-            <span
-              v-if="!(seat.state?.alive ?? seat.publicSeat?.alive ?? true)"
-              class="death-shroud"
-              aria-hidden="true"
-            ></span>
+            <span v-if="seat.dead" class="death-shroud" aria-hidden="true"></span>
             <span class="mt-2 block font-serif text-base">{{
               t('games.seat', { seat: seat.number })
             }}</span>
@@ -109,10 +144,7 @@ function position(index: number, inner = false) {
             <span v-if="seat.state?.believedRole" class="block text-xs text-ink2">{{
               t('spectator.believes', { role: ROLES[seat.state.believedRole].name[language] })
             }}</span>
-            <span
-              v-if="!(seat.state?.alive ?? seat.publicSeat?.alive ?? true)"
-              class="block text-xs text-ink2"
-            >
+            <span v-if="seat.dead" class="block text-xs text-ink2">
               {{ t('spectator.dead') }} ·
               {{
                 t(
@@ -136,68 +168,23 @@ function position(index: number, inner = false) {
         class="reminders"
         :style="position(index, true)"
       >
-        <template v-if="seat.state">
-          <span v-if="seat.state.poisoned" class="reminder"
-            ><img :src="characterIconUrl('poisoner', 'evil')" alt="" /><span>{{
-              t('spectator.poisoned')
-            }}</span></span
-          >
-          <span v-if="seat.state.protected" class="reminder"
-            ><img :src="characterIconUrl('monk', 'good')" alt="" /><span>{{
-              t('spectator.protected')
-            }}</span></span
-          >
-          <span v-if="seat.state.abilityUsed" class="reminder"
-            ><span class="reminder-paper">✓</span
-            ><span>{{ t('spectator.abilityUsed') }}</span></span
-          >
-          <span v-if="seat.state.master !== null" class="reminder"
-            ><img :src="characterIconUrl('butler', 'good')" alt="" /><span>{{
-              t('spectator.master', { seat: seat.state.master })
-            }}</span></span
-          >
-          <span v-if="grimoire.redHerring === seat.number" class="reminder"
-            ><img :src="characterIconUrl('fortuneteller', 'good')" alt="" /><span>{{
-              t('spectator.redHerring')
-            }}</span></span
-          >
-          <span v-if="seat.state.registeredRole" class="reminder"
-            ><img
-              :src="
-                characterIconUrl(
-                  seat.state.registeredRole,
-                  ROLES[seat.state.registeredRole].alignment,
-                )
-              "
-              alt=""
-            /><span>{{
-              t('spectator.registeredRole', {
-                role: ROLES[seat.state.registeredRole].name[language],
-              })
-            }}</span></span
-          >
-          <span v-if="seat.state.registeredAlignment" class="reminder"
-            ><span class="reminder-paper">{{
-              t(`spectator.${seat.state.registeredAlignment}`)
-            }}</span
-            ><span>{{
-              t('spectator.registeredAlignment', {
-                alignment: t(`spectator.${seat.state.registeredAlignment}`),
-              })
-            }}</span></span
-          >
-        </template>
+        <span v-for="reminder in seat.reminders" :key="reminder.label" class="reminder">
+          <img v-if="reminder.icon" class="round-token" :src="reminder.icon" alt="" />
+          <span v-else class="reminder-paper round-token">{{ reminder.paper }}</span>
+          <span>{{ reminder.label }}</span>
+        </span>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.grimoire-board {
+.grimoire-well {
   overflow: auto;
   min-height: 0;
   padding: 16px 24px;
   background: var(--paper2);
+  border-radius: var(--radius-well);
 }
 .grimoire-ring {
   position: relative;
@@ -236,9 +223,6 @@ function position(index: number, inner = false) {
   width: var(--size-seat-token);
   height: var(--size-seat-token);
   margin: auto;
-  border: 1px solid var(--token-rule);
-  border-radius: 50%;
-  background: var(--token);
   box-shadow: 0 3px 7px rgb(0 0 0 / 30%);
 }
 .seat-token img {
@@ -286,9 +270,5 @@ function position(index: number, inner = false) {
   justify-content: center;
   width: var(--size-reminder-token);
   height: var(--size-reminder-token);
-  border: 1px solid var(--token-rule);
-  border-radius: 50%;
-  background: var(--token);
-  color: var(--token-ink);
 }
 </style>

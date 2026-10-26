@@ -1,4 +1,3 @@
-/* Source: design tokens from issue #81's pinned Gist. */
 :root {
   --font-family-serif: 'Noto Serif SC', serif;
   --font-family-sans: 'Noto Sans SC', sans-serif;
@@ -12,19 +11,13 @@
   --font-size-speech: 16px;
   --font-size-title-sm: 17px;
   --font-size-wordmark: 19px;
+  --font-size-record: 19px;
   --font-size-title: 23px;
   --font-size-dialog: 29px;
   --font-size-page: 44px;
-  --line-height-tight: 1.2;
   --line-height-heading: 1.3;
   --line-height-ui: 1.5;
   --line-height-body: 1.6;
-  --line-height-speech: 1.7;
-  --radius-thought: 10px;
-  --radius-well: 14px;
-  --radius-dialog: 16px;
-  --radius-pill: 9999px;
-  --radius-field: 0px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -33,7 +26,6 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-10: 40px;
-  --layout-page-width: 1440px;
   --layout-content-width: 1120px;
   --layout-topbar-height: 56px;
   --layout-grimoire-well: 840px;
@@ -42,6 +34,7 @@
   --size-seat-token: 84px;
   --size-reminder-token: 40px;
   --size-event-avatar: 32px;
+  --size-discretion-icon: 32px;
   --size-button: 36px;
   --size-field: 40px;
   --size-badge: 26px;

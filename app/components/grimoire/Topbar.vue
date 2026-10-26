@@ -82,7 +82,7 @@ async function toggleLocale() {
   right: 0;
   bottom: 0;
   left: 0;
-  height: var(--focus-ring-width);
+  height: 2px;
   background: var(--accent);
   content: '';
 }

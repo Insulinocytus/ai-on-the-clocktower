@@ -1,0 +1,73 @@
+@property --paper {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0f0a06;
+}
+@property --paper2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #19120e;
+}
+@property --paper3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #271d17;
+}
+@property --ink {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #efe7d8;
+}
+@property --ink2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d3c9bb;
+}
+@property --muted {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #9d9388;
+}
+@property --rule {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #372f28;
+}
+@property --accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e47c75;
+}
+@property --accent2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f2a7a1;
+}
+@property --accent-ink {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #0f0a06;
+}
+@property --token {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #e2d6be;
+}
+@property --token-rule {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #aa9c8a;
+}
+
+html[data-theme] {
+  transition-property:
+    --paper, --paper2, --paper3, --ink, --ink2, --muted, --rule, --accent, --accent2, --accent-ink,
+    --token, --token-rule;
+  transition-duration: 600ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] {
+    transition-duration: 0s;
+  }
+}

@@ -4,7 +4,6 @@ import { RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 defineProps<{
   modelValue?: T
   options: { value: T; label: string }[]
-  disabled?: boolean
 }>()
 const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
 </script>
@@ -12,7 +11,6 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
 <template>
   <RadioGroupRoot
     :model-value="modelValue ?? ''"
-    :disabled="disabled"
     orientation="horizontal"
     class="grimoire-segmented"
     @update:model-value="emit('update:modelValue', $event as T)"
@@ -28,7 +26,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
   </RadioGroupRoot>
 </template>
 
-<style scoped>
+<style>
 .grimoire-segmented {
   display: inline-flex;
   width: max-content;
@@ -52,10 +50,5 @@ const emit = defineEmits<{ 'update:modelValue': [value: T] }>()
 .grimoire-segmented-option[data-state='checked'] {
   background: var(--accent);
   color: var(--accent-ink);
-}
-
-.grimoire-segmented-option[data-disabled] {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 </style>

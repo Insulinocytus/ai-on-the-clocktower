@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Badge from '@/components/grimoire/Badge.vue'
 import { renderEvent } from '#shared/event-templates'
 import type { SpectatorRow } from '#shared/game/spectator'
 import type { Observer } from '#shared/types/game'
@@ -52,7 +53,7 @@ const { t, locale } = useI18n()
             {{ t('trial.raw') }}
           </summary>
           <pre
-            class="mt-2 max-h-64 overflow-auto rounded-[var(--radius-thought)] bg-paper3 p-3 text-xs text-ink2"
+            class="mt-2 max-h-64 overflow-auto rounded-thought bg-paper3 p-3 text-xs text-ink2"
             >{{ JSON.stringify(row.event.raw, null, 2) }}</pre>
         </details>
       </template>
@@ -67,11 +68,12 @@ const { t, locale } = useI18n()
         >
           {{ renderEvent(row.event, locale === 'zh' ? 'zh' : 'en', observer) }}
         </p>
-        <span
+        <Badge
           v-if="observer === 'spectator' && row.falseInfo"
-          class="mt-2 inline-block rounded border border-accent px-2 py-0.5 text-xs text-accent"
+          variant="accent-outline"
+          class="mt-2"
           :title="row.falseReason ? t(`spectator.falseReasons.${row.falseReason}`) : undefined"
-          >{{ t('spectator.falseInfo') }}</span
+          >{{ t('spectator.falseInfo') }}</Badge
         >
       </template>
     </div>

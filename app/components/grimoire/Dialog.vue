@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogOverlay,
@@ -13,13 +14,13 @@ withDefaults(
   defineProps<{
     title: string
     description?: string
-    size?: 'form' | 'wide'
-    theme?: 'day' | 'night'
+    size?: 'form' | 'wide' | 'discretion'
   }>(),
-  { size: 'form', description: undefined, theme: undefined },
+  { size: 'form', description: undefined },
 )
 const open = defineModel<boolean>('open', { required: true })
 const descriptionId = useId()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -28,10 +29,15 @@ const descriptionId = useId()
       <DialogOverlay class="grimoire-dialog-overlay" />
       <DialogContent
         v-bind="$attrs"
-        :data-theme="theme"
         :aria-describedby="description ? descriptionId : undefined"
         :class="['grimoire-dialog', `grimoire-dialog--${size}`]"
       >
+        <DialogClose
+          class="absolute top-4 right-4 flex size-6 items-center justify-center text-muted"
+        >
+          <span aria-hidden="true">×</span>
+          <span class="sr-only">{{ t('common.close') }}</span>
+        </DialogClose>
         <header class="grimoire-dialog-header">
           <DialogTitle class="grimoire-dialog-title">{{ title }}</DialogTitle>
           <DialogDescription
@@ -76,6 +82,10 @@ const descriptionId = useId()
 
 .grimoire-dialog--wide {
   width: min(760px, calc(100vw - 48px));
+}
+
+.grimoire-dialog--discretion {
+  width: min(896px, calc(100vw - 48px));
 }
 
 .grimoire-dialog-header {

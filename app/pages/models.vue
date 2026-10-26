@@ -209,20 +209,11 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
 
 <style scoped>
 .models-page {
-  width: var(--layout-content-width);
-  margin-inline: calc((100% - var(--layout-content-width)) / 2);
-  padding-top: var(--space-8);
   padding-bottom: var(--space-10);
 }
 
 .models-heading {
   margin-bottom: 48px;
-}
-
-.models-heading h1 {
-  font-size: var(--font-size-page);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-heading);
 }
 
 .models-heading p {
@@ -280,7 +271,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
 .models-table .record-name {
   color: var(--ink);
   font-family: var(--font-family-serif);
-  font-size: var(--font-size-wordmark);
+  font-size: var(--font-size-record);
 }
 
 .record-number {
@@ -302,10 +293,5 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
   padding-block: var(--space-2);
   font-size: var(--font-size-ui);
   cursor: pointer;
-}
-
-.record-actions button:hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 </style>

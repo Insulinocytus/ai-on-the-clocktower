@@ -23,11 +23,6 @@
   border-color: var(--accent);
 }
 
-.grimoire-field:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .grimoire-textarea {
   height: auto;
   min-height: 96px;

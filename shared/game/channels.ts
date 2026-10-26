@@ -1,5 +1,7 @@
 import type { GameEvent } from '../types/game'
 
+export type Theme = 'night' | 'day'
+
 export interface ChannelBlock {
   key: string
   kind:
@@ -15,7 +17,7 @@ export interface ChannelBlock {
   occurrence?: number
 }
 
-export function channelTheme(kind: ChannelBlock['kind'] | undefined): 'night' | 'day' {
+export function channelTheme(kind: ChannelBlock['kind'] | undefined): Theme {
   return kind === undefined || kind === 'setup' || kind === 'first-night' || kind === 'night'
     ? 'night'
     : 'day'

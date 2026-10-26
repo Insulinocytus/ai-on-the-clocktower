@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { CheckboxIndicator, CheckboxRoot, type CheckboxRootProps } from 'reka-ui'
 
-defineProps<Pick<CheckboxRootProps, 'id' | 'name' | 'disabled' | 'required' | 'value'>>()
-const model = defineModel<boolean | 'indeterminate'>({ default: false })
+defineProps<Pick<CheckboxRootProps, 'id' | 'disabled'>>()
+const model = defineModel<boolean>({ default: false })
 </script>
 
 <template>
-  <CheckboxRoot v-bind="$props" v-model="model" class="grimoire-checkbox">
+  <CheckboxRoot
+    v-bind="$props"
+    :model-value="model"
+    class="grimoire-checkbox"
+    @update:model-value="model = $event === true"
+  >
     <CheckboxIndicator class="grimoire-checkbox-indicator">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-        <path v-if="model === 'indeterminate'" d="M4 8h8" />
-        <path v-else d="m4 8 3 3 5-7" />
+        <path d="m4 8 3 3 5-7" />
       </svg>
     </CheckboxIndicator>
   </CheckboxRoot>
@@ -32,16 +36,10 @@ const model = defineModel<boolean | 'indeterminate'>({ default: false })
   cursor: pointer;
 }
 
-.grimoire-checkbox[data-state='checked'],
-.grimoire-checkbox[data-state='indeterminate'] {
+.grimoire-checkbox[data-state='checked'] {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-}
-
-.grimoire-checkbox:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .grimoire-checkbox-indicator {

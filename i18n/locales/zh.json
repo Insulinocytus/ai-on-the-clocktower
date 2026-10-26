@@ -93,7 +93,6 @@
     "outsider": "外来者",
     "minion": "爪牙",
     "demon": "恶魔",
-    "batch": "全部设为{source}",
     "errors": {
       "duplicate_role": "角色不能重复。",
       "invalid_role_counts": "角色人数必须符合玩家数配置表，并应用男爵修正。",
@@ -216,13 +215,11 @@
       "D13": "替死对象",
       "D14": "爪牙继位"
     },
-    "seating": "分座",
     "sources": { "random": "随机", "storyteller": "说书人模型", "manual": "手动" },
     "game": "对局",
     "models": "模型预设",
     "status": "状态",
     "reason": "原因",
-    "empty": "还没有对局。新建一局开始观战。",
     "running": "运行中",
     "waiting": "等待手动裁量",
     "ended": "已结束",

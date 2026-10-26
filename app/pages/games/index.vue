@@ -130,9 +130,6 @@ onUnmounted(() => {
 
 <style scoped>
 .games-page {
-  width: var(--layout-content-width);
-  margin-inline: calc((100% - var(--layout-content-width)) / 2);
-  padding-top: var(--space-8);
   color: var(--ink2);
   font-size: var(--font-size-ui);
   line-height: var(--line-height-ui);
@@ -142,13 +139,6 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-}
-
-.games-heading h1 {
-  color: var(--ink);
-  font-size: var(--font-size-page);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-heading);
 }
 
 .games-heading > a {
@@ -209,14 +199,8 @@ onUnmounted(() => {
 .games-id {
   color: var(--ink);
   font-family: var(--font-family-serif);
-  font-size: var(--font-size-wordmark);
+  font-size: var(--font-size-record);
   font-weight: var(--font-weight-semibold);
-}
-
-.games-id:hover,
-.games-template a:hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 
 .games-created {

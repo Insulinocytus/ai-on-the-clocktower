@@ -3,7 +3,7 @@ import Checkbox from '@/components/grimoire/Checkbox.vue'
 import Select from '@/components/grimoire/Select.vue'
 import type { Observer } from '#shared/types/game'
 
-const props = defineProps<{ seatCount: number; theme: 'night' | 'day' }>()
+const props = defineProps<{ seatCount: number }>()
 const observer = defineModel<Observer>('observer', { required: true })
 const losing = defineModel<boolean>('losing', { required: true })
 const { t } = useI18n()
@@ -26,7 +26,6 @@ const perspectives = computed<{ value: Observer; label: string }[]>(() => [
         id="spectator-observer"
         v-model="observer"
         :options="perspectives"
-        :theme="theme"
         content-class="spectator-perspective-menu"
         compact
       />

@@ -8,7 +8,6 @@ import type { RoleId } from '#shared/types/game'
 const props = defineProps<{
   seatCount: number
   candidates: { type: 'setup' | 'seating'; sample: RoleId[]; roles?: RoleId[] }
-  theme: 'day' | 'night'
 }>()
 const choice = defineModel<RoleId[]>()
 const { t, locale } = useI18n()
@@ -103,7 +102,6 @@ function randomFill() {
           v-model="selected[index]"
           :options="available"
           :placeholder="t('manual.selectRole')"
-          :theme="theme"
         />
       </div>
     </div>

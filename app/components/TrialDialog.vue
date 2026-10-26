@@ -57,8 +57,8 @@ const pretty = (value: unknown) =>
     <div v-else-if="result" class="grid min-w-0 gap-5">
       <div class="flex flex-wrap items-center gap-2">
         <Badge
-          :variant="result.valid ? 'accent' : 'outline'"
-          :class="result.valid ? 'trial-valid' : 'trial-invalid'"
+          :variant="result.valid ? 'accent' : 'accent-outline'"
+          :size="result.valid ? 'large' : 'default'"
         >
           {{ result.valid ? t('trial.valid') : t('trial.invalid') }}
         </Badge>
@@ -91,16 +91,5 @@ const pretty = (value: unknown) =>
   font-family: var(--font-family-sans);
   font-size: var(--font-size-small);
   line-height: var(--line-height-body);
-}
-
-.trial-valid {
-  height: var(--size-button);
-  padding-inline: var(--space-5);
-  font-size: var(--font-size-ui);
-}
-
-.trial-invalid {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 </style>

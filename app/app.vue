@@ -16,6 +16,13 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
     role="alert"
     class="grain tab-blocked fixed inset-0 flex items-center justify-center"
   >
+    <img
+      class="tab-blocked-ccc"
+      src="/botc/community/ccc-parchment.png"
+      :alt="t('app.communityContent')"
+      width="80"
+      height="32"
+    />
     <div class="tab-blocked-message text-center">
       <h1>{{ t('app.tabBlockedTitle') }}</h1>
       <p>{{ t('app.tabBlockedDescription') }}</p>
@@ -23,7 +30,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
   </div>
   <div v-else-if="ready" class="grain min-h-screen bg-paper text-ink">
     <Topbar />
-    <main :class="route.meta.spectator ? '' : 'mx-auto max-w-6xl p-6'">
+    <main :class="{ 'page-main': !route.meta.spectator }">
       <NuxtPage />
     </main>
     <Toaster />
@@ -35,6 +42,28 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
   background: var(--paper);
   color: var(--ink);
   padding: var(--space-6);
+}
+
+.tab-blocked-ccc {
+  position: absolute;
+  top: 12px;
+  right: var(--layout-gutter);
+  width: 80px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.page-main {
+  width: var(--layout-content-width);
+  margin-inline: auto;
+  padding-block: calc(var(--space-6) + var(--space-8)) var(--space-6);
+}
+
+.page-main :deep(h1) {
+  color: var(--ink);
+  font-size: var(--font-size-page);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
 }
 
 .tab-blocked-message h1 {

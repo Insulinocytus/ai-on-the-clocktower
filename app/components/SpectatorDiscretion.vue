@@ -14,7 +14,6 @@ const props = defineProps<{
   request: Extract<GameEvent, { type: 'discretion.requested' }>
   events: GameEvent[]
   aborting: boolean
-  theme: 'day' | 'night'
 }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ submitted: []; abort: [] }>()
@@ -84,14 +83,13 @@ async function submit() {
     v-model:open="open"
     :title="t('manual.title', { discretion: request.discretion })"
     :description="t('manual.help')"
-    :theme="theme"
-    style="width: min(896px, calc(100vw - 48px))"
+    size="discretion"
     @interact-outside.prevent
   >
     <div class="space-y-5">
       <section class="space-y-2">
         <h3 class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
-        <div class="max-h-52 overflow-auto rounded-[var(--radius-thought)] border border-rule">
+        <div class="max-h-52 overflow-auto rounded-thought border border-rule">
           <table class="manual-table w-full text-left text-sm">
             <thead class="sticky top-0 bg-paper3 text-muted">
               <tr>
@@ -115,7 +113,7 @@ async function submit() {
                     <span class="flex items-center gap-2">
                       <img
                         v-if="state"
-                        class="manual-role-token"
+                        class="manual-role-token round-token"
                         :src="characterIconUrl(state.role, state.alignment)"
                         alt=""
                       />
@@ -156,9 +154,7 @@ async function submit() {
           </table>
         </div>
       </section>
-      <section
-        class="space-y-2 rounded-[var(--radius-thought)] bg-paper3 p-4 text-sm leading-6 text-ink2"
-      >
+      <section class="space-y-2 rounded-thought bg-paper3 p-4 text-sm leading-6 text-ink2">
         <h3 class="font-serif font-semibold text-ink">{{ t('manual.truth') }}</h3>
         <p v-if="request.context?.seat">
           {{ t('games.seat', { seat: request.context.seat })
@@ -176,7 +172,6 @@ async function submit() {
         v-model:roles="setupRoles"
         :seat-count="config.seatCount"
         :candidates="candidates"
-        :theme="theme"
       />
       <section v-else class="space-y-2">
         <h3 class="font-serif font-medium">
@@ -193,7 +188,6 @@ async function submit() {
               label: describe(candidate),
             }))
           "
-          :theme="theme"
         />
       </section>
     </div>
@@ -220,8 +214,5 @@ async function submit() {
 .manual-role-token {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--token-rule);
-  background: var(--token);
 }
 </style>

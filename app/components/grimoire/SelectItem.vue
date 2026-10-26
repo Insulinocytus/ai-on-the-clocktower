@@ -39,11 +39,6 @@ defineProps<Pick<SelectItemProps, 'value' | 'disabled' | 'textValue'>>()
   color: var(--ink);
 }
 
-.grimoire-select-item[data-disabled] {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .grimoire-select-check {
   flex-shrink: 0;
 }

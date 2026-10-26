@@ -98,7 +98,6 @@
     "outsider": "Outsiders",
     "minion": "Minions",
     "demon": "Demons",
-    "batch": "Set all to {source}",
     "errors": {
       "duplicate_role": "Characters must not repeat.",
       "invalid_role_counts": "Character counts must match the player count, including the Baron adjustment.",
@@ -221,13 +220,11 @@
       "D13": "Redirected death target",
       "D14": "Minion succession"
     },
-    "seating": "Seating",
     "sources": { "random": "Random", "storyteller": "Storyteller model", "manual": "Manual" },
     "game": "Game",
     "models": "Model presets",
     "status": "Status",
     "reason": "Reason",
-    "empty": "No games yet. Create a game to start watching.",
     "running": "Running",
     "waiting": "Waiting for manual discretion",
     "ended": "Ended",

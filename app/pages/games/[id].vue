@@ -292,7 +292,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="spectator-shell flex flex-col bg-paper text-ink" :data-theme="theme">
+  <section class="spectator-shell flex flex-col bg-paper text-ink">
     <p v-if="loadError" role="alert" class="p-6 text-accent">
       {{ apiErrorMessage(loadError) }}
     </p>
@@ -355,7 +355,6 @@ onUnmounted(() => {
         v-model:observer="observer"
         v-model:losing="showLosing"
         :seat-count="game.config.seatCount"
-        :theme="theme"
       />
       <p v-if="!game.compatible" role="alert" class="p-6 text-accent">
         {{ t('games.incompatible') }}
@@ -375,7 +374,6 @@ onUnmounted(() => {
       />
       <div v-if="game.compatible" class="spectator-frame grid min-h-0 flex-1">
         <SpectatorRing
-          class="spectator-well"
           :config="game.config"
           :grimoire="grimoire"
           :public-state="publicState"
@@ -407,7 +405,6 @@ onUnmounted(() => {
         :request="pending"
         :events="manualEvents"
         :aborting="aborting"
-        :theme="theme"
         @submitted="catchUpManual"
         @abort="abort"
       />
@@ -442,26 +439,5 @@ onUnmounted(() => {
   gap: var(--layout-gutter);
   padding: var(--space-4) var(--space-10);
   justify-content: center;
-}
-
-.spectator-well {
-  border-radius: var(--radius-well);
-}
-</style>
-
-<style>
-html[data-theme] body,
-html[data-theme] body *,
-html[data-theme] .grain::after {
-  transition-property: color, background-color, border-color, opacity;
-  transition-duration: 600ms;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html[data-theme] body,
-  html[data-theme] body *,
-  html[data-theme] .grain::after {
-    transition: none;
-  }
 }
 </style>

@@ -7,21 +7,25 @@
 @import 'tailwindcss';
 @import './tokens.css';
 @import './fields.css';
+@import './theme-transition.css';
+
+@theme static {
+  --radius-thought: 10px;
+  --radius-well: 14px;
+  --radius-dialog: 16px;
+  --radius-pill: 9999px;
+  --radius-field: 0px;
+}
 
 @theme inline {
   --font-serif: var(--font-family-serif);
   --font-sans: var(--font-family-sans);
   --color-paper: var(--paper);
-  --color-paper2: var(--paper2);
   --color-paper3: var(--paper3);
   --color-ink: var(--ink);
   --color-ink2: var(--ink2);
   --color-rule: var(--rule);
-  --color-accent2: var(--accent2);
   --color-accent-ink: var(--accent-ink);
-  --color-token: var(--token);
-  --color-token-ink: var(--token-ink);
-  --color-token-rule: var(--token-rule);
   --color-accent: var(--accent);
   --color-muted: var(--muted);
 }
@@ -51,6 +55,11 @@
     outline: var(--focus-ring-width) solid var(--accent2);
     outline-offset: var(--focus-ring-offset);
   }
+
+  :disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
 
 .grain {
@@ -66,4 +75,11 @@
   opacity: var(--grain-opacity);
   mix-blend-mode: var(--grain-blend);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='gamma' amplitude='.5' exponent='2'/%3E%3CfeFuncG type='gamma' amplitude='.5' exponent='2'/%3E%3CfeFuncB type='gamma' amplitude='.5' exponent='2'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Cpath fill='%23000' filter='url(%23noise)' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
+}
+
+.round-token {
+  border: 1px solid var(--token-rule);
+  border-radius: 50%;
+  background: var(--token);
+  color: var(--token-ink);
 }

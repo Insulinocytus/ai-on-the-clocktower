@@ -5,8 +5,7 @@ import Select from '@/components/grimoire/Select.vue'
 import SegmentedControl from '@/components/grimoire/SegmentedControl.vue'
 import type { Preset } from '#shared/types/models'
 import { createGame, getGame, listPresets } from '@/api'
-import type { GameConfig, DiscretionSource, DiscretionId, RoleId } from '#shared/types/game'
-import { ROLES } from '#shared/game/roles'
+import type { GameConfig, DiscretionSource, DiscretionId } from '#shared/types/game'
 import { characterIconUrl } from '@/utils/character-icons'
 import { DISCRETION_IDS } from '#shared/game/rules'
 
@@ -65,19 +64,21 @@ const presetOptions = computed(() =>
 const sourceOptions = computed(() =>
   sources.map((value) => ({ value, label: t(`games.sources.${value}`) })),
 )
-const discretionRoles: Partial<Record<DiscretionId, RoleId>> = {
-  D2: 'drunk',
-  D3: 'fortuneteller',
-  D4: 'washerwoman',
-  D5: 'librarian',
-  D6: 'investigator',
-  D7: 'imp',
-  D8: 'poisoner',
-  D10: 'spy',
-  D11: 'recluse',
-  D12: 'mayor',
-  D13: 'soldier',
-  D14: 'scarletwoman',
+const discretionIcons: Record<DiscretionId, string | undefined> = {
+  D1: '/botc/editions/tb/logo.webp',
+  seating: undefined,
+  D2: characterIconUrl('drunk'),
+  D3: characterIconUrl('fortuneteller'),
+  D4: characterIconUrl('washerwoman'),
+  D5: characterIconUrl('librarian'),
+  D6: characterIconUrl('investigator'),
+  D7: characterIconUrl('imp'),
+  D8: characterIconUrl('poisoner'),
+  D10: characterIconUrl('spy'),
+  D11: characterIconUrl('recluse'),
+  D12: characterIconUrl('mayor'),
+  D13: characterIconUrl('soldier'),
+  D14: characterIconUrl('scarletwoman'),
 }
 function setAll(source: DiscretionSource) {
   for (const id of DISCRETION_IDS) form.discretions[id] = source
@@ -222,25 +223,26 @@ async function create() {
           <div class="discretions-header">
             <h2 id="discretions-heading">{{ t('games.discretions') }}</h2>
             <span id="batch-label">{{ t('games.setAll') }}</span>
-            <SegmentedControl
-              :options="sourceOptions"
-              aria-labelledby="batch-label"
-              @update:model-value="setAll"
-            />
+            <div class="grimoire-segmented" role="group" aria-labelledby="batch-label">
+              <button
+                v-for="option in sourceOptions"
+                :key="option.value"
+                type="button"
+                class="grimoire-segmented-option"
+                @click="setAll(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
           </div>
           <p class="discretions-help">{{ t('games.discretionsHelp') }}</p>
           <div v-for="id in DISCRETION_IDS" :key="id" class="discretion-row">
             <span
-              class="discretion-icon"
+              class="discretion-icon round-token"
               :class="{ 'discretion-icon--empty': id === 'seating' }"
               aria-hidden="true"
             >
-              <img v-if="id === 'D1'" src="/botc/editions/tb/logo.webp" alt="" />
-              <img
-                v-else-if="discretionRoles[id]"
-                :src="characterIconUrl(discretionRoles[id]!, ROLES[discretionRoles[id]!].alignment)"
-                alt=""
-              />
+              <img v-if="discretionIcons[id]" :src="discretionIcons[id]" alt="" />
             </span>
             <div :id="`source-${id}-label`" class="discretion-name">
               <span>{{ t(`games.discretionNames.${id}`) }}</span>
@@ -268,21 +270,12 @@ async function create() {
 </template>
 
 <style scoped>
-.new-game {
-  width: var(--layout-content-width);
-  margin-inline: calc((100% - var(--layout-content-width)) / 2);
-  padding-top: var(--space-8);
-}
-
 .new-game-header {
   margin-bottom: calc(var(--space-10) + var(--space-3));
 }
 
 .new-game-header h1 {
   margin-bottom: var(--space-2);
-  font-size: var(--font-size-page);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-heading);
 }
 
 .new-game-header p {
@@ -377,7 +370,7 @@ async function create() {
 
 .discretion-row {
   display: grid;
-  grid-template-columns: var(--size-event-avatar) 1fr auto;
+  grid-template-columns: var(--size-discretion-icon) 1fr auto;
   align-items: center;
   gap: var(--space-4);
   min-height: 52px;
@@ -392,12 +385,9 @@ async function create() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--size-event-avatar);
-  height: var(--size-event-avatar);
+  width: var(--size-discretion-icon);
+  height: var(--size-discretion-icon);
   overflow: hidden;
-  border: 1px solid var(--token-rule);
-  border-radius: var(--radius-pill);
-  background: var(--token);
 }
 
 .discretion-icon img {

@@ -32,7 +32,7 @@ watch(
           <button
             type="button"
             class="channel-block text-left"
-            :class="selected === block.key ? 'bg-accent text-accent-ink' : 'hover:bg-paper3'"
+            :class="{ 'bg-accent text-accent-ink': selected === block.key }"
             :aria-current="selected === block.key ? 'step' : undefined"
             @click="$emit('select', block.key)"
           >

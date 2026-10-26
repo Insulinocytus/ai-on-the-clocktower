@@ -18,18 +18,16 @@ defineProps<{
   invalid?: boolean
   disabled?: boolean
   required?: boolean
-  name?: string
-  theme?: 'day' | 'night'
   contentClass?: string
 }>()
 const model = defineModel<T>()
 </script>
 
 <template>
-  <SelectRoot v-model="model" :disabled="disabled" :required="required" :name="name">
+  <SelectRoot v-model="model" :disabled="disabled" :required="required">
     <SelectTrigger
       v-bind="$attrs"
-      :aria-invalid="invalid || $attrs['aria-invalid'] || undefined"
+      :aria-invalid="invalid || undefined"
       :class="[
         'grimoire-field grimoire-select-trigger',
         { 'grimoire-select-trigger--compact': compact },
@@ -53,7 +51,6 @@ const model = defineModel<T>()
       <SelectContent
         class="grimoire-select-content"
         :class="contentClass"
-        :data-theme="theme"
         position="popper"
         :side-offset="6"
       >
@@ -65,7 +62,7 @@ const model = defineModel<T>()
             :disabled="option.disabled"
             :text-value="option.label"
           >
-            <slot name="option" :option="option">{{ option.label }}</slot>
+            {{ option.label }}
           </SelectItem>
         </SelectViewport>
       </SelectContent>

@@ -48,18 +48,13 @@ withDefaults(
   color: var(--ink2);
 }
 
-.grimoire-button:enabled:hover,
-.grimoire-button[href]:hover {
+.grimoire-button--primary:enabled:hover,
+.grimoire-button--primary[href]:hover {
   filter: brightness(1.08);
 }
 
-.grimoire-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.grimoire-button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--accent2);
-  outline-offset: var(--focus-ring-offset);
+.grimoire-button--primary:enabled:active,
+.grimoire-button--primary[href]:active {
+  filter: brightness(0.95);
 }
 </style>
