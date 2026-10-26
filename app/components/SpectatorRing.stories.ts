@@ -28,8 +28,6 @@ const meta = {
       </div>
     `,
   }),
-  // label-content-name-mismatch: seat aria-label omits visible text (known component bug)
-  parameters: { a11y: { test: 'todo' } },
   beforeEach: () => {
     onFocus.mockClear()
   },
@@ -41,7 +39,7 @@ type Story = StoryObj<typeof meta>
 export const FirstNight: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText('存活 5 / 5 人')).toBeVisible()
-    await expect(canvas.getByRole('button', { name: '2 号足迹' })).toHaveTextContent(
+    await expect(canvas.getByRole('button', { name: /^2 号座位/ })).toHaveTextContent(
       ROLES.chef.name.zh,
     )
     await expect(canvas.getByText('中毒')).toBeVisible()
@@ -54,7 +52,7 @@ export const ExecutionPending: Story = {
     await expect(canvas.getByText('存活 4 / 5 人')).toBeVisible()
     await expect(canvas.getByText('过半门槛：2 票')).toBeVisible()
     await expect(canvas.getByText('5 号即将被处决')).toBeVisible()
-    await expect(canvas.getByRole('button', { name: '3 号足迹' })).toHaveTextContent(
+    await expect(canvas.getByRole('button', { name: /^3 号座位/ })).toHaveTextContent(
       '已死亡 · 死者票已用',
     )
   },
@@ -71,7 +69,7 @@ export const Ended: Story = {
 export const SeatPerspective: Story = {
   args: view({ observer: 'seat:3' }),
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('button', { name: '3 号足迹' })).toHaveTextContent(
+    await expect(canvas.getByRole('button', { name: /^3 号座位/ })).toHaveTextContent(
       ROLES.empath.name.zh,
     )
     await expect(canvas.getAllByText('角色未知')).toHaveLength(4)
@@ -88,11 +86,11 @@ export const PublicOnly: Story = {
 export const FocusedSeat: Story = {
   args: { focusedSeat: 2 },
   play: async ({ canvas, userEvent }) => {
-    await expect(canvas.getByRole('button', { name: '2 号足迹' })).toHaveAttribute(
+    await expect(canvas.getByRole('button', { name: /^2 号座位/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    await userEvent.click(canvas.getByRole('button', { name: '4 号足迹' }))
+    await userEvent.click(canvas.getByRole('button', { name: /^4 号座位/ }))
     await expect(onFocus).toHaveBeenCalledWith(4)
   },
 }

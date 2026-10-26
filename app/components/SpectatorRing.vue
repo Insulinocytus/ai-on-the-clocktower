@@ -13,6 +13,7 @@ const props = defineProps<{
 defineEmits<{ focus: [seat: number] }>()
 const { t, locale } = useI18n()
 const language = computed(() => (locale.value === 'zh' ? 'zh' : 'en'))
+const hintId = useId()
 const alive = computed(() =>
   props.grimoire.seats.length
     ? props.grimoire.seats.filter((seat) => seat.alive).length
@@ -113,7 +114,7 @@ function position(index: number, inner = false) {
         <p v-if="publicState.aboutToBeExecuted !== null" class="text-xs text-accent">
           {{ t('spectator.executionSeat', { seat: publicState.aboutToBeExecuted }) }}
         </p>
-        <p class="mt-1 text-xs text-muted">{{ t('spectator.footprintHint') }}</p>
+        <p :id="hintId" class="mt-1 text-xs text-muted">{{ t('spectator.footprintHint') }}</p>
       </div>
       <ol>
         <li v-for="(seat, index) in seats" :key="seat.number" class="seat" :style="position(index)">
@@ -121,7 +122,7 @@ function position(index: number, inner = false) {
             type="button"
             class="seat-button"
             :class="{ 'seat-button--focused': focusedSeat === seat.number }"
-            :aria-label="t('spectator.footprint', { seat: seat.number })"
+            :aria-describedby="hintId"
             :aria-pressed="focusedSeat === seat.number"
             @click="$emit('focus', seat.number)"
           >

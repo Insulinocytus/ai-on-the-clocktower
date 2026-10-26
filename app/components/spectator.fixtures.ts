@@ -4,29 +4,34 @@ import { DISCRETION_IDS, fold, foldPublic, project, sample } from '#shared/game/
 import { seatFootprint, spectatorRows } from '#shared/game/spectator'
 import { ENGINE_VERSION } from '#shared/game/version'
 import type { GameConfig, GameEvent, Observer, RoleId, SeatState } from '#shared/types/game'
+import type { GameSummary } from '#shared/types/game-view'
+import type { Preset } from '#shared/types/models'
 
 type DiscretionRequest = Extract<GameEvent, { type: 'discretion.requested' }>
 
 const models = ['deepseek-chat', 'claude-haiku', 'gpt-mini', 'qwen-plus', 'glm-air']
+const seats: Preset[] = models.map((model, index) => ({
+  id: index + 1,
+  name: model,
+  providerId: 1,
+  model,
+  forceToolChoice: true,
+  extraBody: '{}',
+}))
+const storyteller: Preset = {
+  id: 6,
+  name: 'claude-sonnet',
+  providerId: 1,
+  model: 'claude-sonnet',
+  forceToolChoice: true,
+  extraBody: '{}',
+}
+export const presets = [...seats, storyteller]
 
 export const config: GameConfig = {
   seatCount: 5,
-  seats: models.map((model, index) => ({
-    id: index + 1,
-    name: model,
-    providerId: 1,
-    model,
-    forceToolChoice: true,
-    extraBody: '{}',
-  })),
-  storyteller: {
-    id: 6,
-    name: 'claude-sonnet',
-    providerId: 1,
-    model: 'claude-sonnet',
-    forceToolChoice: true,
-    extraBody: '{}',
-  },
+  seats,
+  storyteller,
   discretions: Object.fromEntries(
     DISCRETION_IDS.map((id) => [id, id === 'D8' ? 'manual' : 'random']),
   ) as GameConfig['discretions'],
@@ -35,6 +40,14 @@ export const config: GameConfig = {
   language: 'zh',
   seed: 7,
   engineVersion: ENGINE_VERSION,
+}
+
+export function gameSummary(
+  id: string,
+  status: GameSummary['status'],
+  reason?: GameSummary['reason'],
+): GameSummary {
+  return { id, createdAt: '2026-10-26T12:00:00Z', status, reason, compatible: true, config }
 }
 
 function seatsFor(roles: RoleId[]): SeatState[] {

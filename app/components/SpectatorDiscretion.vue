@@ -19,6 +19,7 @@ const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ submitted: []; abort: [] }>()
 const { t, locale } = useI18n()
 const language = computed(() => (locale.value === 'zh' ? 'zh' : 'en'))
+const grimoireHeadingId = useId()
 const grimoire = computed(() => fold(props.events.filter((event) => event.seq < props.request.seq)))
 const selected = ref<string>()
 const setupChoice = ref<RoleId[]>()
@@ -88,8 +89,13 @@ async function submit() {
   >
     <div class="space-y-5">
       <section class="space-y-2">
-        <h3 class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
-        <div class="max-h-52 overflow-auto rounded-thought border border-rule">
+        <h3 :id="grimoireHeadingId" class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
+        <div
+          role="region"
+          :aria-labelledby="grimoireHeadingId"
+          tabindex="0"
+          class="max-h-52 overflow-auto rounded-thought border border-rule"
+        >
           <table class="manual-table w-full text-left text-sm">
             <thead class="sticky top-0 bg-paper3 text-muted">
               <tr>
