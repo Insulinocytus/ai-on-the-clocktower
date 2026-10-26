@@ -32,9 +32,4 @@ export default withNuxt(
       'vue/html-self-closing': 'off',
     },
   },
-  {
-    // shadcn-vue components declare optional TS props (e.g. `class`) without defaults throughout; undefined is the intended default.
-    files: ['app/components/ui/**/*.vue'],
-    rules: { 'vue/require-default-prop': 'off' },
-  },
 )

@@ -1,22 +1,8 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Button from '@/components/grimoire/Button.vue'
+import Input from '@/components/grimoire/Input.vue'
+import Dialog from '@/components/grimoire/Dialog.vue'
+import Select from '@/components/grimoire/Select.vue'
 import { toast } from 'vue-sonner'
 import { createProvider, updateProvider, type Provider } from '@/api'
 import { API_FORMATS, type ApiFormat } from '#shared/types/models'
@@ -68,76 +54,67 @@ async function save() {
 </script>
 
 <template>
-  <Dialog v-model:open="open">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{{ provider ? t('providers.edit') : t('providers.add') }}</DialogTitle>
-      </DialogHeader>
-      <form id="provider-form" class="grid gap-4" @submit.prevent="save">
-        <div class="grid gap-2">
-          <Label for="provider-name">{{ t('providers.name') }}</Label>
-          <Input id="provider-name" v-model="form.name" required />
-        </div>
-        <div class="grid gap-2">
-          <Label for="provider-base-url">{{ t('providers.baseUrl') }}</Label>
+  <Dialog v-model:open="open" :title="provider ? t('providers.edit') : t('providers.add')">
+    <form id="provider-form" class="grid gap-5" @submit.prevent="save">
+      <div class="grid gap-1">
+        <label for="provider-name">{{ t('providers.name') }}</label>
+        <Input id="provider-name" v-model="form.name" required />
+      </div>
+      <div class="grid gap-1">
+        <label for="provider-base-url">{{ t('providers.baseUrl') }}</label>
+        <Input
+          id="provider-base-url"
+          v-model="form.baseUrl"
+          type="url"
+          :placeholder="BASE_URL_PLACEHOLDERS[form.apiFormat]"
+          required
+        />
+      </div>
+      <div class="grid gap-1">
+        <label for="provider-api-format">{{ t('providers.apiFormat') }}</label>
+        <Select
+          id="provider-api-format"
+          v-model="form.apiFormat"
+          :options="API_FORMATS.map((value) => ({ value, label: t(`providers.formats.${value}`) }))"
+          required
+        />
+      </div>
+      <div class="grid gap-1">
+        <label for="provider-key">{{ t('providers.apiKey') }}</label>
+        <Input
+          id="provider-key"
+          v-model="form.apiKey"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="grid gap-1">
+          <label for="provider-timeout">{{ t('providers.timeoutSec') }}</label>
           <Input
-            id="provider-base-url"
-            v-model="form.baseUrl"
-            type="url"
-            :placeholder="BASE_URL_PLACEHOLDERS[form.apiFormat]"
+            id="provider-timeout"
+            v-model.number="form.timeoutSec"
+            type="number"
+            min="1"
             required
           />
         </div>
-        <div class="grid gap-2">
-          <Label for="provider-api-format">{{ t('providers.apiFormat') }}</Label>
-          <Select v-model="form.apiFormat" required>
-            <SelectTrigger id="provider-api-format" class="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="format in API_FORMATS" :key="format" :value="format">{{
-                t(`providers.formats.${format}`)
-              }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div class="grid gap-2">
-          <Label for="provider-key">{{ t('providers.apiKey') }}</Label>
+        <div class="grid gap-1">
+          <label for="provider-concurrency">{{ t('providers.maxConcurrency') }}</label>
           <Input
-            id="provider-key"
-            v-model="form.apiKey"
-            type="password"
-            autocomplete="new-password"
+            id="provider-concurrency"
+            v-model.number="form.maxConcurrency"
+            type="number"
+            min="1"
             required
           />
         </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div class="grid gap-2">
-            <Label for="provider-timeout">{{ t('providers.timeoutSec') }}</Label>
-            <Input
-              id="provider-timeout"
-              v-model.number="form.timeoutSec"
-              type="number"
-              min="1"
-              required
-            />
-          </div>
-          <div class="grid gap-2">
-            <Label for="provider-concurrency">{{ t('providers.maxConcurrency') }}</Label>
-            <Input
-              id="provider-concurrency"
-              v-model.number="form.maxConcurrency"
-              type="number"
-              min="1"
-              required
-            />
-          </div>
-        </div>
-      </form>
-      <DialogFooter>
-        <DialogClose as-child>
-          <Button variant="outline">{{ t('common.cancel') }}</Button>
-        </DialogClose>
-        <Button type="submit" form="provider-form">{{ t('common.save') }}</Button>
-      </DialogFooter>
-    </DialogContent>
+      </div>
+    </form>
+    <template #footer>
+      <Button variant="secondary" @click="open = false">{{ t('common.cancel') }}</Button>
+      <Button type="submit" form="provider-form">{{ t('common.save') }}</Button>
+    </template>
   </Dialog>
 </template>

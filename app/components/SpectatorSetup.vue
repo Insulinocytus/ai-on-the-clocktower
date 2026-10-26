@@ -1,13 +1,6 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Button from '@/components/grimoire/Button.vue'
+import Select from '@/components/grimoire/Select.vue'
 import { ROLES } from '#shared/game/roles'
 import { sample, setupCounts, validate } from '#shared/game/rules'
 import type { RoleId } from '#shared/types/game'
@@ -22,9 +15,9 @@ const language = computed(() => (locale.value === 'zh' ? 'zh' : 'en'))
 const selected = defineModel<string[]>('roles', { required: true })
 const types = ['townsfolk', 'outsider', 'minion', 'demon'] as const
 const available = computed(() =>
-  Object.values(ROLES).filter(
-    (role) => !props.candidates.roles || props.candidates.roles.includes(role.id),
-  ),
+  Object.values(ROLES)
+    .filter((role) => !props.candidates.roles || props.candidates.roles.includes(role.id))
+    .map((role) => ({ value: role.id, label: role.name[language.value] })),
 )
 const counts = computed(() => {
   const base = setupCounts(props.seatCount)
@@ -86,42 +79,38 @@ function randomFill() {
 <template>
   <section class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h3 class="font-semibold">{{ t('manual.setup') }}</h3>
-      <Button type="button" variant="outline" size="sm" @click="randomFill">{{
+      <h3 class="font-serif font-medium">{{ t('manual.setup') }}</h3>
+      <Button type="button" variant="secondary" @click="randomFill">{{
         t('manual.randomFill')
       }}</Button>
     </div>
-    <div class="flex flex-wrap gap-4 text-sm" aria-live="polite">
+    <div class="flex flex-wrap gap-4 font-serif text-sm" aria-live="polite">
       <span v-for="type in types" :key="type">
         {{ t(`manual.${type}`) }}:
         {{ actualCounts[type] }}
         / {{ counts[type] }}
       </span>
     </div>
-    <p v-if="selected.includes('baron')" class="text-sm text-violet-700">{{ t('manual.baron') }}</p>
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
+    <p v-if="selected.includes('baron')" class="text-sm text-accent">{{ t('manual.baron') }}</p>
+    <div class="grid grid-cols-3 gap-3">
       <div v-for="(_, index) in selected" :key="index" class="space-y-1.5">
-        <Label :for="`setup-seat-${String(index + 1)}`">{{
+        <label :for="`setup-seat-${String(index + 1)}`" class="text-sm text-ink2">{{
           t('games.seat', { seat: index + 1 })
-        }}</Label>
-        <Select v-model="selected[index]">
-          <SelectTrigger :id="`setup-seat-${String(index + 1)}`"
-            ><SelectValue :placeholder="t('manual.selectRole')"
-          /></SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="role in available" :key="role.id" :value="role.id">{{
-              role.name[language]
-            }}</SelectItem>
-          </SelectContent>
-        </Select>
+        }}</label>
+        <Select
+          :id="`setup-seat-${String(index + 1)}`"
+          v-model="selected[index]"
+          :options="available"
+          :placeholder="t('manual.selectRole')"
+        />
       </div>
     </div>
     <div role="status" class="space-y-1 text-sm" aria-live="polite">
-      <p v-if="!complete" class="text-muted-foreground">{{ t('manual.incomplete') }}</p>
-      <p v-for="error in errors" :key="error.code" class="text-destructive">
+      <p v-if="!complete" class="text-muted">{{ t('manual.incomplete') }}</p>
+      <p v-for="error in errors" :key="error.code" class="text-accent">
         {{ t(`manual.errors.${error.code}`) }}
       </p>
-      <p v-if="choice" class="text-emerald-700">{{ t('manual.validSetup') }}</p>
+      <p v-if="choice" class="text-ink2">{{ t('manual.validSetup') }}</p>
     </div>
   </section>
 </template>
