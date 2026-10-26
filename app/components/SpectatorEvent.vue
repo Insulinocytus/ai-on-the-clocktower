@@ -8,8 +8,10 @@ const { t, locale } = useI18n()
 </script>
 
 <template>
-  <li class="grid grid-cols-[2.5rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-55' : ''">
-    <span class="pt-1 text-xs tabular-nums text-muted-foreground">{{ row.event.seq }}</span>
+  <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-50' : ''">
+    <span class="pt-1 font-serif text-xs tabular-nums text-muted-foreground">{{
+      row.event.seq
+    }}</span>
     <div class="min-w-0">
       <p v-if="row.losing" class="mb-1 text-xs font-medium text-muted-foreground">
         {{ t('spectator.notSelected') }}
@@ -26,13 +28,13 @@ const { t, locale } = useI18n()
         </p>
         <p
           v-if="row.reasoningSummary"
-          class="mt-1 whitespace-pre-wrap break-words text-sm leading-6"
+          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7 text-ink2"
         >
           {{ row.reasoningSummary }}
         </p>
         <p
           v-if="row.speech !== undefined"
-          class="mt-1 whitespace-pre-wrap break-words text-sm leading-7"
+          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7 text-ink2"
         >
           {{ row.speech === null ? t('spectator.pass') : row.speech }}
         </p>
@@ -51,9 +53,9 @@ const { t, locale } = useI18n()
           <summary class="cursor-pointer text-xs text-muted-foreground">
             {{ t('trial.raw') }}
           </summary>
-          <pre class="mt-2 max-h-64 overflow-auto rounded bg-muted p-3 text-xs">{{
-            JSON.stringify(row.event.raw, null, 2)
-          }}</pre>
+          <pre
+            class="mt-2 max-h-64 overflow-auto rounded-[var(--radius-thought)] bg-paper3 p-3 text-xs text-ink2"
+            >{{ JSON.stringify(row.event.raw, null, 2) }}</pre>
         </details>
       </template>
       <template v-else>
@@ -61,7 +63,7 @@ const { t, locale } = useI18n()
           class="whitespace-pre-wrap break-words text-sm leading-7"
           :class="
             row.event.type === 'public.speech' || row.event.type === 'whisper.speech'
-              ? 'rounded-lg bg-paper2 px-3 py-2 text-ink'
+              ? 'speech-bubble font-serif text-base text-ink'
               : 'text-muted-foreground'
           "
         >
@@ -69,7 +71,7 @@ const { t, locale } = useI18n()
         </p>
         <span
           v-if="observer === 'spectator' && row.falseInfo"
-          class="mt-2 inline-block rounded border border-accent bg-accent px-2 py-0.5 text-xs text-accent-ink"
+          class="mt-2 inline-block rounded border border-accent px-2 py-0.5 text-xs text-accent"
           :title="row.falseReason ? t(`spectator.falseReasons.${row.falseReason}`) : undefined"
           >{{ t('spectator.falseInfo') }}</span
         >
@@ -77,3 +79,25 @@ const { t, locale } = useI18n()
     </div>
   </li>
 </template>
+
+<style scoped>
+.speech-bubble {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-thought);
+  background: var(--paper2);
+  padding: 12px 16px;
+}
+.speech-bubble::before {
+  position: absolute;
+  top: 15px;
+  left: -5px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+  background: var(--paper2);
+  transform: rotate(45deg);
+  content: '';
+}
+</style>

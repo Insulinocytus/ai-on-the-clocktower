@@ -1,21 +1,8 @@
 <script setup lang="ts">
 import { toast } from 'vue-sonner'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Button from '@/components/grimoire/Button.vue'
+import Dialog from '@/components/grimoire/Dialog.vue'
+import Select from '@/components/grimoire/Select.vue'
 import { ManualDiscretionConflictError, submitManualDiscretion } from '@/api'
 import { ROLES } from '#shared/game/roles'
 import { fold } from '#shared/game/rules'
@@ -27,6 +14,7 @@ const props = defineProps<{
   request: Extract<GameEvent, { type: 'discretion.requested' }>
   events: GameEvent[]
   aborting: boolean
+  theme: 'day' | 'night'
 }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ submitted: []; abort: [] }>()
@@ -92,21 +80,20 @@ async function submit() {
 </script>
 
 <template>
-  <Dialog v-model:open="open">
-    <DialogContent
-      class="max-h-[90dvh] overflow-y-auto sm:max-w-4xl"
-      :show-close-button="false"
-      @interact-outside.prevent
-    >
-      <DialogHeader>
-        <DialogTitle>{{ t('manual.title', { discretion: request.discretion }) }}</DialogTitle>
-        <DialogDescription>{{ t('manual.help') }}</DialogDescription>
-      </DialogHeader>
+  <Dialog
+    v-model:open="open"
+    :title="t('manual.title', { discretion: request.discretion })"
+    :description="t('manual.help')"
+    :theme="theme"
+    style="width: min(896px, calc(100vw - 48px))"
+    @interact-outside.prevent
+  >
+    <div class="space-y-5">
       <section class="space-y-2">
-        <h3 class="font-semibold">{{ t('manual.grimoire') }}</h3>
-        <div class="max-h-52 overflow-auto rounded-md border">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-muted">
+        <h3 class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
+        <div class="max-h-52 overflow-auto rounded-[var(--radius-thought)] border border-rule">
+          <table class="manual-table w-full text-left text-sm">
+            <thead class="sticky top-0 bg-paper3 text-muted-foreground">
               <tr>
                 <th class="p-2">{{ t('manual.seat') }}</th>
                 <th>{{ t('manual.role') }}</th>
@@ -116,12 +103,25 @@ async function submit() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(preset, index) in config.seats" :key="index" class="border-t">
+              <tr
+                v-for="(preset, index) in config.seats"
+                :key="index"
+                class="border-t border-rule"
+                :class="request.context?.seat === index + 1 ? 'bg-paper3' : ''"
+              >
                 <td class="p-2">{{ index + 1 }}</td>
                 <template v-for="state in [grimoire.seats[index]]" :key="state?.seat ?? 0">
                   <td>
-                    {{ state ? ROLES[state.role].name[language] : '—'
-                    }}<span v-if="state?.believedRole" class="block text-xs text-ink2">{{
+                    <span class="flex items-center gap-2">
+                      <img
+                        v-if="state"
+                        class="manual-role-token"
+                        :src="characterIconUrl(state.role, state.alignment)"
+                        alt=""
+                      />
+                      {{ state ? ROLES[state.role].name[language] : '—' }}
+                    </span>
+                    <span v-if="state?.believedRole" class="block text-xs text-ink2">{{
                       t('spectator.believes', { role: ROLES[state.believedRole].name[language] })
                     }}</span>
                   </td>
@@ -156,8 +156,10 @@ async function submit() {
           </table>
         </div>
       </section>
-      <section class="space-y-2 rounded-md bg-paper2 p-3 text-sm">
-        <h3 class="font-semibold">{{ t('manual.truth') }}</h3>
+      <section
+        class="space-y-2 rounded-[var(--radius-thought)] bg-paper3 p-4 text-sm leading-6 text-ink2"
+      >
+        <h3 class="font-serif font-semibold text-ink">{{ t('manual.truth') }}</h3>
         <p v-if="request.context?.seat">
           {{ t('games.seat', { seat: request.context.seat })
           }}<span v-if="request.context.role">
@@ -165,7 +167,7 @@ async function submit() {
           >
         </p>
         <p>{{ request.context?.truth ? describe(request.context.truth) : t('manual.noTruth') }}</p>
-        <h3 class="pt-2 font-semibold">{{ t('manual.advice') }}</h3>
+        <h3 class="pt-1 font-serif font-semibold text-ink">{{ t('manual.advice') }}</h3>
         <p>{{ t(`manual.adviceById.${request.discretion}`) }}</p>
       </section>
       <SpectatorSetup
@@ -174,34 +176,52 @@ async function submit() {
         v-model:roles="setupRoles"
         :seat-count="config.seatCount"
         :candidates="candidates"
+        :theme="theme"
       />
       <section v-else class="space-y-2">
-        <h3 class="font-semibold">{{ t('manual.candidates', { count: candidates.length }) }}</h3>
-        <Select v-model="selected">
-          <SelectTrigger id="manual-choice" :aria-label="t('manual.choose')"
-            ><SelectValue :placeholder="t('manual.choose')"
-          /></SelectTrigger>
-          <SelectContent class="max-h-72">
-            <SelectItem
-              v-for="(candidate, index) in candidates"
-              :key="index"
-              :value="String(index)"
-              >{{ describe(candidate) }}</SelectItem
-            >
-          </SelectContent>
-        </Select>
+        <h3 class="font-serif font-medium">
+          {{ t('manual.candidates', { count: candidates.length }) }}
+        </h3>
+        <Select
+          id="manual-choice"
+          v-model="selected"
+          :aria-label="t('manual.choose')"
+          :placeholder="t('manual.choose')"
+          :options="
+            candidates.map((candidate, index) => ({
+              value: String(index),
+              label: describe(candidate),
+            }))
+          "
+          :theme="theme"
+        />
       </section>
-      <DialogFooter class="mt-2 sm:justify-between">
-        <Button variant="destructive" :disabled="aborting" @click="emit('abort')">{{
-          t('games.abort')
-        }}</Button>
-        <div class="flex gap-2">
-          <Button variant="outline" @click="open = false">{{ t('manual.collapse') }}</Button>
-          <Button :disabled="busy || choice === undefined" @click="submit">{{
-            t('manual.submit')
-          }}</Button>
-        </div>
-      </DialogFooter>
-    </DialogContent>
+    </div>
+    <template #footer>
+      <Button class="mr-auto" :disabled="aborting" @click="emit('abort')">{{
+        t('games.abort')
+      }}</Button>
+      <Button variant="secondary" @click="open = false">{{ t('manual.collapse') }}</Button>
+      <Button :disabled="busy || choice === undefined" @click="submit">{{
+        t('manual.submit')
+      }}</Button>
+    </template>
   </Dialog>
 </template>
+
+<style scoped>
+.manual-table th,
+.manual-table td {
+  padding: 8px 12px;
+}
+.manual-table th {
+  font-weight: 400;
+}
+.manual-role-token {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--token-rule);
+  background: var(--token);
+}
+</style>

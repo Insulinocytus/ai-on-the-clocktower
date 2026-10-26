@@ -407,6 +407,7 @@ onUnmounted(() => {
         :request="pending"
         :events="manualEvents"
         :aborting="aborting"
+        :theme="theme"
         @submitted="catchUpManual"
         @abort="abort"
       />
