@@ -20,7 +20,12 @@ export default defineNuxtConfig({
     ],
   },
   typescript: {
-    tsConfig: { compilerOptions: { noImplicitReturns: true, noFallthroughCasesInSwitch: true } },
-    nodeTsConfig: { include: ['../test/**/*', '../vitest.config.ts', '../scripts/**/*'] },
+    tsConfig: {
+      compilerOptions: { noImplicitReturns: true, noFallthroughCasesInSwitch: true },
+      include: ['../.storybook/preview.ts'],
+    },
+    nodeTsConfig: {
+      include: ['../test/**/*', '../vitest.config.ts', '../scripts/**/*', '../.storybook/main.ts'],
+    },
   },
 })

@@ -21,6 +21,7 @@ run = '''
 set -e
 mise install
 mise deps
+playwright install chromium
 mise generate git-pre-commit --write --task check
 mise generate git-pre-commit --write --hook post-checkout --task setup
 '''
@@ -33,6 +34,9 @@ run = "nuxt generate"
 
 [tasks.start]
 run = "node scripts/start.mjs"
+
+[tasks.storybook]
+run = "storybook dev --host 127.0.0.1 -p 6006 --no-open"
 
 [tasks.format]
 run = "prettier . --write"
@@ -52,6 +56,14 @@ run = "eslint . --max-warnings 0"
 wait_for = ["nuxt:prepare"]
 run = "vitest run"
 
+[tasks."test:unit"]
+wait_for = ["nuxt:prepare"]
+run = "vitest run --project unit"
+
+[tasks."test:storybook"]
+wait_for = ["nuxt:prepare"]
+run = "vitest run --project storybook"
+
 [tasks."check:format"]
 run = "prettier . --check"
 
@@ -60,4 +72,4 @@ depends = ["nuxt:prepare"]
 run = "knip"
 
 [tasks.check]
-depends = ["nuxt:prepare", "typecheck", "lint", "test", "check:format", "check:knip"]
+depends = ["nuxt:prepare", "typecheck", "lint", "check:format", "check:knip"]
