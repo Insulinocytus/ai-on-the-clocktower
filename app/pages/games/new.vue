@@ -1,17 +1,13 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Button from '@/components/grimoire/Button.vue'
+import Input from '@/components/grimoire/Input.vue'
+import Select from '@/components/grimoire/Select.vue'
+import SegmentedControl from '@/components/grimoire/SegmentedControl.vue'
 import type { Preset } from '#shared/types/models'
 import { createGame, getGame, listPresets } from '@/api'
-import type { GameConfig, DiscretionSource } from '#shared/types/game'
+import type { GameConfig, DiscretionSource, DiscretionId, RoleId } from '#shared/types/game'
+import { ROLES } from '#shared/game/roles'
+import { characterIconUrl } from '@/utils/character-icons'
 import { DISCRETION_IDS } from '#shared/game/rules'
 
 const { t, locale } = useI18n()
@@ -63,6 +59,26 @@ const invalidPresets = computed(
 )
 const busy = ref(false)
 const sources = ['random', 'storyteller', 'manual'] as const
+const presetOptions = computed(() =>
+  presets.value.map((preset) => ({ value: String(preset.id), label: preset.name })),
+)
+const sourceOptions = computed(() =>
+  sources.map((value) => ({ value, label: t(`games.sources.${value}`) })),
+)
+const discretionRoles: Partial<Record<DiscretionId, RoleId>> = {
+  D2: 'drunk',
+  D3: 'fortuneteller',
+  D4: 'washerwoman',
+  D5: 'librarian',
+  D6: 'investigator',
+  D7: 'imp',
+  D8: 'poisoner',
+  D10: 'spy',
+  D11: 'recluse',
+  D12: 'mayor',
+  D13: 'soldier',
+  D14: 'scarletwoman',
+}
 function setAll(source: DiscretionSource) {
   for (const id of DISCRETION_IDS) form.discretions[id] = source
 }
@@ -87,159 +103,340 @@ async function create() {
 </script>
 
 <template>
-  <section class="max-w-2xl">
-    <h1 class="mb-3 text-2xl font-semibold">{{ t('games.new') }}</h1>
-    <p class="mb-8 text-sm leading-6 text-muted-foreground">{{ t('games.setupHelp') }}</p>
+  <section class="new-game">
+    <header class="new-game-header">
+      <h1>{{ t('games.new') }}</h1>
+      <p>{{ t('games.setupHelp') }}</p>
+    </header>
     <p v-if="templateId" class="mb-6 text-sm text-muted-foreground">
       {{ t('games.templateFrom', { id: templateId.slice(0, 8) }) }}
     </p>
-    <p v-if="templateError" role="alert" class="mb-6 text-destructive">{{ templateError }}</p>
+    <p v-if="templateError" role="alert" class="mb-6 text-accent">{{ templateError }}</p>
     <p v-if="!presets.length" class="mb-6">
       {{ t('presets.empty') }}
       <NuxtLink to="/models" class="underline">{{ t('nav.models') }}</NuxtLink>
     </p>
-    <form class="grid gap-6" @submit.prevent="create">
-      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
-        <Label for="seat-count">{{ t('games.seatCount') }}</Label>
-        <Select v-model="seatCount">
-          <SelectTrigger id="seat-count"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="count in 11" :key="count" :value="String(count + 4)">
-              {{ count + 4 }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div
-        v-for="(choice, index) in form.presets"
-        :key="index"
-        class="grid grid-cols-[7rem_1fr] items-center gap-4"
-      >
-        <Label :for="`seat-${index + 1}`">{{ t('games.seat', { seat: index + 1 }) }}</Label>
-        <Select v-model="form.presets[index]">
-          <SelectTrigger
-            :id="`seat-${index + 1}`"
-            :class="{ 'border-destructive text-destructive': missingPreset(choice) }"
-            :aria-invalid="missingPreset(choice)"
-            :aria-describedby="missingPreset(choice) ? `missing-seat-${index + 1}` : undefined"
-            ><SelectValue :placeholder="t('games.selectPreset')"
-          /></SelectTrigger>
-          <SelectContent
-            ><SelectItem v-for="preset in presets" :key="preset.id" :value="String(preset.id)">{{
-              preset.name
-            }}</SelectItem></SelectContent
-          >
-        </Select>
-        <p
-          v-if="missingPreset(choice)"
-          :id="`missing-seat-${index + 1}`"
-          role="alert"
-          class="col-start-2 text-sm text-destructive"
-        >
-          {{ t('games.deletedPreset', { name: templateConfig?.seats[index]?.name ?? choice }) }}
-        </p>
-      </div>
-      <fieldset class="grid gap-4">
-        <legend class="mb-3 font-medium">{{ t('games.discretions') }}</legend>
-        <div class="flex flex-wrap gap-2">
-          <Button
-            v-for="source in sources"
-            :key="source"
-            type="button"
-            variant="outline"
-            size="sm"
-            @click="setAll(source)"
-            >{{ t('manual.batch', { source: t(`games.sources.${source}`) }) }}</Button
-          >
+    <form @submit.prevent="create">
+      <div class="new-game-columns">
+        <div>
+          <section aria-labelledby="seats-heading">
+            <div class="seats-header">
+              <h2 id="seats-heading">{{ t('games.seatsHeading') }}</h2>
+              <label for="seat-count">{{ t('games.seatCount') }}</label>
+              <Select
+                id="seat-count"
+                v-model="seatCount"
+                :options="
+                  Array.from({ length: 11 }, (_, index) => ({
+                    value: String(index + 5),
+                    label: String(index + 5),
+                  }))
+                "
+              />
+            </div>
+            <div v-for="(choice, index) in form.presets" :key="index" class="seat-row">
+              <label :for="`seat-${index + 1}`">{{ t('games.seat', { seat: index + 1 }) }}</label>
+              <Select
+                :id="`seat-${index + 1}`"
+                v-model="form.presets[index]"
+                :options="presetOptions"
+                :placeholder="t('games.selectPreset')"
+                :invalid="!choice || missingPreset(choice)"
+                :aria-describedby="missingPreset(choice) ? `missing-seat-${index + 1}` : undefined"
+              />
+              <p
+                v-if="missingPreset(choice)"
+                :id="`missing-seat-${index + 1}`"
+                role="alert"
+                class="col-start-2 text-sm text-accent"
+              >
+                {{
+                  t('games.deletedPreset', { name: templateConfig?.seats[index]?.name ?? choice })
+                }}
+              </p>
+            </div>
+          </section>
+          <section class="game-settings" aria-labelledby="settings-heading">
+            <h2 id="settings-heading">{{ t('games.settingsHeading') }}</h2>
+            <div v-if="needsStoryteller" class="setting-row">
+              <label for="storyteller">{{ t('games.storyteller') }}</label>
+              <Select
+                id="storyteller"
+                v-model="form.storyteller"
+                :options="presetOptions"
+                :placeholder="t('games.selectPreset')"
+                :invalid="missingPreset(form.storyteller)"
+                :aria-describedby="
+                  missingPreset(form.storyteller) ? 'missing-storyteller' : undefined
+                "
+              />
+              <p
+                v-if="missingPreset(form.storyteller)"
+                id="missing-storyteller"
+                role="alert"
+                class="col-span-2 text-sm text-accent"
+              >
+                {{
+                  t('games.deletedPreset', {
+                    name: templateConfig?.storyteller?.name ?? form.storyteller,
+                  })
+                }}
+              </p>
+            </div>
+            <div class="setting-row">
+              <label for="game-language">{{ t('games.language') }}</label>
+              <Select
+                id="game-language"
+                v-model="form.language"
+                :options="[
+                  { value: 'zh', label: '中文' },
+                  { value: 'en', label: 'English' },
+                ]"
+              />
+            </div>
+            <div class="setting-row">
+              <label for="speech-limit">{{ t('games.speechLimit') }}</label>
+              <Input
+                id="speech-limit"
+                v-model.number="form.speechLimit"
+                type="number"
+                min="1"
+                step="1"
+                required
+              />
+            </div>
+            <div class="setting-row">
+              <label for="whisper-limit">{{ t('games.whisperLimit') }}</label>
+              <Input
+                id="whisper-limit"
+                v-model.number="form.whisperLimit"
+                type="number"
+                min="0"
+                step="1"
+                required
+              />
+            </div>
+          </section>
         </div>
-        <div
-          v-for="id in DISCRETION_IDS"
-          :key="id"
-          class="grid grid-cols-[7rem_1fr] items-center gap-4"
-        >
-          <Label :for="`source-${id}`">{{ id === 'seating' ? t('games.seating') : id }}</Label>
-          <Select v-model="form.discretions[id]">
-            <SelectTrigger :id="`source-${id}`"
-              ><SelectValue>{{
-                t(`games.sources.${form.discretions[id]}`)
-              }}</SelectValue></SelectTrigger
+        <section aria-labelledby="discretions-heading">
+          <div class="discretions-header">
+            <h2 id="discretions-heading">{{ t('games.discretions') }}</h2>
+            <span id="batch-label">{{ t('games.setAll') }}</span>
+            <SegmentedControl
+              :options="sourceOptions"
+              aria-labelledby="batch-label"
+              @update:model-value="setAll"
+            />
+          </div>
+          <p class="discretions-help">{{ t('games.discretionsHelp') }}</p>
+          <div v-for="id in DISCRETION_IDS" :key="id" class="discretion-row">
+            <span
+              class="discretion-icon"
+              :class="{ 'discretion-icon--empty': id === 'seating' }"
+              aria-hidden="true"
             >
-            <SelectContent>
-              <SelectItem value="random">{{ t('games.sources.random') }}</SelectItem>
-              <SelectItem value="storyteller">{{ t('games.sources.storyteller') }}</SelectItem>
-              <SelectItem value="manual">{{ t('games.sources.manual') }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </fieldset>
-      <div v-if="needsStoryteller" class="grid grid-cols-[7rem_1fr] items-center gap-4">
-        <Label for="storyteller">{{ t('games.storyteller') }}</Label>
-        <Select v-model="form.storyteller">
-          <SelectTrigger
-            id="storyteller"
-            :class="{ 'border-destructive text-destructive': missingPreset(form.storyteller) }"
-            :aria-invalid="missingPreset(form.storyteller)"
-            :aria-describedby="missingPreset(form.storyteller) ? 'missing-storyteller' : undefined"
-            ><SelectValue :placeholder="t('games.selectPreset')"
-          /></SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="preset in presets" :key="preset.id" :value="String(preset.id)">
-              {{ preset.name }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <p
-          v-if="missingPreset(form.storyteller)"
-          id="missing-storyteller"
-          role="alert"
-          class="col-start-2 text-sm text-destructive"
-        >
-          {{
-            t('games.deletedPreset', {
-              name: templateConfig?.storyteller?.name ?? form.storyteller,
-            })
-          }}
+              <img v-if="id === 'D1'" src="/botc/editions/tb/logo.webp" alt="" />
+              <img
+                v-else-if="discretionRoles[id]"
+                :src="characterIconUrl(discretionRoles[id]!, ROLES[discretionRoles[id]!].alignment)"
+                alt=""
+              />
+            </span>
+            <div :id="`source-${id}-label`" class="discretion-name">
+              <span>{{ t(`games.discretionNames.${id}`) }}</span>
+              <span class="discretion-id">{{ id }}</span>
+            </div>
+            <SegmentedControl
+              v-model="form.discretions[id]"
+              :options="sourceOptions"
+              :aria-labelledby="`source-${id}-label`"
+            />
+          </div>
+        </section>
+      </div>
+      <footer class="new-game-footer">
+        <Button :disabled="busy || !!templateError || invalidPresets" type="submit">
+          {{ busy ? t('games.starting') : t('games.start') }}
+        </Button>
+        <p v-if="error" role="alert" class="text-sm text-accent">{{ error }}</p>
+        <p v-else-if="form.presets.includes('')" class="text-sm text-accent">
+          {{ t('games.unselectedPreset', { seat: form.presets.indexOf('') + 1 }) }}
         </p>
-      </div>
-      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
-        <Label for="game-language">{{ t('games.language') }}</Label>
-        <Select v-model="form.language"
-          ><SelectTrigger id="game-language"><SelectValue /></SelectTrigger
-          ><SelectContent
-            ><SelectItem value="zh">中文</SelectItem
-            ><SelectItem value="en">English</SelectItem></SelectContent
-          ></Select
-        >
-      </div>
-      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
-        <Label for="speech-limit">{{ t('games.speechLimit') }}</Label>
-        <Input
-          id="speech-limit"
-          v-model.number="form.speechLimit"
-          type="number"
-          min="1"
-          step="1"
-          required
-        />
-      </div>
-      <div class="grid grid-cols-[7rem_1fr] items-center gap-4">
-        <Label for="whisper-limit">{{ t('games.whisperLimit') }}</Label>
-        <Input
-          id="whisper-limit"
-          v-model.number="form.whisperLimit"
-          type="number"
-          min="0"
-          step="1"
-          required
-        />
-      </div>
-      <p v-if="error" role="alert" class="text-destructive">{{ error }}</p>
-      <Button
-        class="justify-self-start"
-        :disabled="busy || !!templateError || invalidPresets"
-        type="submit"
-        >{{ busy ? t('games.starting') : t('games.start') }}</Button
-      >
+      </footer>
     </form>
   </section>
 </template>
+
+<style scoped>
+.new-game {
+  width: var(--layout-content-width);
+  margin-inline: calc((100% - var(--layout-content-width)) / 2);
+  padding-top: var(--space-8);
+}
+
+.new-game-header {
+  margin-bottom: calc(var(--space-10) + var(--space-3));
+}
+
+.new-game-header h1 {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-page);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+}
+
+.new-game-header p {
+  color: var(--ink2);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.new-game-columns {
+  display: grid;
+  grid-template-columns: 400px 640px;
+  gap: calc(var(--space-10) * 2);
+}
+
+.new-game h2 {
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-heading);
+}
+
+.seats-header,
+.discretions-header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--size-field);
+}
+
+.seats-header {
+  padding-right: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.seats-header label,
+.discretions-header > span {
+  color: var(--muted);
+  font-size: var(--font-size-ui);
+}
+
+.seats-header :deep(.grimoire-select-trigger) {
+  width: 88px;
+  font-family: var(--font-family-serif);
+}
+
+.seat-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
+  min-height: 64px;
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--rule);
+}
+
+.seat-row:last-child {
+  border-block-end: 1px solid var(--rule);
+}
+
+.seat-row label {
+  font-family: var(--font-family-serif);
+  font-size: var(--font-size-title-sm);
+  white-space: nowrap;
+}
+
+.game-settings {
+  margin-top: calc(var(--space-10) + var(--space-2));
+}
+
+.game-settings h2 {
+  margin-bottom: var(--space-5);
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 1fr 168px;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-size: var(--font-size-ui);
+  color: var(--ink2);
+}
+
+.discretions-help {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-4);
+  color: var(--muted);
+  font-size: var(--font-size-ui);
+  line-height: var(--line-height-ui);
+}
+
+.discretion-row {
+  display: grid;
+  grid-template-columns: var(--size-event-avatar) 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 52px;
+  border-block-start: 1px solid var(--rule);
+}
+
+.discretion-row:last-child {
+  border-block-end: 1px solid var(--rule);
+}
+
+.discretion-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-event-avatar);
+  height: var(--size-event-avatar);
+  overflow: hidden;
+  border: 1px solid var(--token-rule);
+  border-radius: var(--radius-pill);
+  background: var(--token);
+}
+
+.discretion-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.discretion-icon--empty {
+  border-color: var(--rule);
+  background: var(--paper3);
+}
+
+.discretion-name {
+  display: grid;
+  font-size: var(--font-size-ui);
+  line-height: var(--line-height-ui);
+}
+
+.discretion-id {
+  color: var(--muted);
+  font-size: var(--font-size-caption);
+}
+
+.new-game-footer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  margin-top: calc(var(--space-10) * 2 + var(--space-8));
+  padding-block: var(--space-8);
+}
+
+.new-game-footer::before {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: calc(50% - 50vw);
+  width: 100vw;
+  border-top: 1px solid var(--rule);
+  content: '';
+}
+</style>
