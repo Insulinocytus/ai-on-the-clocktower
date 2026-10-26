@@ -16,7 +16,7 @@ import {
   winner,
 } from '../shared/game/rules'
 import { ROLES } from '../shared/game/roles'
-import { channelBlocks } from '../shared/game/channels'
+import { channelBlocks, channelTheme } from '../shared/game/channels'
 import { seatFootprint, spectatorRows } from '../shared/game/spectator'
 import { renderEvent } from '../shared/event-templates'
 import { buildContestantPrompt } from '../shared/prompts/contestant'
@@ -161,6 +161,20 @@ describe('spectator presentation of projected logs', () => {
 })
 
 describe('spectator channel blocks', () => {
+  it.each([
+    [undefined, 'night'],
+    ['setup', 'night'],
+    ['first-night', 'night'],
+    ['night', 'night'],
+    ['dawn', 'day'],
+    ['allocation', 'day'],
+    ['room', 'day'],
+    ['public', 'day'],
+    ['nomination', 'day'],
+  ] as const)('uses %s channel blocks for the %s theme', (kind, theme) => {
+    expect(channelTheme(kind)).toBe(theme)
+  })
+
   it('keeps interleaved room instances separate, announcements first, and folds at each end', () => {
     const events: GameEvent[] = [
       { seq: 1, type: 'phase.started', day: 1, phase: 'first-night' },

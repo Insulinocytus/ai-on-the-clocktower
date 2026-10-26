@@ -1,50 +1,54 @@
 <script setup lang="ts">
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Checkbox from '@/components/grimoire/Checkbox.vue'
+import Select from '@/components/grimoire/Select.vue'
 import type { Observer } from '#shared/types/game'
 
-defineProps<{ seatCount: number }>()
+const props = defineProps<{ seatCount: number; theme: 'night' | 'day' }>()
 const observer = defineModel<Observer>('observer', { required: true })
 const losing = defineModel<boolean>('losing', { required: true })
 const { t } = useI18n()
+const perspectives = computed<{ value: Observer; label: string }[]>(() => [
+  { value: 'spectator', label: t('spectator.omniscient') },
+  { value: 'storyteller', label: t('spectator.storyteller') },
+  ...Array.from({ length: props.seatCount }, (_, index) => ({
+    value: `seat:${String(index + 1)}` as Observer,
+    label: t('spectator.seatView', { seat: index + 1 }),
+  })),
+  { value: 'public', label: t('spectator.publicOnly') },
+])
 </script>
 
 <template>
-  <div class="flex items-center gap-6 border-b bg-paper2 px-5 py-2.5">
-    <div class="flex items-center gap-2">
-      <Label for="spectator-observer">{{ t('spectator.perspective') }}</Label>
-      <Select v-model="observer">
-        <SelectTrigger id="spectator-observer" class="w-44 bg-paper2">
-          <SelectValue>
-            {{
-              observer.startsWith('seat:')
-                ? t('spectator.seatView', { seat: observer.slice(5) })
-                : t(
-                    `spectator.${observer === 'spectator' ? 'omniscient' : observer === 'public' ? 'publicOnly' : 'storyteller'}`,
-                  )
-            }}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="spectator">{{ t('spectator.omniscient') }}</SelectItem>
-          <SelectItem value="storyteller">{{ t('spectator.storyteller') }}</SelectItem>
-          <SelectItem v-for="seat in seatCount" :key="seat" :value="`seat:${String(seat)}`">
-            {{ t('spectator.seatView', { seat }) }}
-          </SelectItem>
-          <SelectItem value="public">{{ t('spectator.publicOnly') }}</SelectItem>
-        </SelectContent>
-      </Select>
+  <div class="spectator-controls flex items-center border-b border-rule">
+    <div class="flex items-center gap-3">
+      <label for="spectator-observer" class="text-ink2">{{ t('spectator.perspective') }}</label>
+      <Select
+        id="spectator-observer"
+        v-model="observer"
+        :options="perspectives"
+        :theme="theme"
+        content-class="spectator-perspective-menu"
+        compact
+      />
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3">
       <Checkbox id="spectator-losing" v-model="losing" />
-      <Label for="spectator-losing">{{ t('spectator.losing') }}</Label>
+      <label for="spectator-losing">{{ t('spectator.losing') }}</label>
     </div>
   </div>
 </template>
+
+<style scoped>
+.spectator-controls {
+  min-height: 50px;
+  gap: var(--space-10);
+  padding: 6px var(--space-10);
+  font-size: var(--font-size-ui);
+}
+</style>
+
+<style>
+.spectator-perspective-menu {
+  width: 240px;
+}
+</style>

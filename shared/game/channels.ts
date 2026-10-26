@@ -15,6 +15,12 @@ export interface ChannelBlock {
   occurrence?: number
 }
 
+export function channelTheme(kind: ChannelBlock['kind'] | undefined): 'night' | 'day' {
+  return kind === undefined || kind === 'setup' || kind === 'first-night' || kind === 'night'
+    ? 'night'
+    : 'day'
+}
+
 export function channelBlocks(events: readonly GameEvent[]): ChannelBlock[] {
   const blocks: ChannelBlock[] = []
   const rooms = new Map<string, ChannelBlock>()

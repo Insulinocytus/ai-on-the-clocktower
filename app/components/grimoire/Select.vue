@@ -20,6 +20,7 @@ defineProps<{
   required?: boolean
   name?: string
   theme?: 'day' | 'night'
+  contentClass?: string
 }>()
 const model = defineModel<T>()
 </script>
@@ -34,7 +35,9 @@ const model = defineModel<T>()
         { 'grimoire-select-trigger--compact': compact },
       ]"
     >
-      <SelectValue :placeholder="placeholder" />
+      <SelectValue :placeholder="placeholder">
+        {{ options.find((option) => option.value === model)?.label ?? placeholder }}
+      </SelectValue>
       <SelectIcon as-child>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path
@@ -49,6 +52,7 @@ const model = defineModel<T>()
     <SelectPortal>
       <SelectContent
         class="grimoire-select-content"
+        :class="contentClass"
         :data-theme="theme"
         position="popper"
         :side-offset="6"

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import Badge from '@/components/grimoire/Badge.vue'
+import Button from '@/components/grimoire/Button.vue'
 import { abortGame, gameEvents, getGame, resumeGame, subscribeGame } from '@/api'
 import type { GameEvent, Observer } from '#shared/types/game'
 import type { GameSummary } from '#shared/types/game-view'
 import { renderEvent } from '#shared/event-templates'
-import { channelBlocks } from '#shared/game/channels'
+import { channelBlocks, channelTheme } from '#shared/game/channels'
 import { fold, foldPublic } from '#shared/game/rules'
 import { seatFootprint, spectatorRows } from '#shared/game/spectator'
 
@@ -151,6 +151,8 @@ const selected = computed(() =>
     ? latest.value
     : (blocks.value.find((block) => block.key === selectedKey.value) ?? blocks.value[0]),
 )
+const theme = computed(() => channelTheme(selected.value?.kind))
+useHead({ htmlAttrs: { 'data-theme': theme } })
 const selectedIndex = computed(() =>
   blocks.value.findIndex((block) => block.key === selected.value?.key),
 )
@@ -290,74 +292,55 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="flex h-[calc(100dvh-61px)] min-h-[700px] min-w-[1160px] flex-col">
-    <p v-if="loadError" role="alert" class="p-6 text-destructive">
+  <section class="spectator-shell flex flex-col bg-paper text-ink" :data-theme="theme">
+    <p v-if="loadError" role="alert" class="p-6 text-accent">
       {{ apiErrorMessage(loadError) }}
     </p>
     <template v-if="game">
-      <header class="flex flex-wrap items-center gap-3 border-b px-5 py-3">
-        <NuxtLink to="/games" class="mr-1 text-sm text-muted-foreground underline">{{
-          t('games.title')
-        }}</NuxtLink>
-        <h1 class="mr-2 font-semibold">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
-        <Badge variant="outline">{{ replay ? t('games.replay') : t('games.live') }}</Badge>
-        <Badge variant="secondary">{{ t(`games.${game.status}`) }}</Badge>
+      <header class="spectator-header flex items-center gap-3 border-b border-rule">
+        <NuxtLink to="/games" class="text-sm text-ink2 underline">{{ t('games.title') }}</NuxtLink>
+        <h1 class="spectator-title font-medium">{{ t('games.game') }} {{ id.slice(0, 8) }}</h1>
+        <Badge>{{ replay ? t('games.replay') : t('games.live') }}</Badge>
+        <Badge>{{ t(`games.${game.status}`) }}</Badge>
         <Button
           v-if="pending && game.status !== 'paused' && !manualOpen"
-          variant="outline"
-          size="sm"
-          class="border-ink2 text-ink2"
+          variant="secondary"
           @click="manualOpen = true"
           >{{ t('manual.waiting', { discretion: pending.discretion }) }}</Button
         >
         <div v-if="game.compatible" class="ml-auto flex items-center gap-2">
           <template v-if="replay">
+            <Button variant="secondary" :disabled="selectedIndex <= 0" @click="navigate(-1)">
+              {{ t('spectator.previous') }}
+            </Button>
+            <span class="min-w-9 text-center font-serif text-xs tabular-nums text-ink2">
+              {{ selectedIndex + 1 }} / {{ blocks.length }}
+            </span>
             <Button
-              variant="outline"
-              size="sm"
-              :disabled="selectedIndex <= 0"
-              @click="navigate(-1)"
-              >{{ t('spectator.previous') }}</Button
-            >
-            <span class="min-w-12 text-center text-xs tabular-nums text-muted-foreground"
-              >{{ selectedIndex + 1 }} / {{ blocks.length }}</span
-            >
-            <Button
-              variant="outline"
-              size="sm"
+              variant="secondary"
               :disabled="selectedIndex >= blocks.length - 1"
               @click="navigate(1)"
               >{{ t('spectator.next') }}</Button
             >
           </template>
-          <Button
-            v-else-if="!following"
-            variant="outline"
-            size="sm"
-            class="text-ink2"
-            @click="follow"
-            >{{ t('spectator.returnLive') }}</Button
-          >
-          <span v-else class="mr-2 text-xs text-ink2">{{ t('spectator.following') }}</span>
-          <Button variant="outline" size="sm" as-child>
+          <Button v-else-if="!following" variant="secondary" @click="follow">
+            {{ t('spectator.returnLive') }}
+          </Button>
+          <span v-else class="mr-1 text-xs text-accent">
+            {{ t('spectator.following') }}
+          </span>
+          <Button variant="secondary" as-child>
             <NuxtLink :to="{ path: '/games/new', query: { template: id } }">{{
               t('games.template')
             }}</NuxtLink>
           </Button>
         </div>
-        <Button
-          v-if="!replay"
-          variant="destructive"
-          size="sm"
-          :disabled="aborting"
-          @click="abort"
-          >{{ t('games.abort') }}</Button
-        >
+        <Button v-if="!replay" :disabled="aborting" @click="abort">{{ t('games.abort') }}</Button>
       </header>
       <div
         v-if="game.compatible && game.status === 'paused'"
         role="alert"
-        class="flex items-start gap-3 border-b border-rule bg-paper3 px-5 py-2 text-sm text-ink2"
+        class="spectator-pause flex items-center gap-6 border-b border-rule bg-paper3 text-sm text-ink2"
       >
         <ul v-if="pauses.length" class="flex-1 space-y-1">
           <li v-for="entry in pauses" :key="entry.seq" class="break-all">
@@ -365,26 +348,34 @@ onUnmounted(() => {
           </li>
         </ul>
         <p v-else class="flex-1">{{ t('games.pageClosedPause') }}</p>
-        <Button size="sm" :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
+        <Button :disabled="resuming" @click="resume">{{ t('games.resume') }}</Button>
       </div>
       <SpectatorControls
         v-if="game.compatible"
         v-model:observer="observer"
         v-model:losing="showLosing"
         :seat-count="game.config.seatCount"
+        :theme="theme"
       />
-      <p v-if="!game.compatible" role="alert" class="p-6 text-destructive">
+      <p v-if="!game.compatible" role="alert" class="p-6 text-accent">
         {{ t('games.incompatible') }}
       </p>
-      <p v-else-if="error" role="status" class="border-b px-5 py-2 text-sm text-destructive">
+      <p
+        v-else-if="error"
+        role="status"
+        class="border-b border-rule px-10 py-2 text-sm text-accent"
+      >
         {{ error }}
       </p>
-      <div
+      <SpectatorChannels
         v-if="game.compatible"
-        class="grid min-h-0 flex-1 grid-cols-[220px_minmax(460px,1fr)_minmax(420px,1.1fr)]"
-      >
-        <SpectatorChannels :blocks="blocks" :selected="selected?.key" @select="select" />
+        :blocks="blocks"
+        :selected="selected?.key"
+        @select="select"
+      />
+      <div v-if="game.compatible" class="spectator-frame grid min-h-0 flex-1">
         <SpectatorRing
+          class="spectator-well"
           :config="game.config"
           :grimoire="grimoire"
           :public-state="publicState"
@@ -422,3 +413,54 @@ onUnmounted(() => {
     </template>
   </section>
 </template>
+
+<style scoped>
+.spectator-shell {
+  height: calc(100dvh - var(--layout-topbar-height));
+  min-height: 700px;
+  min-width: 1160px;
+}
+
+.spectator-header {
+  min-height: 68px;
+  padding: var(--space-4) var(--space-10);
+}
+
+.spectator-title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-heading);
+}
+
+.spectator-pause {
+  min-height: 58px;
+  padding: 10px var(--space-10);
+}
+
+.spectator-frame {
+  grid-template-columns: minmax(0, var(--layout-grimoire-well)) minmax(0, var(--layout-feed-width));
+  gap: var(--layout-gutter);
+  padding: var(--space-4) var(--space-10);
+  justify-content: center;
+}
+
+.spectator-well {
+  border-radius: var(--radius-well);
+}
+</style>
+
+<style>
+html[data-theme] body,
+html[data-theme] body *,
+html[data-theme] .grain::after {
+  transition-property: color, background-color, border-color, opacity;
+  transition-duration: 600ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme] body,
+  html[data-theme] body *,
+  html[data-theme] .grain::after {
+    transition: none;
+  }
+}
+</style>
