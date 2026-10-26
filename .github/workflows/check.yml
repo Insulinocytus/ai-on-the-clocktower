@@ -10,5 +10,5 @@ jobs:
       - uses: jdx/mise-action@v5
       - run: pnpm install --frozen-lockfile
       - run: mise run check
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright install --only-shell chromium
       - run: mise run test
