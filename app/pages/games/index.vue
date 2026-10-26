@@ -41,7 +41,11 @@ onUnmounted(() => {
     </header>
     <p v-if="error" role="alert" class="text-accent">{{ apiErrorMessage(error) }}</p>
     <div v-if="!games.length" class="games-empty">
-      <img src="/botc/editions/tb/logo.webp" :alt="t('games.script')" class="games-logo" />
+      <img
+        :src="publicAssetUrl('botc/editions/tb/logo.webp')"
+        :alt="t('games.script')"
+        class="games-logo"
+      />
       <div>
         <h2>{{ t('games.emptyTitle') }}</h2>
         <p class="games-empty-description">{{ t('games.emptyDescription') }}</p>

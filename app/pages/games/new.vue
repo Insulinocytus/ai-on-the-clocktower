@@ -6,7 +6,7 @@ import SegmentedControl from '@/components/grimoire/SegmentedControl.vue'
 import type { Preset } from '#shared/types/models'
 import { createGame, getGame, listPresets } from '@/api'
 import type { GameConfig, DiscretionSource, DiscretionId } from '#shared/types/game'
-import { characterIconUrl } from '@/utils/character-icons'
+import { characterIconUrl, publicAssetUrl } from '@/utils/character-icons'
 import { DISCRETION_IDS } from '#shared/game/rules'
 
 const { t, locale } = useI18n()
@@ -65,7 +65,7 @@ const sourceOptions = computed(() =>
   sources.map((value) => ({ value, label: t(`games.sources.${value}`) })),
 )
 const discretionIcons: Record<DiscretionId, string | undefined> = {
-  D1: '/botc/editions/tb/logo.webp',
+  D1: publicAssetUrl('botc/editions/tb/logo.webp'),
   seating: undefined,
   D2: characterIconUrl('drunk'),
   D3: characterIconUrl('fortuneteller'),

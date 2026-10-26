@@ -30,7 +30,7 @@ async function toggleLocale() {
     </nav>
     <img
       class="topbar-ccc"
-      src="/botc/community/ccc-parchment.png"
+      :src="publicAssetUrl('botc/community/ccc-parchment.png')"
       :alt="t('app.communityContent')"
       width="80"
       height="32"
