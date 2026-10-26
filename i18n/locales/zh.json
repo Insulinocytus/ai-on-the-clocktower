@@ -7,6 +7,9 @@
     "tabBlockedDescription": "请关闭另一个标签页以在此处继续，本页会自动加载。"
   },
   "nav": { "models": "模型", "games": "对局" },
+  "models": {
+    "subtitle": "先录入提供商，再为它建模型预设。API 密钥只存在这个浏览器里。"
+  },
   "common": {
     "add": "添加",
     "edit": "编辑",

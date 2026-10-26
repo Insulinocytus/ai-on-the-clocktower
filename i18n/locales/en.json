@@ -7,6 +7,9 @@
     "tabBlockedDescription": "Close the other tab to continue here. This tab will load automatically."
   },
   "nav": { "models": "Models", "games": "Games" },
+  "models": {
+    "subtitle": "Add a provider, then create model presets. API keys stay in this browser."
+  },
   "common": {
     "add": "Add",
     "edit": "Edit",

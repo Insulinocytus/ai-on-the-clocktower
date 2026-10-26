@@ -1,0 +1,35 @@
+.grimoire-field {
+  width: 100%;
+  height: var(--size-field);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ink2);
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.grimoire-field::placeholder {
+  color: var(--muted);
+}
+
+.grimoire-field[type='number'] {
+  font-family: var(--font-family-serif);
+}
+
+.grimoire-field[aria-invalid='true'] {
+  border-color: var(--accent);
+}
+
+.grimoire-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.grimoire-textarea {
+  height: auto;
+  min-height: 96px;
+  resize: vertical;
+}

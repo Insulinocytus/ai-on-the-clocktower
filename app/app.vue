@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Toaster } from '@/components/ui/sonner'
+import Toaster from '@/components/grimoire/Toaster.vue'
 import Topbar from '@/components/grimoire/Topbar.vue'
 import { APPLICATION_READY_KEY } from '@/utils/application'
 
@@ -26,7 +26,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
     <main :class="route.meta.spectator ? '' : 'mx-auto max-w-6xl p-6'">
       <NuxtPage />
     </main>
-    <Toaster rich-colors />
+    <Toaster />
   </div>
 </template>
 

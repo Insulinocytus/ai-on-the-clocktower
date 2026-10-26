@@ -8,6 +8,7 @@
 @import 'tw-animate-css';
 @import 'shadcn-vue/tailwind.css';
 @import './tokens.css';
+@import './fields.css';
 
 @custom-variant dark (&:is(.dark *));
 

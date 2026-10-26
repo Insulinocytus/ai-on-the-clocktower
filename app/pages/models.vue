@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import Button from '@/components/grimoire/Button.vue'
 import { toast } from 'vue-sonner'
 import { deletePreset, deleteProvider, listPresets, listProviders, type Provider } from '@/api'
 import type { Preset } from '#shared/types/models'
@@ -42,62 +34,90 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
 </script>
 
 <template>
-  <div class="grid gap-10">
-    <section class="grid gap-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">{{ t('providers.title') }}</h2>
-        <Button @click="Object.assign(providerDialog, { open: true, provider: undefined })">
+  <div class="models-page">
+    <header class="models-heading">
+      <h1>{{ t('nav.models') }}</h1>
+      <p>{{ t('models.subtitle') }}</p>
+    </header>
+
+    <section class="models-section">
+      <div class="models-section-heading">
+        <h2>{{ t('providers.title') }}</h2>
+        <Button
+          variant="secondary"
+          @click="Object.assign(providerDialog, { open: true, provider: undefined })"
+        >
           {{ t('providers.add') }}
         </Button>
       </div>
       <p v-if="!providers.length" class="text-sm text-muted-foreground">
         {{ t('providers.empty') }}
       </p>
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t('providers.name') }}</TableHead>
-            <TableHead>{{ t('providers.baseUrl') }}</TableHead>
-            <TableHead>{{ t('providers.apiFormat') }}</TableHead>
-            <TableHead>{{ t('providers.timeoutSec') }}</TableHead>
-            <TableHead>{{ t('providers.maxConcurrency') }}</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="p in providers" :key="p.id">
-            <TableCell class="font-medium">{{ p.name }}</TableCell>
-            <TableCell class="font-mono text-xs">{{ p.baseUrl }}</TableCell>
-            <TableCell>{{ t(`providers.formats.${p.apiFormat}`) }}</TableCell>
-            <TableCell>{{ p.timeoutSec }}</TableCell>
-            <TableCell>{{ p.maxConcurrency }}</TableCell>
-            <TableCell class="text-right">
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="Object.assign(providerDialog, { open: true, provider: p })"
-              >
-                {{ t('common.edit') }}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="
-                  remove(() => deleteProvider(p.id), t('providers.confirmDelete', { name: p.name }))
-                "
-              >
-                {{ t('common.delete') }}
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+      <table v-else class="models-table providers-table">
+        <caption class="sr-only">
+          {{
+            t('providers.title')
+          }}
+        </caption>
+        <colgroup>
+          <col class="w-[200px]" />
+          <col class="w-[280px]" />
+          <col class="w-[200px]" />
+          <col class="w-[160px]" />
+          <col class="w-[120px]" />
+          <col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">{{ t('providers.name') }}</th>
+            <th scope="col">{{ t('providers.baseUrl') }}</th>
+            <th scope="col">{{ t('providers.apiFormat') }}</th>
+            <th scope="col">{{ t('providers.timeoutSec') }}</th>
+            <th scope="col">{{ t('providers.maxConcurrency') }}</th>
+            <th scope="col">
+              <span class="sr-only">{{ t('common.edit') }} / {{ t('common.delete') }}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="p in providers" :key="p.id">
+            <th scope="row" class="record-name">{{ p.name }}</th>
+            <td class="truncate" :title="p.baseUrl">{{ p.baseUrl }}</td>
+            <td>{{ t(`providers.formats.${p.apiFormat}`) }}</td>
+            <td class="record-number">{{ p.timeoutSec }}</td>
+            <td class="record-number">{{ p.maxConcurrency }}</td>
+            <td>
+              <div class="record-actions">
+                <button
+                  type="button"
+                  @click="Object.assign(providerDialog, { open: true, provider: p })"
+                >
+                  {{ t('common.edit') }}
+                </button>
+                <button
+                  type="button"
+                  class="text-muted-foreground"
+                  @click="
+                    remove(
+                      () => deleteProvider(p.id),
+                      t('providers.confirmDelete', { name: p.name }),
+                    )
+                  "
+                >
+                  {{ t('common.delete') }}
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
-    <section class="grid gap-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">{{ t('presets.title') }}</h2>
+    <section class="models-section">
+      <div class="models-section-heading">
+        <h2>{{ t('presets.title') }}</h2>
         <Button
+          variant="secondary"
           :disabled="!providers.length"
           @click="Object.assign(presetDialog, { open: true, preset: undefined })"
         >
@@ -107,54 +127,69 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
       <p v-if="!presets.length" class="text-sm text-muted-foreground">
         {{ providers.length ? t('presets.empty') : t('presets.needProvider') }}
       </p>
-      <Table v-else>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{{ t('presets.name') }}</TableHead>
-            <TableHead>{{ t('presets.provider') }}</TableHead>
-            <TableHead>{{ t('presets.model') }}</TableHead>
-            <TableHead>{{ t('presets.forceToolChoice') }}</TableHead>
-            <TableHead>{{ t('presets.extraBody') }}</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow v-for="p in presets" :key="p.id">
-            <TableCell class="font-medium">{{ p.name }}</TableCell>
-            <TableCell>{{ providerName(p.providerId) }}</TableCell>
-            <TableCell class="font-mono text-xs">{{ p.model }}</TableCell>
-            <TableCell>{{ p.forceToolChoice ? t('common.yes') : t('common.no') }}</TableCell>
-            <TableCell class="max-w-64 truncate font-mono text-xs" :title="p.extraBody">
-              {{ p.extraBody }}
-            </TableCell>
-            <TableCell class="text-right">
-              <Button
-                variant="outline"
-                size="sm"
-                @click="Object.assign(trialDialog, { open: true, preset: p })"
+      <table v-else class="models-table presets-table">
+        <caption class="sr-only">
+          {{
+            t('presets.title')
+          }}
+        </caption>
+        <colgroup>
+          <col class="w-[200px]" />
+          <col class="w-[180px]" />
+          <col class="w-[220px]" />
+          <col class="w-[160px]" />
+          <col class="w-[200px]" />
+          <col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">{{ t('presets.name') }}</th>
+            <th scope="col">{{ t('presets.provider') }}</th>
+            <th scope="col">{{ t('presets.model') }}</th>
+            <th scope="col">{{ t('presets.forceToolChoice') }}</th>
+            <th scope="col">{{ t('presets.extraBody') }}</th>
+            <th scope="col">
+              <span class="sr-only"
+                >{{ t('presets.trial') }} / {{ t('common.edit') }} / {{ t('common.delete') }}</span
               >
-                {{ t('presets.trial') }}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="Object.assign(presetDialog, { open: true, preset: p })"
-              >
-                {{ t('common.edit') }}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                @click="
-                  remove(() => deletePreset(p.id), t('presets.confirmDelete', { name: p.name }))
-                "
-              >
-                {{ t('common.delete') }}
-              </Button>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="p in presets" :key="p.id">
+            <th scope="row" class="record-name">{{ p.name }}</th>
+            <td>{{ providerName(p.providerId) }}</td>
+            <td class="truncate" :title="p.model">{{ p.model }}</td>
+            <td>{{ p.forceToolChoice ? t('common.yes') : t('common.no') }}</td>
+            <td class="truncate" :title="p.extraBody">{{ p.extraBody }}</td>
+            <td>
+              <div class="record-actions">
+                <button
+                  type="button"
+                  @click="Object.assign(trialDialog, { open: true, preset: p })"
+                >
+                  {{ t('presets.trial') }}
+                </button>
+                <button
+                  type="button"
+                  @click="Object.assign(presetDialog, { open: true, preset: p })"
+                >
+                  {{ t('common.edit') }}
+                </button>
+                <button
+                  type="button"
+                  class="text-muted-foreground"
+                  @click="
+                    remove(() => deletePreset(p.id), t('presets.confirmDelete', { name: p.name }))
+                  "
+                >
+                  {{ t('common.delete') }}
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <ProviderDialog
@@ -171,3 +206,106 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
     <TrialDialog v-model:open="trialDialog.open" :preset="trialDialog.preset" />
   </div>
 </template>
+
+<style scoped>
+.models-page {
+  width: var(--layout-content-width);
+  margin-inline: calc((100% - var(--layout-content-width)) / 2);
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-10);
+}
+
+.models-heading {
+  margin-bottom: 48px;
+}
+
+.models-heading h1 {
+  font-size: var(--font-size-page);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+}
+
+.models-heading p {
+  margin-top: var(--space-2);
+  color: var(--ink2);
+  font-size: var(--font-size-speech);
+  line-height: var(--line-height-body);
+}
+
+.models-section + .models-section {
+  margin-top: 60px;
+}
+
+.models-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.models-section-heading h2 {
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+}
+
+.models-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: var(--font-size-ui);
+}
+
+.models-table tr {
+  border-bottom: 1px solid var(--rule);
+}
+
+.models-table thead th {
+  height: 30px;
+  color: var(--muted);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  vertical-align: top;
+}
+
+.models-table tbody th,
+.models-table tbody td {
+  height: 60px;
+  padding-right: var(--space-4);
+  color: var(--ink2);
+  font-weight: var(--font-weight-regular);
+}
+
+.models-table .record-name {
+  color: var(--ink);
+  font-family: var(--font-family-serif);
+  font-size: var(--font-size-wordmark);
+}
+
+.record-number {
+  font-family: var(--font-family-serif);
+}
+
+.models-table tbody td:last-child {
+  padding-right: 0;
+}
+
+.record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-6);
+  white-space: nowrap;
+}
+
+.record-actions button {
+  padding-block: var(--space-2);
+  font-size: var(--font-size-ui);
+  cursor: pointer;
+}
+
+.record-actions button:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+</style>

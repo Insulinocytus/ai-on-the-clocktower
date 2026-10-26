@@ -1,24 +1,10 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import Button from '@/components/grimoire/Button.vue'
+import Checkbox from '@/components/grimoire/Checkbox.vue'
+import Input from '@/components/grimoire/Input.vue'
+import Textarea from '@/components/grimoire/Textarea.vue'
+import Dialog from '@/components/grimoire/Dialog.vue'
+import Select from '@/components/grimoire/Select.vue'
 import { toast } from 'vue-sonner'
 import { createPreset, updatePreset, type Provider } from '@/api'
 import type { Preset } from '#shared/types/models'
@@ -71,57 +57,53 @@ async function save() {
 </script>
 
 <template>
-  <Dialog v-model:open="open">
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{{ preset ? t('presets.edit') : t('presets.add') }}</DialogTitle>
-      </DialogHeader>
-      <form id="preset-form" class="grid gap-4" @submit.prevent="save">
-        <div class="grid gap-2">
-          <Label for="preset-name">{{ t('presets.name') }}</Label>
-          <Input id="preset-name" v-model="form.name" required />
-        </div>
-        <div class="grid gap-2">
-          <Label for="preset-provider">{{ t('presets.provider') }}</Label>
-          <Select v-model="form.providerId" required>
-            <SelectTrigger id="preset-provider" class="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div class="grid gap-2">
-          <Label for="preset-model">{{ t('presets.model') }}</Label>
-          <Input id="preset-model" v-model="form.model" placeholder="deepseek-v4-pro" required />
-        </div>
-        <div class="flex items-center gap-2">
-          <Checkbox id="preset-force" v-model="form.forceToolChoice" />
-          <Label for="preset-force">{{ t('presets.forceToolChoice') }}</Label>
-        </div>
-        <div class="grid gap-2">
-          <Label for="preset-extra-body">{{ t('presets.extraBody') }}</Label>
-          <Textarea
-            id="preset-extra-body"
-            v-model="form.extraBody"
-            class="font-mono text-xs"
-            rows="6"
-            :aria-invalid="!extraBodyValid"
-          />
-          <p v-if="!extraBodyValid" class="text-sm text-destructive">
-            {{ t('presets.extraBodyInvalid') }}
-          </p>
-        </div>
-      </form>
-      <DialogFooter>
-        <DialogClose as-child>
-          <Button variant="outline">{{ t('common.cancel') }}</Button>
-        </DialogClose>
-        <Button type="submit" form="preset-form" :disabled="!extraBodyValid">
-          {{ t('common.save') }}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
+  <Dialog v-model:open="open" :title="preset ? t('presets.edit') : t('presets.add')">
+    <form id="preset-form" class="grid gap-5" @submit.prevent="save">
+      <div class="grid gap-1">
+        <label for="preset-name">{{ t('presets.name') }}</label>
+        <Input id="preset-name" v-model="form.name" required />
+      </div>
+      <div class="grid gap-1">
+        <label for="preset-provider">{{ t('presets.provider') }}</label>
+        <Select
+          id="preset-provider"
+          v-model="form.providerId"
+          :options="providers.map((p) => ({ value: p.id, label: p.name }))"
+          required
+        />
+      </div>
+      <div class="grid gap-1">
+        <label for="preset-model">{{ t('presets.model') }}</label>
+        <Input id="preset-model" v-model="form.model" placeholder="deepseek-v4-pro" required />
+      </div>
+      <div class="flex items-center gap-3">
+        <Checkbox id="preset-force" v-model="form.forceToolChoice" />
+        <label for="preset-force">{{ t('presets.forceToolChoice') }}</label>
+      </div>
+      <div class="grid gap-1">
+        <label for="preset-extra-body">{{ t('presets.extraBody') }}</label>
+        <Textarea
+          id="preset-extra-body"
+          v-model="form.extraBody"
+          rows="3"
+          :aria-invalid="!extraBodyValid"
+          :aria-describedby="!extraBodyValid ? 'preset-extra-body-error' : undefined"
+        />
+        <p
+          v-if="!extraBodyValid"
+          id="preset-extra-body-error"
+          role="alert"
+          class="mt-1 text-sm text-accent"
+        >
+          {{ t('presets.extraBodyInvalid') }}
+        </p>
+      </div>
+    </form>
+    <template #footer>
+      <Button variant="secondary" @click="open = false">{{ t('common.cancel') }}</Button>
+      <Button type="submit" form="preset-form" :disabled="!extraBodyValid">{{
+        t('common.save')
+      }}</Button>
+    </template>
   </Dialog>
 </template>

@@ -1,3 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // shortcut: retain legacy controls until #88 removes them and this ignore.
+  "ignore": ["app/components/ui/**"],
 }
