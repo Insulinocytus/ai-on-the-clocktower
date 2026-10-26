@@ -34,8 +34,9 @@ const model = defineModel<boolean | 'indeterminate'>({ default: false })
 
 .grimoire-checkbox[data-state='checked'],
 .grimoire-checkbox[data-state='indeterminate'] {
-  background: var(--ink2);
-  color: var(--paper);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .grimoire-checkbox:disabled {
