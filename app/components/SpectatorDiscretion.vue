@@ -121,7 +121,7 @@ async function submit() {
                 <template v-for="state in [grimoire.seats[index]]" :key="state?.seat ?? 0">
                   <td>
                     {{ state ? ROLES[state.role].name[language] : '—'
-                    }}<span v-if="state?.believedRole" class="block text-xs text-violet-700">{{
+                    }}<span v-if="state?.believedRole" class="block text-xs text-ink2">{{
                       t('spectator.believes', { role: ROLES[state.believedRole].name[language] })
                     }}</span>
                   </td>
@@ -156,7 +156,7 @@ async function submit() {
           </table>
         </div>
       </section>
-      <section class="space-y-2 rounded-md bg-slate-50 p-3 text-sm">
+      <section class="space-y-2 rounded-md bg-paper2 p-3 text-sm">
         <h3 class="font-semibold">{{ t('manual.truth') }}</h3>
         <p v-if="request.context?.seat">
           {{ t('games.seat', { seat: request.context.seat })

@@ -2,6 +2,7 @@
   "app": {
     "title": "AI on the Clocktower",
     "language": "中文",
+    "communityContent": "Community Created Content (unofficial)",
     "tabBlockedTitle": "This app is open in another tab",
     "tabBlockedDescription": "Close the other tab to continue here. This tab will load automatically."
   },

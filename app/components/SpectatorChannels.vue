@@ -21,10 +21,10 @@ watch(
 <template>
   <nav
     ref="navigation"
-    class="min-h-0 overflow-y-auto border-r bg-slate-50/70"
+    class="min-h-0 overflow-y-auto border-r bg-paper2"
     :aria-label="t('spectator.channels')"
   >
-    <h2 class="sticky top-0 border-b bg-slate-50 px-4 py-3 text-sm font-medium">
+    <h2 class="sticky top-0 border-b bg-paper2 px-4 py-3 text-sm font-medium">
       {{ t('spectator.channels') }}
     </h2>
     <ol class="grid gap-1 p-2">
@@ -33,10 +33,8 @@ watch(
           type="button"
           class="w-full rounded-md border border-transparent px-3 py-3 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           :class="[
-            selected === block.key
-              ? 'border-violet-200 bg-violet-100/80 text-violet-950'
-              : 'hover:bg-slate-100',
-            block.kind === 'room' ? 'pl-6 text-violet-800' : '',
+            selected === block.key ? 'border-accent bg-accent text-accent-ink' : 'hover:bg-paper3',
+            block.kind === 'room' ? 'pl-6' : '',
           ]"
           :aria-current="selected === block.key ? 'step' : undefined"
           @click="$emit('select', block.key)"

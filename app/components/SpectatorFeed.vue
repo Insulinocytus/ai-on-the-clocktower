@@ -36,7 +36,7 @@ watch(
     </header>
     <div ref="feed" class="min-h-0 flex-1 overflow-y-auto px-5" aria-live="polite">
       <section v-for="group in groups" :key="group.key">
-        <h3 v-if="focused" class="sticky top-0 border-b bg-white py-3 text-sm font-medium">
+        <h3 v-if="focused" class="sticky top-0 border-b bg-paper py-3 text-sm font-medium">
           {{ group.title }}
         </h3>
         <ol class="divide-y">

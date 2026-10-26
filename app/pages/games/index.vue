@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import Button from '@/components/grimoire/Button.vue'
+import Badge from '@/components/grimoire/Badge.vue'
 import {
   Table,
   TableBody,
@@ -65,13 +65,13 @@ onUnmounted(() => {
           >
           <TableCell>{{ game.config.seats.map((seat) => seat.name).join(' / ') }}</TableCell>
           <TableCell
-            ><Badge variant="secondary">{{
+            ><Badge variant="outline">{{
               game.compatible ? t(`games.${game.status}`) : t('games.incompatible')
             }}</Badge></TableCell
           >
           <TableCell>{{ game.reason ? GAME_REASON_LABELS[game.reason][locale] : '—' }}</TableCell>
           <TableCell>
-            <Button v-if="game.compatible" variant="outline" size="sm" as-child>
+            <Button v-if="game.compatible" variant="secondary" as-child>
               <NuxtLink :to="{ path: '/games/new', query: { template: game.id } }">
                 {{ t('games.template') }}
               </NuxtLink>

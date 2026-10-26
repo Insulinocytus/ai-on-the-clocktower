@@ -306,7 +306,7 @@ onUnmounted(() => {
           v-if="pending && game.status !== 'paused' && !manualOpen"
           variant="outline"
           size="sm"
-          class="border-amber-400 text-amber-800"
+          class="border-ink2 text-ink2"
           @click="manualOpen = true"
           >{{ t('manual.waiting', { discretion: pending.discretion }) }}</Button
         >
@@ -334,11 +334,11 @@ onUnmounted(() => {
             v-else-if="!following"
             variant="outline"
             size="sm"
-            class="text-rose-700"
+            class="text-ink2"
             @click="follow"
             >{{ t('spectator.returnLive') }}</Button
           >
-          <span v-else class="mr-2 text-xs text-rose-700">{{ t('spectator.following') }}</span>
+          <span v-else class="mr-2 text-xs text-ink2">{{ t('spectator.following') }}</span>
           <Button variant="outline" size="sm" as-child>
             <NuxtLink :to="{ path: '/games/new', query: { template: id } }">{{
               t('games.template')
@@ -357,7 +357,7 @@ onUnmounted(() => {
       <div
         v-if="game.compatible && game.status === 'paused'"
         role="alert"
-        class="flex items-start gap-3 border-b border-amber-300 bg-amber-50 px-5 py-2 text-sm text-amber-900"
+        class="flex items-start gap-3 border-b border-rule bg-paper3 px-5 py-2 text-sm text-ink2"
       >
         <ul v-if="pauses.length" class="flex-1 space-y-1">
           <li v-for="entry in pauses" :key="entry.seq" class="break-all">

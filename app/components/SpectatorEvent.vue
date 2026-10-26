@@ -61,7 +61,7 @@ const { t, locale } = useI18n()
           class="whitespace-pre-wrap break-words text-sm leading-7"
           :class="
             row.event.type === 'public.speech' || row.event.type === 'whisper.speech'
-              ? 'rounded-lg bg-slate-50 px-3 py-2 text-slate-900'
+              ? 'rounded-lg bg-paper2 px-3 py-2 text-ink'
               : 'text-muted-foreground'
           "
         >
@@ -69,7 +69,7 @@ const { t, locale } = useI18n()
         </p>
         <span
           v-if="observer === 'spectator' && row.falseInfo"
-          class="mt-2 inline-block rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-900"
+          class="mt-2 inline-block rounded border border-accent bg-accent px-2 py-0.5 text-xs text-accent-ink"
           :title="row.falseReason ? t(`spectator.falseReasons.${row.falseReason}`) : undefined"
           >{{ t('spectator.falseInfo') }}</span
         >

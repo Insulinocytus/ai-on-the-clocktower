@@ -98,7 +98,7 @@ function randomFill() {
         / {{ counts[type] }}
       </span>
     </div>
-    <p v-if="selected.includes('baron')" class="text-sm text-violet-700">{{ t('manual.baron') }}</p>
+    <p v-if="selected.includes('baron')" class="text-sm text-ink2">{{ t('manual.baron') }}</p>
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
       <div v-for="(_, index) in selected" :key="index" class="space-y-1.5">
         <Label :for="`setup-seat-${String(index + 1)}`">{{
@@ -121,7 +121,7 @@ function randomFill() {
       <p v-for="error in errors" :key="error.code" class="text-destructive">
         {{ t(`manual.errors.${error.code}`) }}
       </p>
-      <p v-if="choice" class="text-emerald-700">{{ t('manual.validSetup') }}</p>
+      <p v-if="choice" class="text-ink2">{{ t('manual.validSetup') }}</p>
     </div>
   </section>
 </template>

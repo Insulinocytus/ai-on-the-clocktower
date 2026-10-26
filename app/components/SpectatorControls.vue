@@ -17,11 +17,11 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="flex items-center gap-6 border-b bg-slate-50/50 px-5 py-2.5">
+  <div class="flex items-center gap-6 border-b bg-paper2 px-5 py-2.5">
     <div class="flex items-center gap-2">
       <Label for="spectator-observer">{{ t('spectator.perspective') }}</Label>
       <Select v-model="observer">
-        <SelectTrigger id="spectator-observer" class="w-44 bg-white">
+        <SelectTrigger id="spectator-observer" class="w-44 bg-paper2">
           <SelectValue>
             {{
               observer.startsWith('seat:')
