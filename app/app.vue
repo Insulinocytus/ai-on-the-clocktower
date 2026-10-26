@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import Toaster from '@/components/grimoire/Toaster.vue'
-import Topbar from '@/components/grimoire/Topbar.vue'
+import AppShell from '@/components/AppShell.vue'
 import { APPLICATION_READY_KEY } from '@/utils/application'
 
 const { t, locale } = useI18n()
@@ -28,13 +27,9 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
       <p>{{ t('app.tabBlockedDescription') }}</p>
     </div>
   </div>
-  <div v-else-if="ready" class="grain min-h-screen bg-paper text-ink">
-    <Topbar />
-    <main :class="{ 'page-main': !route.meta.spectator }">
-      <NuxtPage />
-    </main>
-    <Toaster />
-  </div>
+  <AppShell v-else-if="ready" :spectator="!!route.meta.spectator">
+    <NuxtPage />
+  </AppShell>
 </template>
 
 <style scoped>
@@ -51,19 +46,6 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
   width: 80px;
   height: 32px;
   object-fit: contain;
-}
-
-.page-main {
-  width: var(--layout-content-width);
-  margin-inline: auto;
-  padding-block: calc(var(--space-6) + var(--space-8)) var(--space-6);
-}
-
-.page-main :deep(h1) {
-  color: var(--ink);
-  font-size: var(--font-size-page);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-heading);
 }
 
 .tab-blocked-message h1 {

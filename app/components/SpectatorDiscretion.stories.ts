@@ -32,8 +32,6 @@ const meta = {
       <Toaster />
     `,
   }),
-  // scrollable-region-focusable: the candidate table scrolls but is not focusable (known component bug)
-  parameters: { a11y: { test: 'todo' } },
   beforeEach: () => {
     onSubmitted.mockClear()
     onAbort.mockClear()
