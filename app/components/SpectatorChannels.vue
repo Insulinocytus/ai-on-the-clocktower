@@ -16,7 +16,7 @@ watch(
       ?.querySelector('[aria-current]')
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   },
-  { flush: 'post' },
+  { flush: 'post', immediate: true },
 )
 </script>
 
@@ -36,7 +36,7 @@ watch(
             :aria-current="selected === block.key ? 'step' : undefined"
             @click="$emit('select', block.key)"
           >
-            <span class="block text-sm font-medium">{{ block.title }}</span>
+            <span class="block text-sm">{{ block.title }}</span>
             <span class="channel-meta mt-0.5 flex items-center gap-3 text-xs">
               {{ t('spectator.day', { day: block.day }) }}
               <span class="font-serif tabular-nums">#{{ block.end }}</span>
@@ -48,6 +48,7 @@ watch(
         {{ t('spectator.loading') }}
       </p>
     </div>
+    <slot />
   </nav>
 </template>
 

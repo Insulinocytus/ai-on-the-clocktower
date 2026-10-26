@@ -58,7 +58,6 @@ async function toggleLocale() {
   color: var(--ink);
   font-family: var(--font-family-serif);
   font-size: var(--font-size-wordmark);
-  font-weight: var(--font-weight-semibold);
 }
 
 .topbar-nav {

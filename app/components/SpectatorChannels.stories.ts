@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook-vue/nuxt'
-import { expect, fn } from 'storybook/test'
+import { expect, fn, waitFor } from 'storybook/test'
 import { computed, reactive } from 'vue'
 import { perspective } from './spectator.fixtures'
 import SpectatorChannels from './SpectatorChannels.vue'
@@ -69,6 +69,29 @@ export const Loading: Story = {
   args: { blocks: [], selected: undefined },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('等待事件…')).toBeVisible()
+  },
+}
+
+const longGame = Array.from({ length: 8 }, (_, index) =>
+  live.blocks.map((block) => ({
+    ...block,
+    key: `${block.key}-day${String(index + 1)}`,
+    day: index + 1,
+    end: block.end + index * 40,
+  })),
+).flat()
+
+export const ManyDaysScroll: Story = {
+  args: { blocks: longGame, selected: longGame.at(-1)?.key },
+  play: async ({ canvas, canvasElement }) => {
+    const strip = canvasElement.querySelector('ol')?.parentElement
+    await expect(strip?.scrollWidth).toBeGreaterThan(strip?.clientWidth ?? Infinity)
+    const current = canvas.getByRole('button', { current: 'step' })
+    await waitFor(() => {
+      const box = current.getBoundingClientRect()
+      const view = strip?.getBoundingClientRect()
+      return expect(view && box.right <= view.right + 1 && box.left >= view.left - 1).toBe(true)
+    })
   },
 }
 

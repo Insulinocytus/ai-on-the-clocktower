@@ -89,7 +89,7 @@ async function submit() {
   >
     <div class="space-y-5">
       <section class="space-y-2">
-        <h3 :id="grimoireHeadingId" class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
+        <h3 :id="grimoireHeadingId" class="font-serif">{{ t('manual.grimoire') }}</h3>
         <div
           role="region"
           :aria-labelledby="grimoireHeadingId"
@@ -161,7 +161,7 @@ async function submit() {
         </div>
       </section>
       <section class="space-y-2 rounded-thought bg-paper3 p-4 text-sm leading-6 text-ink2">
-        <h3 class="font-serif font-semibold text-ink">{{ t('manual.truth') }}</h3>
+        <h3 class="font-serif text-ink">{{ t('manual.truth') }}</h3>
         <p v-if="request.context?.seat">
           {{ t('games.seat', { seat: request.context.seat })
           }}<span v-if="request.context.role">
@@ -169,7 +169,7 @@ async function submit() {
           >
         </p>
         <p>{{ request.context?.truth ? describe(request.context.truth) : t('manual.noTruth') }}</p>
-        <h3 class="pt-1 font-serif font-semibold text-ink">{{ t('manual.advice') }}</h3>
+        <h3 class="pt-1 font-serif text-ink">{{ t('manual.advice') }}</h3>
         <p>{{ t(`manual.adviceById.${request.discretion}`) }}</p>
       </section>
       <SpectatorSetup
@@ -180,7 +180,7 @@ async function submit() {
         :candidates="candidates"
       />
       <section v-else class="space-y-2">
-        <h3 class="font-serif font-medium">
+        <h3 class="font-serif">
           {{ t('manual.candidates', { count: candidates.length }) }}
         </h3>
         <Select

@@ -95,7 +95,6 @@ const { t } = useI18n()
 .grimoire-dialog-title {
   font-family: var(--font-family-serif);
   font-size: var(--font-size-title);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-heading);
 }
 

@@ -19,7 +19,7 @@ const perspectives = computed<{ value: Observer; label: string }[]>(() => [
 </script>
 
 <template>
-  <div class="spectator-controls flex items-center border-b border-rule">
+  <div class="spectator-controls flex shrink-0 items-center">
     <div class="flex items-center gap-3">
       <label for="spectator-observer" class="text-ink2">{{ t('spectator.perspective') }}</label>
       <Select
@@ -39,9 +39,7 @@ const perspectives = computed<{ value: Observer; label: string }[]>(() => [
 
 <style scoped>
 .spectator-controls {
-  min-height: 50px;
-  gap: var(--space-10);
-  padding: 6px var(--space-10);
+  gap: var(--space-6);
   font-size: var(--font-size-ui);
 }
 </style>

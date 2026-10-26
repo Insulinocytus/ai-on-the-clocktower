@@ -1,9 +1,7 @@
 :root {
-  --font-family-serif: 'Noto Serif SC', serif;
-  --font-family-sans: 'Noto Sans SC', sans-serif;
+  --font-family-serif: 'LXGW WenKai Screen', serif;
+  --font-family-sans: 'LXGW WenKai Screen', sans-serif;
   --font-weight-regular: 400;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
   --font-size-caption: 12px;
   --font-size-small: 13px;
   --font-size-ui: 14px;

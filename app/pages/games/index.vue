@@ -204,7 +204,6 @@ onUnmounted(() => {
   color: var(--ink);
   font-family: var(--font-family-serif);
   font-size: var(--font-size-record);
-  font-weight: var(--font-weight-semibold);
 }
 
 .games-created {
@@ -281,7 +280,6 @@ onUnmounted(() => {
 .games-empty h2 {
   color: var(--ink);
   font-size: var(--font-size-dialog);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-heading);
 }
 

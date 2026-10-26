@@ -79,7 +79,7 @@ function randomFill() {
 <template>
   <section class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h3 class="font-serif font-medium">{{ t('manual.setup') }}</h3>
+      <h3 class="font-serif">{{ t('manual.setup') }}</h3>
       <Button type="button" variant="secondary" @click="randomFill">{{
         t('manual.randomFill')
       }}</Button>

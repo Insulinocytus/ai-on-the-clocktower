@@ -1,9 +1,4 @@
-@import '@fontsource/noto-serif-sc/400.css';
-@import '@fontsource/noto-serif-sc/500.css';
-@import '@fontsource/noto-serif-sc/600.css';
-@import '@fontsource/noto-sans-sc/400.css';
-@import '@fontsource/noto-sans-sc/500.css';
-@import '@fontsource/noto-sans-sc/600.css';
+@import 'lxgw-wenkai-screen-webfont/lxgwwenkaiscreen.css';
 @import 'tailwindcss';
 @import './tokens.css';
 @import './fields.css';
@@ -60,6 +55,34 @@
     cursor: not-allowed;
     opacity: 0.5;
   }
+
+  /* Chromium ignores ::-webkit-scrollbar once scrollbar-color is set, so the standard properties are Firefox-only. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+    }
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--muted) 40%, transparent) padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--muted) 70%, transparent);
+  }
 }
 
 .grain {
@@ -70,7 +93,8 @@
   content: '';
   position: fixed;
   inset: 0;
-  z-index: 100;
+  /* Inside .grain's isolated stacking context: above its paper background, below all content. */
+  z-index: -1;
   pointer-events: none;
   opacity: var(--grain-opacity);
   mix-blend-mode: var(--grain-blend);

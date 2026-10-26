@@ -65,13 +65,11 @@ const pretty = (value: unknown) =>
         <span v-if="result.error" class="text-sm text-accent">{{ result.error }}</span>
       </div>
       <section v-if="result.toolCall" class="grid gap-2">
-        <h3 class="font-sans text-sm font-medium">
-          {{ t('trial.toolCall') }}: {{ result.toolCall.name }}
-        </h3>
+        <h3 class="font-sans text-sm">{{ t('trial.toolCall') }}: {{ result.toolCall.name }}</h3>
         <pre class="trial-response">{{ pretty(result.toolCall.arguments) }}</pre>
       </section>
       <section class="grid gap-2">
-        <h3 class="font-sans text-sm font-medium">{{ t('trial.raw') }}</h3>
+        <h3 class="font-sans text-sm">{{ t('trial.raw') }}</h3>
         <pre class="trial-response max-h-[180px]">{{ pretty(result.raw) }}</pre>
       </section>
     </div>

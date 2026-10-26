@@ -25,7 +25,6 @@ defineProps<{ spectator?: boolean }>()
 .page-main :deep(h1) {
   color: var(--ink);
   font-size: var(--font-size-page);
-  font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-heading);
 }
 </style>
