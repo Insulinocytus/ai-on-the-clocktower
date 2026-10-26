@@ -93,7 +93,7 @@ async function submit() {
         <h3 class="font-serif font-medium">{{ t('manual.grimoire') }}</h3>
         <div class="max-h-52 overflow-auto rounded-[var(--radius-thought)] border border-rule">
           <table class="manual-table w-full text-left text-sm">
-            <thead class="sticky top-0 bg-paper3 text-muted-foreground">
+            <thead class="sticky top-0 bg-paper3 text-muted">
               <tr>
                 <th class="p-2">{{ t('manual.seat') }}</th>
                 <th>{{ t('manual.role') }}</th>

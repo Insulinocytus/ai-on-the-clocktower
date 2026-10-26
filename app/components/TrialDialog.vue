@@ -50,7 +50,7 @@ const pretty = (value: unknown) =>
     :description="t('trial.description')"
     size="wide"
   >
-    <p v-if="running" class="text-sm text-muted-foreground">{{ t('trial.running') }}</p>
+    <p v-if="running" class="text-sm text-muted">{{ t('trial.running') }}</p>
     <p v-else-if="error" role="alert" class="text-sm whitespace-pre-wrap text-accent">
       {{ error }}
     </p>

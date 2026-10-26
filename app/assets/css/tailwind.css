@@ -5,17 +5,12 @@
 @import '@fontsource/noto-sans-sc/500.css';
 @import '@fontsource/noto-sans-sc/600.css';
 @import 'tailwindcss';
-@import 'tw-animate-css';
-@import 'shadcn-vue/tailwind.css';
 @import './tokens.css';
 @import './fields.css';
-
-@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-serif: var(--font-family-serif);
   --font-sans: var(--font-family-sans);
-  --font-heading: var(--font-family-serif);
   --color-paper: var(--paper);
   --color-paper2: var(--paper2);
   --color-paper3: var(--paper3);
@@ -27,33 +22,13 @@
   --color-token: var(--token);
   --color-token-ink: var(--token-ink);
   --color-token-rule: var(--token-rule);
-  --color-ring: var(--accent2);
-  --color-input: var(--ink2);
-  --color-border: var(--rule);
-  --color-destructive: var(--accent);
-  --color-accent-foreground: var(--accent-ink);
   --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted);
-  --color-muted: var(--paper3);
-  --color-secondary-foreground: var(--ink2);
-  --color-secondary: var(--paper3);
-  --color-primary-foreground: var(--accent-ink);
-  --color-primary: var(--accent);
-  --color-popover-foreground: var(--ink);
-  --color-popover: var(--paper2);
-  --color-card-foreground: var(--ink);
-  --color-card: var(--paper2);
-  --color-foreground: var(--ink);
-  --color-background: var(--paper);
-  --radius-sm: var(--radius-field);
-  --radius-md: var(--radius-thought);
-  --radius-lg: var(--radius-well);
-  --radius-xl: var(--radius-dialog);
+  --color-muted: var(--muted);
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-rule;
   }
 
   body {

@@ -44,7 +44,7 @@ watch(
           </button>
         </li>
       </ol>
-      <p v-if="!blocks.length" class="px-3 text-sm text-muted-foreground">
+      <p v-if="!blocks.length" class="px-3 text-sm text-muted">
         {{ t('spectator.loading') }}
       </p>
     </div>

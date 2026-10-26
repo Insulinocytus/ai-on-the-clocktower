@@ -9,17 +9,15 @@ const { t, locale } = useI18n()
 
 <template>
   <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-50' : ''">
-    <span class="pt-1 font-serif text-xs tabular-nums text-muted-foreground">{{
-      row.event.seq
-    }}</span>
+    <span class="pt-1 font-serif text-xs tabular-nums text-muted">{{ row.event.seq }}</span>
     <div class="min-w-0">
-      <p v-if="row.losing" class="mb-1 text-xs font-medium text-muted-foreground">
+      <p v-if="row.losing" class="mb-1 text-xs font-medium text-muted">
         {{ t('spectator.notSelected') }}
       </p>
       <template
         v-if="row.event.type === 'contestant.decision' || row.event.type === 'storyteller.decision'"
       >
-        <p class="text-xs font-medium text-muted-foreground">
+        <p class="text-xs font-medium text-muted">
           {{
             row.event.type === 'contestant.decision'
               ? t('spectator.seatSummary', { seat: row.event.seat })
@@ -45,12 +43,12 @@ const { t, locale } = useI18n()
               : t('spectator.proposedNomination', { seat: row.nominee })
           }}
         </p>
-        <p class="mt-1 text-xs text-muted-foreground">
+        <p class="mt-1 text-xs text-muted">
           {{ row.event.model }} · {{ Math.round(row.event.durationMs) }} ms ·
           {{ t('spectator.attempt', { attempt: row.event.attempt }) }}
         </p>
         <details class="mt-1">
-          <summary class="cursor-pointer text-xs text-muted-foreground">
+          <summary class="cursor-pointer text-xs text-muted">
             {{ t('trial.raw') }}
           </summary>
           <pre
@@ -64,7 +62,7 @@ const { t, locale } = useI18n()
           :class="
             row.event.type === 'public.speech' || row.event.type === 'whisper.speech'
               ? 'speech-bubble font-serif text-base text-ink'
-              : 'text-muted-foreground'
+              : 'text-muted'
           "
         >
           {{ renderEvent(row.event, locale === 'zh' ? 'zh' : 'en', observer) }}

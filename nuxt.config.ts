@@ -2,14 +2,13 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  // Single-user local tool: client-rendered only, so locale detection and shadcn components need no hydration.
+  // Single-user local tool: client-rendered only, so locale detection needs no hydration.
   ssr: false,
-  modules: ['@nuxt/eslint', '@nuxtjs/i18n', 'shadcn-nuxt'],
+  modules: ['@nuxt/eslint', '@nuxtjs/i18n'],
   css: ['~/assets/css/tailwind.css', 'vue-sonner/style.css'],
   vite: { plugins: [tailwindcss()] },
   devServer: { host: '127.0.0.1' },
   routeRules: { '/': { redirect: '/games' } },
-  shadcn: { prefix: '', componentDir: '~/components/ui' },
   i18n: {
     strategy: 'no_prefix',
     defaultLocale: 'en',

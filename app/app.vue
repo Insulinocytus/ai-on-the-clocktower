@@ -21,7 +21,7 @@ useHead({ title: () => t('app.title'), htmlAttrs: { lang: locale } })
       <p>{{ t('app.tabBlockedDescription') }}</p>
     </div>
   </div>
-  <div v-else-if="ready" class="grain min-h-screen bg-background text-foreground">
+  <div v-else-if="ready" class="grain min-h-screen bg-paper text-ink">
     <Topbar />
     <main :class="route.meta.spectator ? '' : 'mx-auto max-w-6xl p-6'">
       <NuxtPage />

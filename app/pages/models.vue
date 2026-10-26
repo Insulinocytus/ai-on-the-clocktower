@@ -50,7 +50,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
           {{ t('providers.add') }}
         </Button>
       </div>
-      <p v-if="!providers.length" class="text-sm text-muted-foreground">
+      <p v-if="!providers.length" class="text-sm text-muted">
         {{ t('providers.empty') }}
       </p>
       <table v-else class="models-table providers-table">
@@ -96,7 +96,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
                 </button>
                 <button
                   type="button"
-                  class="text-muted-foreground"
+                  class="text-muted"
                   @click="
                     remove(
                       () => deleteProvider(p.id),
@@ -124,7 +124,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
           {{ t('presets.add') }}
         </Button>
       </div>
-      <p v-if="!presets.length" class="text-sm text-muted-foreground">
+      <p v-if="!presets.length" class="text-sm text-muted">
         {{ providers.length ? t('presets.empty') : t('presets.needProvider') }}
       </p>
       <table v-else class="models-table presets-table">
@@ -178,7 +178,7 @@ async function remove(deleteItem: () => Promise<void>, confirmText: string) {
                 </button>
                 <button
                   type="button"
-                  class="text-muted-foreground"
+                  class="text-muted"
                   @click="
                     remove(() => deletePreset(p.id), t('presets.confirmDelete', { name: p.name }))
                   "

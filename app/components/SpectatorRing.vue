@@ -55,7 +55,7 @@ function position(index: number, inner = false) {
 
 <template>
   <section class="grimoire-board" :aria-label="t('spectator.grimoire')">
-    <header class="flex items-center justify-between text-xs text-muted-foreground">
+    <header class="flex items-center justify-between text-xs text-muted">
       <h2 class="font-serif text-sm">{{ t('spectator.grimoire') }}</h2>
       <span>{{ t('spectator.atSeq', { seq: grimoire.seq }) }}</span>
     </header>
@@ -67,7 +67,7 @@ function position(index: number, inner = false) {
         <p v-if="publicState.aboutToBeExecuted !== null" class="text-xs text-accent">
           {{ t('spectator.executionSeat', { seat: publicState.aboutToBeExecuted }) }}
         </p>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('spectator.footprintHint') }}</p>
+        <p class="mt-1 text-xs text-muted">{{ t('spectator.footprintHint') }}</p>
       </div>
       <ol>
         <li v-for="(seat, index) in seats" :key="seat.number" class="seat" :style="position(index)">
@@ -102,7 +102,7 @@ function position(index: number, inner = false) {
             <span class="mt-2 block font-serif text-base">{{
               t('games.seat', { seat: seat.number })
             }}</span>
-            <span class="block break-words text-xs text-muted-foreground">{{ seat.preset }}</span>
+            <span class="block break-words text-xs text-muted">{{ seat.preset }}</span>
             <span class="block font-serif text-sm">{{
               seat.role ? ROLES[seat.role].name[language] : t('spectator.unknownRole')
             }}</span>

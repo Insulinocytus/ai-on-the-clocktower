@@ -108,7 +108,7 @@ function randomFill() {
       </div>
     </div>
     <div role="status" class="space-y-1 text-sm" aria-live="polite">
-      <p v-if="!complete" class="text-muted-foreground">{{ t('manual.incomplete') }}</p>
+      <p v-if="!complete" class="text-muted">{{ t('manual.incomplete') }}</p>
       <p v-for="error in errors" :key="error.code" class="text-accent">
         {{ t(`manual.errors.${error.code}`) }}
       </p>

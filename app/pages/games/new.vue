@@ -108,7 +108,7 @@ async function create() {
       <h1>{{ t('games.new') }}</h1>
       <p>{{ t('games.setupHelp') }}</p>
     </header>
-    <p v-if="templateId" class="mb-6 text-sm text-muted-foreground">
+    <p v-if="templateId" class="mb-6 text-sm text-muted">
       {{ t('games.templateFrom', { id: templateId.slice(0, 8) }) }}
     </p>
     <p v-if="templateError" role="alert" class="mb-6 text-accent">{{ templateError }}</p>

@@ -39,7 +39,7 @@ onUnmounted(() => {
         <NuxtLink to="/games/new">{{ t('games.new') }}</NuxtLink>
       </Button>
     </header>
-    <p v-if="error" role="alert" class="text-destructive">{{ apiErrorMessage(error) }}</p>
+    <p v-if="error" role="alert" class="text-accent">{{ apiErrorMessage(error) }}</p>
     <div v-if="!games.length" class="games-empty">
       <img src="/botc/editions/tb/logo.webp" :alt="t('games.script')" class="games-logo" />
       <div>

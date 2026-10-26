@@ -48,10 +48,7 @@ watch(
           />
         </ol>
       </section>
-      <p
-        v-if="!groups.some((group) => group.rows.length)"
-        class="py-5 text-sm text-muted-foreground"
-      >
+      <p v-if="!groups.some((group) => group.rows.length)" class="py-5 text-sm text-muted">
         {{ t('spectator.noEvents') }}
       </p>
     </div>
