@@ -80,8 +80,6 @@ export const FalseInformation: Story = {
 }
 
 export const UnselectedDecisions: Story = {
-  // color-contrast: dimmed unselected rows are 2.44:1 (known component bug)
-  parameters: { a11y: { test: 'todo' } },
   args: view({ kind: 'public', losing: true }),
   play: async ({ canvas }) => {
     await expect(canvas.getByText('未选中')).toBeVisible()
@@ -109,6 +107,24 @@ export const PublicOnly: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText(/计票/)).toBeVisible()
     await expect(canvas.queryByText('pass（不行动）')).not.toBeInTheDocument()
+  },
+}
+
+export const OverflowWithoutControls: Story = {
+  args: view({ observer: 'public' }),
+  render: (args) => ({
+    components: { SpectatorFeed },
+    setup: () => ({ feed: useLocalized(args) }),
+    template: `
+      <div class="flex h-40 flex-col">
+        <SpectatorFeed v-bind="feed" />
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    const feed = canvas.getByRole('region', { name: '频道块内容' }).querySelector('[aria-live]')
+    await expect(feed?.scrollHeight).toBeGreaterThan(feed?.clientHeight ?? Infinity)
+    await expect(feed?.querySelector('a, button, summary, input, [tabindex]')).toBeNull()
   },
 }
 

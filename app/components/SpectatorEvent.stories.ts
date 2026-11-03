@@ -30,8 +30,6 @@ export const Narration: Story = {
 }
 
 export const ContestantDecision: Story = {
-  // scrollable-region-focusable: the raw-response block scrolls but is not focusable (known component bug)
-  parameters: { a11y: { test: 'todo' } },
   args: eventProps(16),
   play: async ({ canvas, userEvent }) => {
     await expect(canvas.getByText('1 号的推理摘要')).toBeVisible()
@@ -61,8 +59,6 @@ export const Pass: Story = {
 }
 
 export const Unselected: Story = {
-  // color-contrast: muted unselected text is 2.44:1 (known component bug)
-  parameters: { a11y: { test: 'todo' } },
   args: eventProps(18, 'spectator', true),
   play: async ({ canvas }) => {
     await expect(canvas.getByText('未选中')).toBeVisible()

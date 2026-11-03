@@ -14,6 +14,7 @@ const props = defineProps<{
 defineEmits<{ clearFocus: [] }>()
 const { t } = useI18n()
 const feed = useTemplateRef<HTMLElement>('feed')
+const titleId = useId()
 watch(
   [() => props.blockKey, () => props.groups, () => props.following, () => props.focused],
   async ([key, , , focused], [previous, , , wasFocused]) => {
@@ -29,12 +30,19 @@ watch(
 <template>
   <section class="flex min-h-0 flex-col" :aria-label="t('spectator.content')">
     <header class="flex min-h-11 items-center justify-between gap-2 border-b border-rule pb-2">
-      <h2 class="font-serif text-2xl">{{ title }}</h2>
+      <h2 :id="titleId" class="font-serif text-2xl">{{ title }}</h2>
       <Button v-if="focused" variant="secondary" @click="$emit('clearFocus')">
         {{ t('spectator.backToChannel') }}
       </Button>
     </header>
-    <div ref="feed" class="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
+    <div
+      ref="feed"
+      role="region"
+      :aria-labelledby="titleId"
+      tabindex="0"
+      class="min-h-0 flex-1 overflow-y-auto"
+      aria-live="polite"
+    >
       <section v-for="group in groups" :key="group.key">
         <h3 v-if="focused" class="sticky top-0 border-b bg-paper py-3 text-sm">
           {{ group.title }}
