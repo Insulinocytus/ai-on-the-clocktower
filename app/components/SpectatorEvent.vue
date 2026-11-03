@@ -9,7 +9,7 @@ const { t, locale } = useI18n()
 </script>
 
 <template>
-  <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-4" :class="row.losing ? 'opacity-50' : ''">
+  <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-4" :class="row.losing ? 'text-muted' : ''">
     <span class="pt-1 font-serif text-xs tabular-nums text-muted">{{ row.event.seq }}</span>
     <div class="min-w-0">
       <p v-if="row.losing" class="mb-1 text-xs text-muted">
@@ -27,13 +27,15 @@ const { t, locale } = useI18n()
         </p>
         <p
           v-if="row.reasoningSummary"
-          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7 text-ink2"
+          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7"
+          :class="row.losing ? 'text-muted' : 'text-ink2'"
         >
           {{ row.reasoningSummary }}
         </p>
         <p
           v-if="row.speech !== undefined"
-          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7 text-ink2"
+          class="mt-1 whitespace-pre-wrap break-words font-serif text-sm leading-7"
+          :class="row.losing ? 'text-muted' : 'text-ink2'"
         >
           {{ row.speech === null ? t('spectator.pass') : row.speech }}
         </p>
@@ -53,7 +55,11 @@ const { t, locale } = useI18n()
             {{ t('trial.raw') }}
           </summary>
           <pre
-            class="mt-2 max-h-64 overflow-auto rounded-thought bg-paper3 p-3 text-xs text-ink2"
+            role="region"
+            :aria-label="t('trial.raw')"
+            tabindex="0"
+            class="mt-2 max-h-64 overflow-auto rounded-thought bg-paper3 p-3 text-xs"
+            :class="row.losing ? 'text-muted' : 'text-ink2'"
             >{{ JSON.stringify(row.event.raw, null, 2) }}</pre>
         </details>
       </template>
